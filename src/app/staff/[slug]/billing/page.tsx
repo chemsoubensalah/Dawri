@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { CalendarCheck2, CheckCircle2, CreditCard, Landmark, MessageCircle, ShieldCheck, XCircle } from "lucide-react";
 import StaffFrame from "@/components/StaffFrame";
 import { Chip } from "@/components/ui";
-import { t } from "@/lib/i18n";
+import { t, tn } from "@/lib/i18n";
 import { chargilyConfig, manualPayment, plans } from "@/lib/server/billing";
 import { now as clockNow } from "@/lib/server/clock";
 import { getDb } from "@/lib/server/db";
@@ -78,7 +78,7 @@ export default async function BillingPage({
               </div>
             </div>
             <Chip tone={paidUntil ? "green" : inTrial ? "violet" : "rose"}>
-              {paidUntil ? t(lang, "bl_stActive") : inTrial ? t(lang, "bl_stTrial", { n: trialDaysLeft }) : t(lang, "bl_stExpired")}
+              {paidUntil ? t(lang, "bl_stActive") : inTrial ? tn(lang, "bl_stTrial", trialDaysLeft) : t(lang, "bl_stExpired")}
             </Chip>
           </div>
           {inTrial && (

@@ -1,14 +1,14 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Lang } from "@/lib/domain/types";
-import { t } from "@/lib/i18n";
+import { dirOf, t } from "@/lib/i18n";
 import LangSwitch from "./LangSwitch";
 import { Logo, LogoMark } from "./ui";
 
 /** إطار صفحات المريض: خفيف جدّاً، عمود واحد مريح على الهاتف. */
 export default function PatientShell({ lang, children }: { lang: Lang; children: ReactNode }) {
   return (
-    <div className="bg-mesh min-h-dvh">
+    <div className="bg-mesh min-h-dvh" dir={dirOf(lang)} lang={lang}>
       <div className="mx-auto max-w-md px-4 pt-4 pb-10">
         <header className="mb-4 flex items-center justify-between">
           <Logo size={30} />

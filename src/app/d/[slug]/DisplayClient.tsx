@@ -4,7 +4,7 @@ import { Maximize2, Megaphone, Volume2, VolumeX } from "lucide-react";
 import SoundGate from "@/components/SoundGate";
 import { LogoMark } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
-import { t } from "@/lib/i18n";
+import { dirOf, t } from "@/lib/i18n";
 import { api, playSound, unlockAudio, usePoll } from "@/lib/client";
 import type { PublicShopView } from "@/lib/server/service";
 
@@ -55,7 +55,7 @@ export default function DisplayClient({ lang, initial, qr }: { lang: Lang; initi
   const sub = [v.profile.doctorName, v.profile.specialty].filter(Boolean).join(" · ");
 
   return (
-    <main className="flex min-h-dvh flex-col bg-[radial-gradient(80rem_40rem_at_50%_-10%,#065f46_0%,#0b1b2b_55%)] text-white">
+    <main dir={dirOf(lang)} lang={lang} className="flex min-h-dvh flex-col bg-[radial-gradient(80rem_40rem_at_50%_-10%,#065f46_0%,#0b1b2b_55%)] text-white">
       <header className="flex items-center justify-between gap-4 px-6 py-5 sm:px-10">
         <div className="flex min-w-0 items-center gap-4">
           <LogoMark size={48} />

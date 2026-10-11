@@ -12,8 +12,8 @@ export default async function Display({ params }: { params: Promise<{ slug: stri
   const { slug } = await params;
   try {
     const { shop, view } = await publicShop(slug);
-    // الشاشة داخل العيادة: رمزها يحمل رمز الباب، فمن يأخذ رقماً منها يُسجَّل حاضراً
-    const url = `${await baseUrl()}/s/${shop.slug}?c=${encodeURIComponent(shop.doorCode)}`;
+    // صفحة عامّة ← رابط المرضى العادي (رمز الباب السرّي يبقى على الملصق المطبوع فقط)
+    const url = `${await baseUrl()}/s/${shop.slug}`;
     const qr = await QRCode.toString(url, { type: "svg", margin: 0, color: { dark: "#0b1b2b", light: "#ffffff" } });
     return <DisplayClient lang={await getLang(shop.defaultLang)} initial={view} qr={qr} />;
   } catch (e) {

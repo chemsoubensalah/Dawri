@@ -9,18 +9,24 @@ export default function Dialog({
   title,
   children,
   wide = false,
+  closeLabel = "×",
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   wide?: boolean;
+  closeLabel?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
-    if (open && !d.open) d.showModal();
+    if (open && !d.open) {
+      d.showModal();
+      // التركيز على أوّل حقل (وإلّا يذهب إلى زرّ الإغلاق فيُغلق Enter النافذة)
+      d.querySelector<HTMLElement>("[autofocus],[data-autofocus],input,select,textarea")?.focus();
+    }
     if (!open && d.open) d.close();
   }, [open]);
   return (
@@ -32,7 +38,7 @@ export default function Dialog({
     >
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
         <h2 className="text-lg font-bold">{title}</h2>
-        <button type="button" onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="×">
+        <button type="button" onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label={closeLabel}>
           <X size={20} />
         </button>
       </div>
@@ -51,6 +57,7 @@ export function ConfirmDialog({
   danger = false,
   onConfirm,
   onClose,
+  closeLabel,
 }: {
   open: boolean;
   title: string;
@@ -60,9 +67,10 @@ export function ConfirmDialog({
   danger?: boolean;
   onConfirm: () => void;
   onClose: () => void;
+  closeLabel?: string;
 }) {
   return (
-    <Dialog open={open} onClose={onClose} title={title}>
+    <Dialog open={open} onClose={onClose} title={title} closeLabel={closeLabel}>
       {body && <div className="mb-5 text-slate-600">{body}</div>}
       <div className="grid grid-cols-2 gap-2">
         <button type="button" className="btn-secondary" onClick={onClose}>

@@ -95,6 +95,12 @@ describe("إنشاء المحلّ والدخول", () => {
     await expect(svc.staffLogin(shop.slug, "4321")).resolves.toBeTruthy();
   });
 
+  it("القفل لا يُتجاوز بطلبات متزامنة", async () => {
+    const r = await Promise.allSettled(Array.from({ length: 12 }, () => svc.staffLogin(shop.slug, "0000")));
+    expect(r.filter((x) => x.status === "rejected" && String(x.reason).includes("wrong_pin")).length).toBeLessThanOrEqual(5);
+    await expect(svc.staffLogin(shop.slug, "4321")).rejects.toThrow("locked");
+  });
+
   it("تغيير الرمز يُبطل الجلسات القديمة (session_version)", async () => {
     const updated = await svc.updateSettings(shop, { newPin: "9999" });
     expect(updated.sessionVersion).toBe(shop.sessionVersion + 1);

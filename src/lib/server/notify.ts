@@ -127,7 +127,8 @@ export const defaultNotifier: Notifier = {
       }
     }
     // SMS فقط لمن لم يصله واتساب (توفير الكلفة)
-    if (!waSent && n.ticket.phone && smsTypes().has(n.type)) {
+    // من أوقف التنبيهات (STOP) لا تصله رسائل SMS أيضاً
+    if (!waSent && !n.ticket.waOptOut && n.ticket.phone && smsTypes().has(n.type)) {
       const sms = getSms();
       await sms?.send(n.ticket.phone, `${msg.title} ${msg.body}`).catch((e) => console.error("[sms]", e));
     }

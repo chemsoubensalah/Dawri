@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { BellRing, Building2, CheckCircle2, Clock3, KeyRound, ListChecks, MessageCircle, Plus, Save, Smartphone, Trash2, XCircle } from "lucide-react";
 import type { Interval, Lang, ShopProfile, ShopSettings, WeeklyHours } from "@/lib/domain/types";
 import { errorText, t, type DictKey } from "@/lib/i18n";
@@ -53,6 +54,7 @@ export default function SettingsForm({
   const [rotateDoor, setRotateDoor] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const router = useRouter();
 
   const setDay = (d: string, v: Interval[]) => setHours((h) => ({ ...h, [d]: v }));
   const setP = (k: keyof ShopProfile, v: string) => setProfile((p) => ({ ...p, [k]: v || null }));
@@ -74,6 +76,7 @@ export default function SettingsForm({
         rotateDoor,
       });
       setMsg({ ok: true, text: t(lang, "saved") });
+      router.refresh(); // يحدّث الاسم في الشريط العلوي
       setNewPin("");
       setRotateDoor(false);
     } catch (err) {

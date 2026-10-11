@@ -5,7 +5,6 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "دوري — Dawri",
     short_name: "دوري",
     description: "الطابور الإلكتروني: خذ رقمك من هاتفك وتعال حين يقترب دورك.",
-    start_url: "/",
     display: "standalone",
     background_color: "#f8fafc",
     theme_color: "#059669",

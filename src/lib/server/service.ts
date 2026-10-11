@@ -35,7 +35,7 @@ import {
   type Ticket,
   type WeeklyHours,
 } from "../domain/types";
-import { isLang, t } from "../i18n";
+import { aheadText, errorText, isLang, t } from "../i18n";
 import { hashCode, hashPin, isValidPin, randomDigits, randomToken, safeEqual, signSession, verifyPin } from "./auth";
 import { now as clockNow } from "./clock";
 import { getDb, type Q } from "./db";
@@ -459,9 +459,10 @@ export async function waVerificationStatus(slug: string, id: string) {
   const shop = await shopOr404(db, slug);
   const v = await repo.getWaVerification(db, id);
   if (!v || v.shopId !== shop.id) throw new DomainError("not_found", 404);
-  if (v.ticketId) return { status: "done" as const, ticketId: v.ticketId };
-  if (v.expiresAt < clockNow()) return { status: "expired" as const, ticketId: null };
-  return { status: "pending" as const, ticketId: null };
+  if (v.ticketId) return { status: "done" as const, ticketId: v.ticketId, reason: null };
+  if (v.failedReason) return { status: "failed" as const, ticketId: null, reason: v.failedReason };
+  if (v.expiresAt < clockNow()) return { status: "expired" as const, ticketId: null, reason: null };
+  return { status: "pending" as const, ticketId: null, reason: null };
 }
 
 function waTexts(lang: Lang) {
@@ -483,7 +484,8 @@ export async function handleWhatsappInbound(payload: unknown) {
     const now = clockNow();
     const phone = m.from ? normalizePhone(`+${m.from}`) : null;
     const who = { userId: m.userId, phone };
-    const me: WaRecipient = { phone, userId: m.userId };
+    // الردّ يذهب إلى رقم المرسل كما هو (حتى غير الجزائري)، أمّا «الهاتف المؤكَّد» فجزائري فقط
+    const me: WaRecipient = { phone: m.from ? `+${m.from}` : null, userId: m.userId };
     const windowUntil = new Date(m.timestamp.getTime() + DAY_MS);
     await repo.waTouchUser(db, who, windowUntil, dayKey(new Date(now.getTime() - DAY_MS)));
     const intent = parseIntent(m.text, m.buttonId);
@@ -504,24 +506,41 @@ async function handleIntent(
     const v = await repo.getWaVerificationByCode(c.db, intent.code);
     const lang = (v?.lang === "fr" ? "fr" : "ar") as Lang;
     const { t: tr } = waTexts(lang);
-    if (!v || (!v.ticketId && v.expiresAt < c.now)) return reply(tr("wa_codeExpired"));
+    if (!v) return reply(tr("wa_codeExpired"));
     const shop = (await repo.getShopById(c.db, v.shopId))!;
     let ticketId = v.ticketId;
-    if (!ticketId) {
-      // رقم الواتساب هو الرقم المؤكَّد؛ إن أخفاه واتساب نعتمد ما كتبه المريض
-      const r = await issueTicket(shop, {
-        name: v.name,
-        phone: c.who.phone ?? v.phone,
-        lang,
-        atDoor: v.atDoor,
-        wa: { ...c.who, windowUntil: c.windowUntil },
-      });
-      ticketId = r.ticketId;
+    if (ticketId) {
+      // رمز مستعمل: لا نكشف التذكرة إلّا لصاحبها
+      const owner = await repo.getTicket(c.db, ticketId);
+      const same = owner && ((c.who.userId && owner.waUserId === c.who.userId) || (c.who.phone && owner.waPhone === c.who.phone));
+      if (!same) return reply(tr("wa_codeExpired"));
+    } else {
+      if (v.expiresAt < c.now) return reply(tr("wa_codeExpired"));
+      // الرقم الوحيد المقبول هو رقم الواتساب الذي أرسل الرسالة فعلاً (جوّال جزائري).
+      // لا نعتمد أبداً الرقم المكتوب في الصفحة: وإلّا أمكن انتحال تذكرة شخص آخر.
+      if (!c.who.phone) {
+        await repo.failWaVerification(c.db, v.id, "wa_need_dz");
+        return reply(tr("wa_needDz"));
+      }
+      try {
+        const r = await issueTicket(shop, {
+          name: v.name,
+          phone: c.who.phone,
+          lang,
+          atDoor: v.atDoor,
+          wa: { ...c.who, windowUntil: c.windowUntil },
+        });
+        ticketId = r.ticketId;
+      } catch (e) {
+        if (!(e instanceof DomainError)) throw e;
+        await repo.failWaVerification(c.db, v.id, e.code);
+        return reply(errorText(lang, e.code));
+      }
       await repo.completeWaVerification(c.db, v.id, ticketId, c.now);
     }
     const view = await ticketView(ticketId);
     const url = ticketUrl(ticketId);
-    const ahead = view.ahead === null ? "" : view.ahead === 0 ? tr("ahead0") : tr("aheadN", { n: view.ahead });
+    const ahead = view.ahead === null ? "" : view.ahead === 0 ? tr("ahead0") : aheadText(lang, view.ahead);
     return reply(
       [tr("wa_ticketOk", { shop: shop.name, n: view.number }), ahead, tr("wa_willAlert"), url].filter(Boolean).join("\n"),
     );
@@ -660,10 +679,11 @@ export async function staffLogin(slug: string, pin: unknown) {
   const db = await getDb();
   const shop = await shopOr404(db, slug);
   const now = clockNow();
-  if (shop.lockedUntil && shop.lockedUntil > now) throw new DomainError("locked", 429);
+  // نحتسب المحاولة ذرّياً قبل التحقّق: لا يمكن تجاوز القفل بطلبات متزامنة
+  if (!(await repo.claimLoginAttempt(db, shop.id, now))) throw new DomainError("locked", 429);
   const ok = typeof pin === "string" && isValidPin(pin) && verifyPin(pin, shop.pinHash);
-  await repo.recordLoginResult(db, shop.id, ok, now);
   if (!ok) throw new DomainError("wrong_pin", 401);
+  await repo.resetLoginAttempts(db, shop.id);
   return { shop, token: sessionFor(shop, now) };
 }
 
@@ -889,5 +909,7 @@ export async function runCron() {
     new Date(now.getTime() - DAY_MS),
   );
   await repo.purgeWa(db, new Date(now.getTime() - 2 * DAY_MS));
+  // صفحات دفع Chargily تنتهي بعد 30 دقيقة: ما بقي معلّقاً بعد ساعة = لم يكتمل
+  await repo.expireStalePayments(db, new Date(now.getTime() - 3600_000));
   return { stale, ...purged };
 }

@@ -5,7 +5,7 @@ import LangSwitch from "./LangSwitch";
 import LogoutButton from "./LogoutButton";
 import { LogoMark } from "./ui";
 import type { Lang } from "@/lib/domain/types";
-import { t, type DictKey } from "@/lib/i18n";
+import { dirOf, t, type DictKey } from "@/lib/i18n";
 
 export type StaffTab = "queue" | "stats" | "qr" | "settings" | "billing" | "welcome";
 
@@ -35,7 +35,7 @@ export default function StaffFrame({
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-dvh bg-[#f3f5f8]">
+    <div className="min-h-dvh bg-[#f3f5f8]" dir={dirOf(lang)} lang={lang}>
       <header className="no-print sticky top-0 z-30 border-b border-slate-200/70 bg-white/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-3 pt-3 sm:px-5">
           <Link href={`/staff/${slug}`} className="flex min-w-0 items-center gap-2.5">

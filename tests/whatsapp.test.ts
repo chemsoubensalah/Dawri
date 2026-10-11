@@ -123,6 +123,28 @@ describe("التحقّق عبر واتساب (بديل SMS)", () => {
     expect(texts().some((t) => t.includes("213661111111") && t.includes("*1*"))).toBe(true);
   });
 
+  it("ثغرة مُصلَحة: رقم واتساب أجنبي لا يستطيع انتحال تذكرة شخص آخر", async () => {
+    const c = await svc.requestCode(shop.slug, { name: "الضحية", phone: "0661234567" });
+    const victim = await svc.takeTicket(shop.slug, { name: "الضحية", phone: "0661234567", code: c.devCode });
+    const start = await svc.startWaVerification(shop.slug, { name: "مهاجم", phone: "0661234567" });
+    await svc.handleWhatsappInbound(inbound("33612345678", start.code));
+    const st = await svc.waVerificationStatus(shop.slug, start.id);
+    expect(st.status).toBe("failed");
+    expect(st.ticketId).toBeNull();
+    expect((await repo.getTicket(db, victim.ticketId))!.waUserId).toBeNull();
+    expect(texts().join()).not.toContain(victim.ticketId);
+  });
+
+  it("ثغرة مُصلَحة: رمز مستعمل لا يكشف التذكرة لمرسل آخر", async () => {
+    const start = await svc.startWaVerification(shop.slug, { name: "منى", phone: "0661111119" });
+    await svc.handleWhatsappInbound(inbound("213661111119", start.code));
+    const { ticketId } = await svc.waVerificationStatus(shop.slug, start.id);
+    sent.length = 0;
+    await svc.handleWhatsappInbound(inbound("213779999999", start.code));
+    expect(texts().join()).not.toContain(ticketId!);
+    expect(texts()[0]).toContain("انتهت");
+  });
+
   it("رقم الواتساب هو المعتمد إن اختلف عمّا كُتب", async () => {
     const start = await svc.startWaVerification(shop.slug, { name: "سارة", phone: "0661111112" });
     await svc.handleWhatsappInbound(inbound("213770000099", start.code));

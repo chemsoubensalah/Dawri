@@ -272,7 +272,7 @@ const ar = {
   l_doc5: "شاشة القاعة على التلفاز",
   l_doc5b: "الرقم الحالي بخطّ كبير مع نداء صوتي — بلا أسماء، احتراماً للخصوصية.",
   l_doc6: "لا أحد يُترك خلفاً",
-  l_doc6b: "السكرتيرة تضيف الكبار بلا هاتف ذكي بنقرة، ويصلهم دورهم برسالة على هاتفهم البسيط.",
+  l_doc6b: "السكرتيرة تضيف الكبار بلا هاتف ذكي بنقرة، ويمكن أن يصلهم دورهم برسالة على هاتفهم البسيط.",
   l_patTitle: "والمرضى يحبّونه",
   l_patSub: "لأنّ وقتهم ثمين أيضاً.",
   l_pat1: "لا داعي للوقوف في الطابور منذ الفجر",
@@ -499,6 +499,27 @@ const ar = {
   err_payment_failed: "تعذّر فتح صفحة الدفع. حاول بعد قليل.",
   err_payments_unavailable: "الدفع الإلكتروني غير متاح بعد.",
   err_invalid_plan: "خطّة غير صحيحة.",
+  aheadN_two: "أمامك شخصان",
+  aheadN_few: "أمامك {n} أشخاص",
+  aheadN_many: "أمامك {n} شخصاً",
+  aheadN_other: "أمامك {n} شخص",
+  stt_lastN_few: "آخر {n} أيّام",
+  bl_stTrial_one: "يوم واحد متبقٍّ",
+  bl_stTrial_two: "يومان متبقّيان",
+  bl_stTrial_few: "{n} أيّام متبقّية",
+  bl_stTrial_other: "{n} يوم متبقٍّ",
+  db_trialLeft_one: "تجربة مجّانية: يوم واحد متبقٍّ",
+  db_trialLeft_two: "تجربة مجّانية: يومان متبقّيان",
+  db_trialLeft_few: "تجربة مجّانية: {n} أيّام متبقّية",
+  db_trialLeft_other: "تجربة مجّانية: {n} يوم متبقٍّ",
+  wa_needDz: "للتأكيد عبر واتساب يجب أن يكون رقمك جوّالاً جزائرياً. ارجع إلى الصفحة واختر رمز الرسالة القصيرة.",
+  err_wa_need_dz: "للتأكيد عبر واتساب يجب أن يكون رقم واتساب جوّالاً جزائرياً. جرّب رمز الرسالة القصيرة.",
+  err_ticket_not_found: "التذكرة غير موجودة.",
+  err_invalid_action: "عملية غير صالحة.",
+  err_bad_request: "طلب غير صالح. حدّث الصفحة.",
+  a11y_close: "إغلاق",
+  a11y_backspace: "مسح رقم",
+  sp_haveTicket: "لديّ رقم اليوم — استرجعه",
 };
 
 export type Dict = typeof ar;
@@ -766,7 +787,7 @@ const fr: Dict = {
   l_doc5: "Écran de salle sur la TV",
   l_doc5b: "Le numéro en cours en grand avec annonce vocale — sans noms, par respect de la vie privée.",
   l_doc6: "Personne n'est laissé de côté",
-  l_doc6b: "La secrétaire ajoute en un clic les personnes sans smartphone ; elles reçoivent leur tour par SMS.",
+  l_doc6b: "La secrétaire ajoute en un clic les personnes sans smartphone ; elles peuvent recevoir leur tour par SMS.",
   l_patTitle: "Et les patients l'adorent",
   l_patSub: "Parce que leur temps compte aussi.",
   l_pat1: "Plus besoin de faire la queue dès l'aube",
@@ -993,6 +1014,27 @@ const fr: Dict = {
   err_payment_failed: "Impossible d'ouvrir la page de paiement. Réessayez.",
   err_payments_unavailable: "Paiement en ligne indisponible.",
   err_invalid_plan: "Formule invalide.",
+  aheadN_two: "2 personnes devant vous",
+  aheadN_few: "{n} personnes devant vous",
+  aheadN_many: "{n} personnes devant vous",
+  aheadN_other: "{n} personnes devant vous",
+  stt_lastN_few: "{n} derniers jours",
+  bl_stTrial_one: "1 jour restant",
+  bl_stTrial_two: "2 jours restants",
+  bl_stTrial_few: "{n} jours restants",
+  bl_stTrial_other: "{n} jours restants",
+  db_trialLeft_one: "Essai gratuit : 1 jour restant",
+  db_trialLeft_two: "Essai gratuit : 2 jours restants",
+  db_trialLeft_few: "Essai gratuit : {n} jours restants",
+  db_trialLeft_other: "Essai gratuit : {n} jours restants",
+  wa_needDz: "La confirmation WhatsApp nécessite un mobile algérien. Revenez sur la page et choisissez le code SMS.",
+  err_wa_need_dz: "La confirmation WhatsApp nécessite un numéro WhatsApp algérien. Essayez le code SMS.",
+  err_ticket_not_found: "Ticket introuvable.",
+  err_invalid_action: "Action invalide.",
+  err_bad_request: "Requête invalide. Actualisez la page.",
+  a11y_close: "Fermer",
+  a11y_backspace: "Effacer un chiffre",
+  sp_haveTicket: "J'ai déjà un numéro aujourd'hui",
 };
 
 export const dicts: Record<Lang, Dict> = { ar, fr };
@@ -1015,4 +1057,20 @@ export function dirOf(lang: Lang) {
 export function errorText(lang: Lang, code: string | undefined): string {
   const key = `err_${code}` as DictKey;
   return key in dicts.ar ? t(lang, key) : t(lang, "err_generic");
+}
+
+/**
+ * صيغ العدد: العربية (1، 2، 3–10، 11+) والفرنسية (1، أكثر).
+ * المفاتيح: <key>_one / _two / _few / _many / _other — نرجع إلى <key> إن غاب الشكل.
+ */
+export function tn(lang: Lang, key: string, n: number, vars?: Record<string, string | number>): string {
+  const rule = new Intl.PluralRules(lang === "ar" ? "ar" : "fr").select(n);
+  const d = dicts[lang] as Record<string, string>;
+  const k = d[`${key}_${rule}`] !== undefined ? `${key}_${rule}` : key;
+  return t(lang, k as DictKey, { n, ...vars });
+}
+
+/** «أمامك 7 أشخاص» بالصيغة الصحيحة. */
+export function aheadText(lang: Lang, n: number): string {
+  return n === 0 ? t(lang, "ahead0") : n === 1 ? t(lang, "ahead1") : tn(lang, "aheadN", n);
 }

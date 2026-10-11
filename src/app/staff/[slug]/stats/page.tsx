@@ -5,7 +5,7 @@ import BarChart from "@/components/BarChart";
 import StaffFrame from "@/components/StaffFrame";
 import { Stat } from "@/components/ui";
 import { dayKey } from "@/lib/domain/time";
-import { t } from "@/lib/i18n";
+import { t, tn } from "@/lib/i18n";
 import { now as clockNow } from "@/lib/server/clock";
 import { getDb } from "@/lib/server/db";
 import { getLang, staffShop } from "@/lib/server/http";
@@ -32,7 +32,8 @@ export default async function StatsPage({
   const from = dayKey(new Date(now.getTime() - (period - 1) * DAY));
   const [daily, hourly, totals] = await Promise.all([
     repo.dailyStats(db, shop.id, from),
-    repo.hourlyCounts(db, shop.id, new Date(now.getTime() - period * DAY)),
+    // نفس نافذة الأيّام: من منتصف ليل أوّل يوم بتوقيت الجزائر (UTC+1)
+    repo.hourlyCounts(db, shop.id, new Date(`${from}T00:00:00+01:00`)),
     repo.periodTotals(db, shop.id, from),
   ]);
 
@@ -73,7 +74,7 @@ export default async function StatsPage({
                 aria-selected={period === p}
                 className={`rounded-xl px-4 py-1.5 text-sm font-semibold ${period === p ? "bg-ink text-white" : "text-slate-600 hover:text-ink"}`}
               >
-                {t(lang, "stt_lastN", { n: p })}
+                {tn(lang, "stt_lastN", p)}
               </Link>
             ))}
           </div>

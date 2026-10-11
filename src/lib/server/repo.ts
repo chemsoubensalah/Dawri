@@ -142,19 +142,27 @@ export async function updateShop(
   await q.query(`update shops set ${sets.join(", ")} where id = $${params.length}`, params);
 }
 
-export async function recordLoginResult(q: Q, shopId: string, ok: boolean, now: Date) {
-  if (ok) {
-    await q.query("update shops set failed_logins = 0, locked_until = null where id = $1", [shopId]);
-  } else {
-    // بعد 5 محاولات خاطئة: قفل 15 دقيقة
-    await q.query(
-      `update shops set failed_logins = failed_logins + 1,
-         locked_until = case when failed_logins + 1 >= 5 then $2::timestamptz else locked_until end
-       where id = $1`,
-      [shopId, new Date(now.getTime() + 15 * 60000)],
-    );
-    await q.query("update shops set failed_logins = 0 where id = $1 and failed_logins >= 5", [shopId]);
-  }
+/**
+ * يحجز محاولة دخول: يزيد العدّاد ذرّياً، ويقفل 15 دقيقة عند الخامسة.
+ * يُرجع false إن كان الحساب مقفلاً (فلا تُفحص كلمة السرّ أصلاً).
+ */
+export async function claimLoginAttempt(q: Q, shopId: string, now: Date): Promise<boolean> {
+  const rows = await q.query(
+    `update shops
+        set failed_logins = case when locked_until is not null and locked_until <= $2 then 1 else failed_logins + 1 end,
+            locked_until = case
+              when (case when locked_until is not null and locked_until <= $2 then 1 else failed_logins + 1 end) >= 5 then $3::timestamptz
+              when locked_until is not null and locked_until <= $2 then null
+              else locked_until end
+      where id = $1 and (locked_until is null or locked_until <= $2 or failed_logins < 5)
+      returning failed_logins`,
+    [shopId, now, new Date(now.getTime() + 15 * 60000)],
+  );
+  return rows.length === 1 && Number((rows[0] as { failed_logins: number }).failed_logins) <= 5;
+}
+
+export async function resetLoginAttempts(q: Q, shopId: string) {
+  await q.query("update shops set failed_logins = 0, locked_until = null where id = $1", [shopId]);
 }
 
 // ——— أيّام الطابور ———
@@ -498,6 +506,7 @@ export interface WaVerification {
   expiresAt: Date;
   verifiedAt: Date | null;
   ticketId: string | null;
+  failedReason: string | null;
 }
 
 function rowToVerification(r: Row): WaVerification {
@@ -512,6 +521,7 @@ function rowToVerification(r: Row): WaVerification {
     expiresAt: d(r.expires_at)!,
     verifiedAt: d(r.verified_at),
     ticketId: r.ticket_id == null ? null : String(r.ticket_id),
+    failedReason: r.failed_reason == null ? null : String(r.failed_reason),
   };
 }
 
@@ -540,6 +550,15 @@ export async function getWaVerificationByCode(q: Q, code: string): Promise<WaVer
 
 export async function completeWaVerification(q: Q, id: string, ticketId: string, now: Date) {
   await q.query("update wa_verifications set verified_at = $2, ticket_id = $3 where id = $1", [id, now, ticketId]);
+}
+
+export async function failWaVerification(q: Q, id: string, reason: string) {
+  await q.query("update wa_verifications set failed_reason = $2 where id = $1 and ticket_id is null", [id, reason]);
+}
+
+export async function expireStalePayments(q: Q, before: Date) {
+  const rows = await q.query("update payments set status = 'failed' where status = 'pending' and created_at < $1 returning id", [before]);
+  return rows.length;
 }
 
 export async function countRecentWaVerifications(q: Q, shopId: string, phone: string, since: Date): Promise<number> {

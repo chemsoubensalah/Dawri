@@ -5,7 +5,7 @@ import { Delete, Lock } from "lucide-react";
 import LangSwitch from "@/components/LangSwitch";
 import { Logo } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
-import { errorText, t } from "@/lib/i18n";
+import { dirOf, errorText, t } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
 
 /** دخول السكرتيرة: لوحة أرقام كبيرة تناسب اللمس، وتعمل بلوحة المفاتيح أيضاً. */
@@ -39,7 +39,7 @@ export default function LoginForm({ lang, slug, name }: { lang: Lang; slug: stri
   };
 
   return (
-    <div className="bg-mesh flex min-h-dvh flex-col">
+    <div className="bg-mesh flex min-h-dvh flex-col" dir={dirOf(lang)} lang={lang}>
       <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4">
         <Link href="/"><Logo size={32} /></Link>
         <LangSwitch lang={lang} />
@@ -81,7 +81,7 @@ export default function LoginForm({ lang, slug, name }: { lang: Lang; slug: stri
                 {d}
               </button>
             ))}
-            <button type="button" className="btn-ghost h-14" onClick={() => setPin((p) => p.slice(0, -1))} aria-label="⌫">
+            <button type="button" className="btn-ghost h-14" onClick={() => setPin((p) => p.slice(0, -1))} aria-label={t(lang, "a11y_backspace")}>
               <Delete size={22} />
             </button>
             <button type="button" className="btn-secondary num h-14 text-2xl" onClick={() => press("0")}>

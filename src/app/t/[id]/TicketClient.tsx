@@ -7,7 +7,7 @@ import PushButton from "@/components/PushButton";
 import SoundGate from "@/components/SoundGate";
 import { Chip } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
-import { errorText, t } from "@/lib/i18n";
+import { aheadText, errorText, t } from "@/lib/i18n";
 import { api, ApiError, playSound, saveTicket, usePoll } from "@/lib/client";
 import type { TicketView } from "@/lib/server/service";
 
@@ -66,11 +66,12 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
   const prev = useRef(initial);
 
   useEffect(() => {
-    saveTicket(initial.shop.slug, initial.id);
-    // أخذ رقمه للتوّ (من صفحة المحلّ): نغمة تأكيد
+    // أخذ رقمه للتوّ على هذا الجهاز: نحفظها كتذكرته ونُسمعه نغمة التأكيد.
+    // (من يفتح رابط تذكرة شخص آخر لا تُحفظ عنده)
     try {
       if (sessionStorage.getItem("dawri:justTook") === initial.id) {
         sessionStorage.removeItem("dawri:justTook");
+        saveTicket(initial.shop.slug, initial.id);
         playSound("taken");
       }
     } catch {}
@@ -206,7 +207,7 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
               <Ring ahead={v.ahead} progress={progress} />
               <div className="min-w-0">
                 <p className="text-xl leading-snug font-bold">
-                  {v.ahead === 0 ? t(lang, "ahead0") : v.ahead === 1 ? t(lang, "ahead1") : t(lang, "aheadN", { n: v.ahead })}
+                  {aheadText(lang, v.ahead)}
                 </p>
                 {v.etaMin !== null && v.ahead > 0 && (
                   <p className="mt-1 text-slate-600">
@@ -359,7 +360,7 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
             <XCircle size={18} /> {t(lang, "cancelTicket")}
           </button>
         ) : (
-          <a className="btn-secondary" href={`/s/${v.shop.slug}`}>
+          <a className="btn-secondary" href={`/s/${v.shop.slug}?from=ticket`}>
             {t(lang, "backToShop")}
           </a>
         )}
@@ -374,6 +375,7 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
         danger
         onConfirm={() => act("cancel")}
         onClose={() => setAskCancel(false)}
+        closeLabel={t(lang, "a11y_close")}
       />
     </>
   );

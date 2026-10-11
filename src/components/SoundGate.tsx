@@ -56,6 +56,8 @@ export default function SoundGate({ lang, part = "banner" }: { lang: Lang; part?
             if (!m) unlockAudio().then(() => playSound("moved"));
           }}
           title={muted ? t(lang, "soundOff") : t(lang, "soundOn")}
+          aria-label={muted ? t(lang, "soundOff") : t(lang, "soundOn")}
+          aria-pressed={!muted}
           data-testid="mute-toggle"
         >
           {muted ? "🔇" : "🔊"}

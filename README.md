@@ -63,7 +63,7 @@ npm run dev
 ## الاختبارات
 
 ```bash
-npm test            # 71 اختباراً: منطق الطابور، يوم عمل كامل، الغياب، واتساب، الدفع، الرسائل
+npm test            # 74 اختباراً: منطق الطابور، يوم عمل كامل، الغياب، واتساب، الدفع، الرسائل
 npm run test:e2e    # متصفّح حقيقي: مرضى + سكرتيرة، نداء، غياب، عودة، فرنسية، QR، الأصوات
 npm run typecheck
 TEST_DATABASE_URL=postgres://… npx vitest run tests/service.test.ts   # على Postgres حقيقي (يمسح القاعدة!)

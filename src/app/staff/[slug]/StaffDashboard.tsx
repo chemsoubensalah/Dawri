@@ -26,12 +26,12 @@ import Dialog, { ConfirmDialog } from "@/components/Dialog";
 import SoundGate from "@/components/SoundGate";
 import { Avatar, Chip, Empty, LiveDot, Stat } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
-import { errorText, t } from "@/lib/i18n";
+import { errorText, t, tn } from "@/lib/i18n";
 import { api, ApiError, playSound, usePoll } from "@/lib/client";
 import type { StaffState } from "@/lib/server/service";
 
 type Row = StaffState["waiting"][number];
-type Confirm = { kind: "noshow" } | { kind: "cancel"; id: string; number: number } | null;
+type Confirm = { kind: "noshow"; id: string; number: number } | { kind: "cancel"; id: string; number: number } | null;
 
 export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; slug: string; initial: StaffState }) {
   const [s, setS] = useState(initial);
@@ -125,7 +125,9 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
     return () => window.removeEventListener("keydown", onKey);
   }, [canNext, busy, next]);
 
-  const patientUrl = typeof window !== "undefined" ? `${location.origin}/s/${slug}` : `/s/${slug}`;
+  // يُحسب بعد التركيب (لا قراءة لـ location أثناء العرض ← لا اختلاف بين الخادم والمتصفّح)
+  const [patientUrl, setPatientUrl] = useState(`/s/${slug}`);
+  useEffect(() => setPatientUrl(`${location.origin}/s/${slug}`), [slug]);
 
   const badges = (r: Row | NonNullable<StaffState["current"]>) => (
     <span className="flex flex-wrap gap-1">
@@ -170,7 +172,7 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
         {!s.shop.paidUntil && s.shop.active && (
           <a href={`/staff/${slug}/billing`}>
             <Chip tone="violet">
-              {t(lang, "db_trialLeft", { n: Math.max(0, Math.ceil((new Date(s.shop.trialEndsAt).getTime() - Date.now()) / 86_400_000)) })}
+              {tn(lang, "db_trialLeft", Math.max(0, Math.ceil((new Date(s.shop.trialEndsAt).getTime() - new Date(s.serverTime).getTime()) / 86_400_000)))}
             </Chip>
           </a>
         )}
@@ -262,7 +264,7 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
               <div className="relative mt-4 grid grid-cols-3 gap-2">
                 <button
                   className="btn btn-sm h-11 bg-amber-500/90 text-white hover:bg-amber-500"
-                  onClick={() => setConfirm({ kind: "noshow" })}
+                  onClick={() => setConfirm({ kind: "noshow", id: cur.id, number: cur.number })}
                   disabled={busy}
                   data-testid="no-show"
                 >
@@ -456,7 +458,7 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
       </div>
 
       {/* ——— إضافة شخص ——— */}
-      <Dialog open={addOpen} onClose={() => setAddOpen(false)} title={t(lang, "addPerson")}>
+      <Dialog open={addOpen} onClose={() => setAddOpen(false)} title={t(lang, "addPerson")} closeLabel={t(lang, "a11y_close")}>
         <form
           className="space-y-4"
           onSubmit={async (e) => {
@@ -497,7 +499,7 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
         open={confirm !== null}
         title={
           confirm?.kind === "noshow"
-            ? t(lang, "confirmNoShow")
+            ? `${t(lang, "confirmNoShow")} (${confirm.number})`
             : `${t(lang, "cancel")} ${confirm?.kind === "cancel" ? confirm.number : ""}${lang === "ar" ? "؟" : " ?"}`
         }
         body={confirm?.kind === "noshow" ? t(lang, "db_noShowBody") : t(lang, "db_cancelBody")}
@@ -506,12 +508,13 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
         danger={confirm?.kind === "cancel"}
         onConfirm={async () => {
           if (confirm?.kind === "noshow") {
-            if (await act({ action: "no_show_next", current: s.current?.id ?? null })) playSound("next");
+            if (await act({ action: "no_show_next", current: confirm.id })) playSound("next");
           } else if (confirm?.kind === "cancel") {
             act({ action: "cancel", ticketId: confirm.id });
           }
         }}
         onClose={() => setConfirm(null)}
+        closeLabel={t(lang, "a11y_close")}
       />
     </div>
   );

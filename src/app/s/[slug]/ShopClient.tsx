@@ -32,12 +32,14 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [arrivedMsg, setArrivedMsg] = useState(false);
+  const [recover, setRecover] = useState(false);
 
   useEffect(() => {
     const id = savedTicket(view.slug);
     setMine(id);
     // تذكرة اليوم موجودة ولم يأتِ من رمز الباب ← نفتحها مباشرة
-    if (id && !door) router.replace(`/t/${id}`);
+    const fromTicket = new URLSearchParams(location.search).get("from") === "ticket";
+    if (id && !door && !fromTicket) router.replace(`/t/${id}`);
     try {
       const p = JSON.parse(localStorage.getItem(PROFILE) ?? "{}");
       if (p.name) setName(p.name);
@@ -50,9 +52,13 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
   // ننتظر رسالة واتساب: تتحقّق الصفحة كلّ ثانيتين ونصف (وفوراً عند الرجوع من واتساب)
   usePoll(async () => {
     if (step !== "wa" || !wa || wa.expired) return;
-    const r = await api<{ status: "pending" | "done" | "expired"; ticketId: string | null }>(`/api/s/${view.slug}/wa-verify/${wa.id}`);
+    const r = await api<{ status: "pending" | "done" | "expired" | "failed"; ticketId: string | null; reason: string | null }>(`/api/s/${view.slug}/wa-verify/${wa.id}`);
     if (r.status === "done" && r.ticketId) finish(r.ticketId);
     else if (r.status === "expired") setWa({ ...wa, expired: true });
+    else if (r.status === "failed") {
+      setWa({ ...wa, expired: true });
+      setError(errorText(lang, r.reason ?? undefined));
+    }
   }, 2500);
 
   async function run(fn: () => Promise<void>) {
@@ -147,11 +153,15 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
           </a>
           {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
         </section>
-      ) : view.blocker ? (
+      ) : view.blocker && !recover ? (
         <section className="card text-center">
           <Hourglass size={36} className="mx-auto text-amber-500" />
           <p className="mt-2 text-lg font-bold">{errorText(lang, view.blocker)}</p>
           <p className="mt-1 text-sm text-slate-600">{t(lang, "sp_comeBack")}</p>
+          {/* من أخذ رقماً اليوم ثمّ أُغلق الطابور يستطيع استرجاع تذكرته */}
+          <button type="button" className="mt-3 text-sm font-semibold text-brand-700 hover:underline" onClick={() => setRecover(true)}>
+            {t(lang, "sp_haveTicket")}
+          </button>
         </section>
       ) : (
         <section className="card p-6">
@@ -229,7 +239,7 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
               <p className="font-semibold text-slate-700">{t(lang, "sp_waStep")}</p>
               {wa.expired ? (
                 <>
-                  <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{t(lang, "sp_waExpired")}</p>
+                  <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{error || t(lang, "sp_waExpired")}</p>
                   <button type="button" className="btn-secondary w-full" onClick={() => setStep("form")}>
                     {t(lang, "changePhone")}
                   </button>
