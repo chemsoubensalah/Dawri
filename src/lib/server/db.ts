@@ -35,6 +35,7 @@ export async function createPgDb(url: string): Promise<Db> {
     ssl,
     max: Number(process.env.DATABASE_POOL_MAX ?? 3),
     idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000, // لا نترك الطلب معلّقاً إن تعذّر الوصول إلى القاعدة
   });
   return {
     kind: "pg",

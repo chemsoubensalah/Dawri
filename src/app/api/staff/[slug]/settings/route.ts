@@ -1,5 +1,5 @@
 import { DomainError } from "@/lib/domain/types";
-import { json, readJson, requireStaff, setSessionCookie } from "@/lib/server/http";
+import { json, readJson, requireStaff, serverError, setSessionCookie } from "@/lib/server/http";
 import { now } from "@/lib/server/clock";
 import { sessionFor, updateSettings } from "@/lib/server/service";
 
@@ -14,7 +14,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     return res;
   } catch (e) {
     if (e instanceof DomainError) return json({ error: e.code }, e.status);
-    console.error(e);
-    return json({ error: "generic" }, 500);
+    return serverError(e);
   }
 }

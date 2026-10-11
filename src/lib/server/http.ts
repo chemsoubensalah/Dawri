@@ -12,14 +12,40 @@ export function json(data: unknown, status = 200) {
   return NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } });
 }
 
+/**
+ * تشخيص تقريبي لأخطاء الإعداد (قاعدة البيانات خصوصاً) كي يعرف صاحب الموقع السبب
+ * دون فتح السجلّات. لا يكشف أيّ تفاصيل حسّاسة: رمز عامّ فقط.
+ */
+export function diagnose(e: unknown): string {
+  const err = (e ?? {}) as { code?: string; message?: string };
+  const code = String(err.code ?? "");
+  const msg = String(err.message ?? "");
+  if (code === "42P01") return "db_tables_missing"; // الجداول غير موجودة: شغّل ملفّ SQL
+  if (code === "28P01" || code === "28000" || /password|Tenant or user not found|SASL/i.test(msg)) return "db_auth";
+  if (code === "ERR_INVALID_URL" || /Invalid URL/i.test(msg)) return "db_url_invalid";
+  if (/SESSION_SECRET/.test(msg)) return "session_secret_missing";
+  if (/DATABASE_URL/.test(msg)) return "database_url_missing";
+  if (
+    ["ENOTFOUND", "ECONNREFUSED", "ETIMEDOUT", "ENETUNREACH", "EHOSTUNREACH", "EAI_AGAIN", "ECONNRESET"].includes(code) ||
+    /timeout|terminated/i.test(msg)
+  ) {
+    return "db_unreachable";
+  }
+  return "unknown";
+}
+
+export function serverError(e: unknown) {
+  console.error(e);
+  return json({ error: "generic", hint: diagnose(e) }, 500);
+}
+
 /** يحوّل أخطاء المجال إلى {error: code} مع رمز HTTP مناسب. */
 export async function handle(fn: () => Promise<unknown>) {
   try {
     return json(await fn());
   } catch (e) {
     if (e instanceof DomainError) return json({ error: e.code }, e.status);
-    console.error(e);
-    return json({ error: "generic" }, 500);
+    return serverError(e);
   }
 }
 
