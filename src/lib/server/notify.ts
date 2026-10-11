@@ -1,7 +1,11 @@
 /**
  * إرسال التنبيهات بعد كلّ تغيير في الطابور.
  * القناة الأساسية: Web Push (مجّاني، يعمل بلا تثبيت على أندرويد/كروم).
- * اختيارياً: رسالة SMS لـ«تعال الآن» و«دورك الآن» (SMS_NOTIFICATIONS=1) — لها كلفة.
+ * اختيارياً: رسائل SMS (SMS_NOTIFICATIONS) — لها كلفة:
+ *   1 أو all  ← «تعال الآن» + «دورك الآن»
+ *   called    ← «دورك الآن» فقط (الأوفر)
+ *   soon      ← «تعال الآن» فقط
+ * تصل أيضاً لمن أضافته السكرتيرة برقم هاتفه (الكبار بلا هاتف ذكي).
  * وفي كلّ الأحوال: صفحة التذكرة المفتوحة تُصدر صوتاً واهتزازاً بنفسها.
  */
 import { t, type DictKey } from "../i18n";
@@ -41,6 +45,16 @@ export function renderNotification(n: Notification) {
   };
 }
 
+const SMS_ALLOWED: NotifyType[] = ["soon", "called", "missed", "confirm", "held", "approved"];
+
+/** أيّ الأحداث تُرسَل برسالة SMS (من SMS_NOTIFICATIONS). */
+export function smsTypes(): Set<NotifyType> {
+  const v = (process.env.SMS_NOTIFICATIONS ?? "").trim().toLowerCase();
+  if (!v || v === "0" || v === "off") return new Set();
+  if (v === "1" || v === "all" || v === "on") return new Set(["soon", "called"]);
+  return new Set(v.split(",").map((x) => x.trim() as NotifyType).filter((x) => SMS_ALLOWED.includes(x)));
+}
+
 let vapidReady: boolean | null = null;
 
 async function webPush() {
@@ -75,11 +89,7 @@ export const defaultNotifier: Notifier = {
         }
       }
     }
-    if (
-      process.env.SMS_NOTIFICATIONS === "1" &&
-      n.ticket.phone &&
-      (n.type === "soon" || n.type === "called")
-    ) {
+    if (n.ticket.phone && smsTypes().has(n.type)) {
       const sms = getSms();
       await sms?.send(n.ticket.phone, `${msg.title} ${msg.body}`).catch((e) => console.error("[sms]", e));
     }

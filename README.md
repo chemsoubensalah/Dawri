@@ -116,7 +116,10 @@ TEST_DATABASE_URL=postgres://user:pass@localhost:5432/test npx vitest run tests/
 - **Twilio** (يعمل مع الأرقام الجزائرية): `SMS_PROVIDER=twilio` مع `TWILIO_ACCOUNT_SID` و`TWILIO_AUTH_TOKEN` و`TWILIO_FROM`.
 - **بوّابة جزائرية أو أيّ خدمة أخرى:** `SMS_PROVIDER=webhook` و`SMS_WEBHOOK_URL`. يرسل الخادم `POST` بصيغة `{"to":"+213…","text":"…"}` (مع `Authorization: Bearer SMS_WEBHOOK_TOKEN` إن وُضع). اكتب وسيطاً صغيراً يحوّلها إلى صيغة مزوّدك.
 - **للتجربة الأولى فقط:** `PHONE_VERIFICATION=off` يلغي رمز التحقّق (يُضعف الحماية من التلاعب).
-- `SMS_NOTIFICATIONS=1` يرسل أيضاً «تعال الآن» و«دورك الآن» برسالة SMS (مفيد لمن لا يفتح الصفحة، لكن له كلفة).
+- **رسالة SMS للمريض** (لها كلفة، وتحتاج مزوّداً حقيقياً — لا تُرسَل مع `console`):
+  - `SMS_NOTIFICATIONS=called` ← رسالة واحدة فقط حين يحين دوره: «دورك الآن! عيادة …: الرقم 7، ادخل الآن.» (الأوفر)
+  - `SMS_NOTIFICATIONS=1` ← «تعال الآن» (حين يبقى 3 أمامه) + «دورك الآن».
+  - تصل أيضاً لمن أضافته السكرتيرة يدوياً برقم هاتفه — مفيدة جداً للكبار بلا هاتف ذكي.
 
 ### 4) تنبيهات الهاتف (Web Push)
 ```bash
