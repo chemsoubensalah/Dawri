@@ -26,7 +26,7 @@ export interface Db extends Q {
  * ورموز غير مُرمَّزة في كلمة السرّ (# / ? @ %…).
  */
 export function normalizeDbUrl(raw: string): string {
-  let s = raw.trim().replace(/^DATABASE_URL\s*=\s*/i, "").trim();
+  let s = raw.replace(/[\r\n\t]/g, "").trim().replace(/^DATABASE_URL\s*=\s*/i, "").trim();
   s = s.replace(/^["'](.*)["']$/s, "$1").trim();
   // الفاصل بين كلمة السرّ والعنوان هو آخر @ (العنوان لا يحتوي @)
   const m = /^(postgres(?:ql)?:\/\/)([^:@/]+):(.*)@([^@/?#\s]+)(\/[^?#\s]*)?(\?[^#\s]*)?$/s.exec(s);

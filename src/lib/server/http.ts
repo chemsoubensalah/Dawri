@@ -23,7 +23,7 @@ export function diagnose(e: unknown): string {
   if (/YOUR-PASSWORD/.test(msg)) return "db_password_placeholder";
   if (code === "42P01") return "db_tables_missing"; // الجداول غير موجودة: شغّل ملفّ SQL
   if (code === "28P01" || code === "28000" || /password|Tenant or user not found|SASL/i.test(msg)) return "db_auth";
-  if (code === "ERR_INVALID_URL" || /Invalid URL/i.test(msg)) return "db_url_invalid";
+  if (code === "ERR_INVALID_URL" || /Invalid URL/i.test(msg)) return `db_url_invalid:${describeDbUrl(process.env.DATABASE_URL)}`;
   if (/SESSION_SECRET/.test(msg)) return "session_secret_missing";
   if (/DATABASE_URL/.test(msg)) return "database_url_missing";
   if (
@@ -33,6 +33,19 @@ export function diagnose(e: unknown): string {
     return "db_unreachable";
   }
   return "unknown";
+}
+
+/** وصف بنية الرابط فقط (بلا أيّ حرف من محتواه) لمعرفة أين الخطأ. */
+export function describeDbUrl(raw: string | undefined): string {
+  const s = (raw ?? "").trim();
+  if (!s) return "empty";
+  const flags: string[] = [];
+  if (!/^["']?(DATABASE_URL\s*=\s*)?["']?postgres(ql)?:\/\//i.test(s)) flags.push("no_scheme");
+  if (!s.includes("@")) flags.push("no_at");
+  if (!/pooler\.supabase\.com/.test(s)) flags.push("not_pooler_host");
+  if (!/:6543\//.test(s)) flags.push("no_port_6543");
+  if (/\s/.test(s)) flags.push("has_space");
+  return flags.join(",") || "structure_ok";
 }
 
 export function serverError(e: unknown) {

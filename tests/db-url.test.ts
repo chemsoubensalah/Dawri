@@ -36,3 +36,17 @@ describe("normalizeDbUrl — أخطاء لصق رابط Supabase", () => {
     expect(new URL(normalizeDbUrl(`${ok("a#b")}?sslmode=require`)).searchParams.get("sslmode")).toBe("require");
   });
 });
+
+describe("describeDbUrl — وصف البنية دون كشف المحتوى", async () => {
+  const { describeDbUrl } = await import("@/lib/server/http");
+  it("يحدّد موضع الخطأ", () => {
+    expect(describeDbUrl(undefined)).toBe("empty");
+    expect(describeDbUrl(ok("Secret123"))).toBe("structure_ok");
+    expect(describeDbUrl("postgres.abc:x@db.abc.supabase.co:5432/postgres")).toBe("no_scheme,not_pooler_host,no_port_6543");
+    expect(describeDbUrl(ok("Sec ret"))).toBe("has_space");
+    expect(describeDbUrl(ok("Secret123"))).not.toContain("Secret");
+  });
+  it("يزيل أسطراً جديدة دخلت أثناء اللصق", () => {
+    expect(normalizeDbUrl(`postgresql://postgres.abc:Secret123@aws-1-eu-central-1.pooler.\nsupabase.com:6543/postgres`)).toBe(ok("Secret123"));
+  });
+});
