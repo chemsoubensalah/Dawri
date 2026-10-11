@@ -1,0 +1,84 @@
+import { cookies, headers } from "next/headers";
+import { NextResponse } from "next/server";
+import { DomainError, type Shop } from "../domain/types";
+import { isLang } from "../i18n";
+import type { Lang } from "../domain/types";
+import { readSession, sessionCookieName } from "./auth";
+import { now } from "./clock";
+import { getDb } from "./db";
+import * as repo from "./repo";
+
+export function json(data: unknown, status = 200) {
+  return NextResponse.json(data, { status, headers: { "Cache-Control": "no-store" } });
+}
+
+/** يحوّل أخطاء المجال إلى {error: code} مع رمز HTTP مناسب. */
+export async function handle(fn: () => Promise<unknown>) {
+  try {
+    return json(await fn());
+  } catch (e) {
+    if (e instanceof DomainError) return json({ error: e.code }, e.status);
+    console.error(e);
+    return json({ error: "generic" }, 500);
+  }
+}
+
+/** يقبل JSON فقط (يمنع إرسال النماذج من مواقع أخرى). */
+export async function readJson(req: Request): Promise<Record<string, unknown>> {
+  if (!req.headers.get("content-type")?.includes("application/json")) throw new DomainError("bad_request", 415);
+  const text = await req.text();
+  if (text.length > 20_000) throw new DomainError("bad_request", 413);
+  try {
+    const v = JSON.parse(text || "{}");
+    if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error();
+    return v;
+  } catch {
+    throw new DomainError("bad_request", 400);
+  }
+}
+
+/** المحلّ إن كانت جلسة السكرتيرة صالحة، وإلّا null. */
+export async function staffShop(slug: string): Promise<Shop | null> {
+  const db = await getDb();
+  const shop = await repo.getShopBySlug(db, slug.toLowerCase());
+  if (!shop) return null;
+  const jar = await cookies();
+  const s = readSession(jar.get(sessionCookieName(shop.id))?.value, now());
+  if (!s || s.shopId !== shop.id || s.v !== shop.sessionVersion) return null;
+  return shop;
+}
+
+export async function requireStaff(slug: string): Promise<Shop> {
+  const shop = await staffShop(slug);
+  if (!shop) throw new DomainError("unauthorized", 401);
+  return shop;
+}
+
+export function setSessionCookie(res: NextResponse, shop: Shop, token: string) {
+  res.cookies.set(sessionCookieName(shop.id), token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 30 * 86400,
+  });
+}
+
+/** اللغة: ?lang= ثمّ الكوكي ثمّ لغة المتصفّح ثمّ العربية. */
+export async function getLang(fallback?: Lang, query?: string | string[]): Promise<Lang> {
+  if (isLang(query)) return query;
+  const c = (await cookies()).get("lang")?.value;
+  if (isLang(c)) return c;
+  if (fallback) return fallback;
+  const al = (await headers()).get("accept-language") ?? "";
+  return /^fr/i.test(al) ? "fr" : "ar";
+}
+
+/** الرابط الأساسي للموقع (لرموز QR). */
+export async function baseUrl(): Promise<string> {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}

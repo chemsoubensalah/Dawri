@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-50: #ecfdf5;
+  --color-brand-100: #d1fae5;
+  --color-brand-500: #10b981;
+  --color-brand-600: #059669;
+  --color-brand-700: #047857;
+  --color-brand-900: #064e3b;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Tahoma, "Noto Sans Arabic", "Noto Sans", Arial, sans-serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+/* أرقام كبيرة واضحة بنفس العرض */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-lg font-bold transition active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100;
+}
+@utility btn-primary {
+  @apply btn bg-brand-600 text-white hover:bg-brand-700;
+}
+@utility btn-secondary {
+  @apply btn bg-white text-slate-800 ring-1 ring-slate-300 hover:bg-slate-50;
+}
+@utility btn-danger {
+  @apply btn bg-white text-red-700 ring-1 ring-red-300 hover:bg-red-50;
+}
+@utility btn-warn {
+  @apply btn bg-amber-500 text-white hover:bg-amber-600;
+}
+@utility input {
+  @apply w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+}
+@utility card {
+  @apply rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200;
+}
+@utility label {
+  @apply mb-1 block text-sm font-semibold text-slate-600;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+  }
+}
