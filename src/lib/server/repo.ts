@@ -34,6 +34,13 @@ export function rowToShop(r: Row): Shop {
     lockedUntil: d(r.locked_until),
     sessionVersion: Number(r.session_version),
     createdAt: d(r.created_at)!,
+    profile: {
+      doctorName: (r.doctor_name as string | null) ?? null,
+      specialty: (r.specialty as string | null) ?? null,
+      address: (r.address as string | null) ?? null,
+      phone: (r.phone as string | null) ?? null,
+      mapsUrl: (r.maps_url as string | null) ?? null,
+    },
   };
 }
 
@@ -58,6 +65,11 @@ export function rowToTicket(r: Row): Ticket {
     confirmedAt: d(r.confirmed_at),
     notifiedSoonAt: d(r.notified_soon_at),
     closedAt: d(r.closed_at),
+    waCode: (r.wa_code as string | null) ?? null,
+    waUserId: (r.wa_user_id as string | null) ?? null,
+    waPhone: (r.wa_phone as string | null) ?? null,
+    waWindowUntil: d(r.wa_window_until),
+    waOptOut: Boolean(r.wa_opt_out),
   };
 }
 
@@ -101,7 +113,7 @@ export async function insertShop(
 export async function updateShop(
   q: Q,
   id: string,
-  patch: Partial<Pick<Shop, "name" | "hours" | "settings" | "defaultLang" | "pinHash" | "doorCode">> & {
+  patch: Partial<Pick<Shop, "name" | "hours" | "settings" | "defaultLang" | "pinHash" | "doorCode" | "profile">> & {
     bumpSession?: boolean;
   },
 ) {
@@ -117,6 +129,13 @@ export async function updateShop(
   if (patch.defaultLang !== undefined) set("default_lang", patch.defaultLang);
   if (patch.pinHash !== undefined) set("pin_hash", patch.pinHash);
   if (patch.doorCode !== undefined) set("door_code", patch.doorCode);
+  if (patch.profile !== undefined) {
+    set("doctor_name", patch.profile.doctorName);
+    set("specialty", patch.profile.specialty);
+    set("address", patch.profile.address);
+    set("phone", patch.profile.phone);
+    set("maps_url", patch.profile.mapsUrl);
+  }
   if (patch.bumpSession) sets.push("session_version = session_version + 1");
   if (!sets.length) return;
   params.push(id);
@@ -211,13 +230,27 @@ export async function findTicketByPhone(q: Q, shopId: string, day: string, phone
 
 export async function insertTicket(
   q: Q,
-  t: Omit<Ticket, "id" | "calledAt" | "doneAt" | "deferredAt" | "closedAt" | "held" | "confirmAskedAt"> &
+  t: Omit<
+    Ticket,
+    | "id"
+    | "calledAt"
+    | "doneAt"
+    | "deferredAt"
+    | "closedAt"
+    | "held"
+    | "confirmAskedAt"
+    | "waCode"
+    | "waUserId"
+    | "waPhone"
+    | "waWindowUntil"
+    | "waOptOut"
+  > &
     Partial<Ticket>,
 ): Promise<Ticket> {
   const rows = await q.query(
     `insert into tickets (shop_id, day, number, name, phone, lang, source, status, created_at,
-                          arrived_at, confirmed_at, notified_soon_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning *`,
+                          arrived_at, confirmed_at, notified_soon_at, wa_code)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *`,
     [
       t.shopId,
       t.day,
@@ -231,6 +264,7 @@ export async function insertTicket(
       t.arrivedAt ?? null,
       t.confirmedAt ?? null,
       t.notifiedSoonAt ?? null,
+      t.waCode ?? null,
     ],
   );
   return rowToTicket(rows[0]);
@@ -366,4 +400,235 @@ export async function dailyStats(q: Q, shopId: string, fromDay: string): Promise
     noShows: Number(r.no_shows),
     avgWaitMin: r.avg_wait == null ? null : Number(r.avg_wait),
   }));
+}
+
+export async function hourlyCounts(q: Q, shopId: string, since: Date): Promise<{ hour: number; n: number }[]> {
+  // الجزائر = UTC+1 طوال السنة (بلا توقيت صيفي)
+  const rows = await q.query<{ h: number; n: number }>(
+    `select extract(hour from (created_at at time zone 'UTC') + interval '1 hour')::int as h, count(*)::int as n
+     from tickets where shop_id = $1 and created_at >= $2 group by h order by h`,
+    [shopId, since],
+  );
+  return rows.map((r) => ({ hour: Number(r.h), n: Number(r.n) }));
+}
+
+export async function periodTotals(q: Q, shopId: string, fromDay: string) {
+  const rows = await q.query<{
+    total: number;
+    served: number;
+    no_shows: number;
+    avg_wait: number | null;
+    avg_service: number | null;
+    days: number;
+  }>(
+    `select count(*)::int as total,
+            count(*) filter (where status = 'done')::int as served,
+            count(*) filter (where status = 'no_show')::int as no_shows,
+            round(avg(extract(epoch from (called_at - created_at)) / 60) filter (where called_at is not null))::int as avg_wait,
+            round(avg(extract(epoch from (done_at - called_at)) / 60) filter (where done_at is not null and called_at is not null))::int as avg_service,
+            count(distinct day)::int as days
+     from tickets where shop_id = $1 and day >= $2`,
+    [shopId, fromDay],
+  );
+  const r = rows[0];
+  return {
+    total: Number(r.total),
+    served: Number(r.served),
+    noShows: Number(r.no_shows),
+    avgWaitMin: r.avg_wait == null ? null : Number(r.avg_wait),
+    avgServiceMin: r.avg_service == null ? null : Number(r.avg_service),
+    days: Number(r.days),
+  };
+}
+
+// ——— واتساب ———
+
+export async function waLinkTicket(
+  q: Q,
+  ticketId: string,
+  w: { userId: string | null; phone: string | null; windowUntil: Date },
+) {
+  await q.query(
+    `update tickets set wa_user_id = coalesce($2, wa_user_id), wa_phone = coalesce($3, wa_phone),
+       wa_window_until = greatest(coalesce(wa_window_until, $4), $4), wa_opt_out = false
+     where id = $1`,
+    [ticketId, w.userId, w.phone, w.windowUntil],
+  );
+}
+
+/** كلّ رسالة من المريض تجدّد نافذة الـ24 ساعة لتذاكره المفتوحة. */
+export async function waTouchUser(q: Q, w: { userId: string | null; phone: string | null }, windowUntil: Date, sinceDay: string) {
+  if (!w.userId && !w.phone) return;
+  await q.query(
+    `update tickets set wa_window_until = greatest(coalesce(wa_window_until, $3), $3)
+     where day >= $4 and ((wa_user_id is not null and wa_user_id = $1) or (wa_phone is not null and wa_phone = $2))`,
+    [w.userId, w.phone, windowUntil, sinceDay],
+  );
+}
+
+export async function waOptOut(q: Q, w: { userId: string | null; phone: string | null }, sinceDay: string) {
+  const rows = await q.query(
+    `update tickets set wa_opt_out = true
+     where day >= $3 and ((wa_user_id is not null and wa_user_id = $1) or (wa_phone is not null and wa_phone = $2))
+     returning id`,
+    [w.userId, w.phone, sinceDay],
+  );
+  return rows.length;
+}
+
+export async function findTicketByWaCode(q: Q, day: string, code: string): Promise<Ticket | null> {
+  const rows = await q.query("select * from tickets where day = $1 and wa_code = $2", [day, code]);
+  return rows[0] ? rowToTicket(rows[0]) : null;
+}
+
+/** يسجّل الرسالة الواردة؛ يُرجع false إن عولجت من قبل. */
+export async function waMarkInbound(q: Q, id: string): Promise<boolean> {
+  const rows = await q.query("insert into wa_inbound (id) values ($1) on conflict do nothing returning id", [id]);
+  return rows.length === 1;
+}
+
+export interface WaVerification {
+  id: string;
+  shopId: string;
+  code: string;
+  name: string;
+  phone: string;
+  lang: string;
+  atDoor: boolean;
+  expiresAt: Date;
+  verifiedAt: Date | null;
+  ticketId: string | null;
+}
+
+function rowToVerification(r: Row): WaVerification {
+  return {
+    id: String(r.id),
+    shopId: String(r.shop_id),
+    code: String(r.code),
+    name: String(r.name),
+    phone: String(r.phone),
+    lang: String(r.lang),
+    atDoor: Boolean(r.at_door),
+    expiresAt: d(r.expires_at)!,
+    verifiedAt: d(r.verified_at),
+    ticketId: r.ticket_id == null ? null : String(r.ticket_id),
+  };
+}
+
+export async function insertWaVerification(
+  q: Q,
+  v: { shopId: string; code: string; name: string; phone: string; lang: string; atDoor: boolean; now: Date; expiresAt: Date },
+): Promise<WaVerification> {
+  const rows = await q.query(
+    `insert into wa_verifications (shop_id, code, name, phone, lang, at_door, created_at, expires_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8) returning *`,
+    [v.shopId, v.code, v.name, v.phone, v.lang, v.atDoor, v.now, v.expiresAt],
+  );
+  return rowToVerification(rows[0]);
+}
+
+export async function getWaVerification(q: Q, id: string): Promise<WaVerification | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const rows = await q.query("select * from wa_verifications where id = $1", [id]);
+  return rows[0] ? rowToVerification(rows[0]) : null;
+}
+
+export async function getWaVerificationByCode(q: Q, code: string): Promise<WaVerification | null> {
+  const rows = await q.query("select * from wa_verifications where code = $1", [code]);
+  return rows[0] ? rowToVerification(rows[0]) : null;
+}
+
+export async function completeWaVerification(q: Q, id: string, ticketId: string, now: Date) {
+  await q.query("update wa_verifications set verified_at = $2, ticket_id = $3 where id = $1", [id, now, ticketId]);
+}
+
+export async function countRecentWaVerifications(q: Q, shopId: string, phone: string, since: Date): Promise<number> {
+  const rows = await q.query<{ n: number }>(
+    "select count(*)::int as n from wa_verifications where shop_id = $1 and phone = $2 and created_at >= $3",
+    [shopId, phone, since],
+  );
+  return Number(rows[0].n);
+}
+
+export async function purgeWa(q: Q, before: Date) {
+  await q.query("delete from wa_verifications where created_at < $1", [before]);
+  await q.query("delete from wa_inbound where created_at < $1", [before]);
+}
+
+// ——— المدفوعات ———
+
+export interface Payment {
+  id: number;
+  provider: "chargily" | "manual";
+  checkoutId: string | null;
+  amount: number;
+  months: number;
+  status: "pending" | "paid" | "failed";
+  note: string | null;
+  createdAt: Date;
+  paidAt: Date | null;
+}
+
+function rowToPayment(r: Row): Payment {
+  return {
+    id: Number(r.id),
+    provider: r.provider as Payment["provider"],
+    checkoutId: r.checkout_id == null ? null : String(r.checkout_id),
+    amount: Number(r.amount),
+    months: Number(r.months),
+    status: r.status as Payment["status"],
+    note: r.note == null ? null : String(r.note),
+    createdAt: d(r.created_at)!,
+    paidAt: d(r.paid_at),
+  };
+}
+
+export async function insertPayment(
+  q: Q,
+  p: { shopId: string; provider: Payment["provider"]; checkoutId: string | null; amount: number; months: number; status: Payment["status"]; note?: string | null; now: Date },
+) {
+  const rows = await q.query(
+    `insert into payments (shop_id, provider, checkout_id, amount, months, status, note, created_at, paid_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8, case when $6 = 'paid' then $8::timestamptz else null end) returning *`,
+    [p.shopId, p.provider, p.checkoutId, p.amount, p.months, p.status, p.note ?? null, p.now],
+  );
+  return rowToPayment(rows[0]);
+}
+
+/** يعلّم الدفع «مدفوعاً» مرّة واحدة فقط؛ يُرجع الصفّ إن تغيّر الآن. */
+export async function markPaymentPaid(q: Q, checkoutId: string, now: Date): Promise<(Payment & { shopId: string }) | null> {
+  const rows = await q.query(
+    "update payments set status = 'paid', paid_at = $2 where checkout_id = $1 and status <> 'paid' returning *",
+    [checkoutId, now],
+  );
+  return rows[0] ? { ...rowToPayment(rows[0]), shopId: String(rows[0].shop_id) } : null;
+}
+
+export async function markPaymentFailed(q: Q, checkoutId: string) {
+  await q.query("update payments set status = 'failed' where checkout_id = $1 and status = 'pending'", [checkoutId]);
+}
+
+export async function listPayments(q: Q, shopId: string): Promise<Payment[]> {
+  const rows = await q.query("select * from payments where shop_id = $1 order by created_at desc limit 24", [shopId]);
+  return rows.map(rowToPayment);
+}
+
+/** يمدّد الاشتراك: من الأبعد بين (الآن، نهاية التجربة، نهاية الاشتراك الحالي). */
+export async function extendSubscription(q: Q, shopId: string, months: number, now: Date) {
+  const rows = await q.query<{ paid_until: Date }>(
+    `update shops set paid_until = greatest($2::timestamptz, trial_ends_at, coalesce(paid_until, $2::timestamptz))
+                                  + make_interval(months => $3)
+     where id = $1 returning paid_until`,
+    [shopId, now, months],
+  );
+  return rows[0] ? d(rows[0].paid_until) : null;
+}
+
+export async function listShopsAdmin(q: Q, since: Date) {
+  const rows = await q.query(
+    `select s.*, (select count(*)::int from tickets t where t.shop_id = s.id and t.created_at >= $1) as tickets_30d
+     from shops s order by s.created_at desc limit 500`,
+    [since],
+  );
+  return rows.map((r) => ({ ...rowToShop(r), tickets30d: Number(r.tickets_30d) }));
 }

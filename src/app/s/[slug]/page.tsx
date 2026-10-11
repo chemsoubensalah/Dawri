@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { DomainError } from "@/lib/domain/types";
 import { getLang } from "@/lib/server/http";
 import { publicShop } from "@/lib/server/service";
+import PatientShell from "@/components/PatientShell";
 import ShopClient from "./ShopClient";
 
 type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | undefined>> };
@@ -27,5 +28,9 @@ export default async function ShopPage({ params, searchParams }: Props) {
   const sp = await searchParams;
   const { shop, view } = await load(slug);
   const lang = await getLang(shop.defaultLang, sp.lang);
-  return <ShopClient lang={lang} initial={view} door={sp.c ?? null} />;
+  return (
+    <PatientShell lang={lang}>
+      <ShopClient lang={lang} initial={view} door={sp.c ?? null} />
+    </PatientShell>
+  );
 }

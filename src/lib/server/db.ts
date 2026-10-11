@@ -122,20 +122,43 @@ export function migrationsDir() {
   return path.join(process.cwd(), "db", "migrations");
 }
 
-export async function migrate(db: Db) {
-  await db.exec(
-    "create table if not exists _migrations (name text primary key, applied_at timestamptz not null default now())",
-  );
-  const done = new Set((await db.query<{ name: string }>("select name from _migrations")).map((r) => r.name));
-  const files = fs
+function migrationFiles(): string[] {
+  return fs
     .readdirSync(migrationsDir())
     .filter((f) => f.endsWith(".sql"))
     .sort();
-  for (const f of files) {
-    if (done.has(f)) continue;
-    await db.exec(fs.readFileSync(path.join(migrationsDir(), f), "utf8"));
-    await db.query("insert into _migrations (name) values ($1)", [f]);
+}
+
+/**
+ * يطبّق ملفّات db/migrations/*.sql التي لم تُطبَّق بعد.
+ * كلّ الملفّات مكتوبة لتُعاد بأمان (if not exists)، فلا ضرر إن طُبّق ملفّ يدوياً من محرّر Supabase.
+ */
+export async function migrate(db: Db) {
+  if (db.kind === "pglite") {
+    await db.exec(
+      "create table if not exists _migrations (name text primary key, applied_at timestamptz not null default now())",
+    );
+    const done = new Set((await db.query<{ name: string }>("select name from _migrations")).map((r) => r.name));
+    for (const f of migrationFiles()) {
+      if (done.has(f)) continue;
+      await db.exec(fs.readFileSync(path.join(migrationsDir(), f), "utf8"));
+      await db.query("insert into _migrations (name) values ($1)", [f]);
+    }
+    return;
   }
+  // Postgres الحقيقي: عدّة خوادم قد تبدأ معاً ← قفل استشاري داخل معاملة واحدة
+  await db.tx(async (q) => {
+    await q.query("select pg_advisory_xact_lock(7461001)");
+    await q.query(
+      "create table if not exists _migrations (name text primary key, applied_at timestamptz not null default now())",
+    );
+    const done = new Set((await q.query<{ name: string }>("select name from _migrations")).map((r) => r.name));
+    for (const f of migrationFiles()) {
+      if (done.has(f)) continue;
+      await q.query(fs.readFileSync(path.join(migrationsDir(), f), "utf8"));
+      await q.query("insert into _migrations (name) values ($1) on conflict do nothing", [f]);
+    }
+  });
 }
 
 type G = { __dawriDb?: Promise<Db> };
@@ -146,7 +169,12 @@ export function getDb(): Promise<Db> {
   if (!g.__dawriDb) {
     g.__dawriDb = (async () => {
       const url = process.env.DATABASE_URL;
-      if (url) return createPgDb(url);
+      if (url) {
+        const db = await createPgDb(url);
+        // تحديث الجداول تلقائياً عند أوّل اتّصال (يمكن تعطيله بـ AUTO_MIGRATE=off)
+        if (process.env.AUTO_MIGRATE !== "off") await migrate(db);
+        return db;
+      }
       if (process.env.VERCEL) throw new Error("DATABASE_URL is required on Vercel (see README)");
       // وضع التطوير/التجربة: Postgres مضمَّن، مع ترحيل تلقائي وبيانات تجريبية.
       const dir = process.env.DAWRI_PGLITE_DIR ?? ".pglite";

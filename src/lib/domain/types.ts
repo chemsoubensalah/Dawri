@@ -36,6 +36,12 @@ export interface Ticket {
   confirmedAt: Date | null;
   notifiedSoonAt: Date | null;
   closedAt: Date | null;
+  /** واتساب: رمز ربط التذكرة، ومعرّف المريض، ونافذة الـ24 ساعة */
+  waCode: string | null;
+  waUserId: string | null;
+  waPhone: string | null;
+  waWindowUntil: Date | null;
+  waOptOut: boolean;
 }
 
 export type TicketPatch = Partial<
@@ -106,6 +112,16 @@ export interface Shop {
   lockedUntil: Date | null;
   sessionVersion: number;
   createdAt: Date;
+  /** ملفّ العيادة الظاهر للمرضى (اختياري) */
+  profile: ShopProfile;
+}
+
+export interface ShopProfile {
+  doctorName: string | null;
+  specialty: string | null;
+  address: string | null;
+  phone: string | null;
+  mapsUrl: string | null;
 }
 
 export type NotifyType = "confirm" | "soon" | "called" | "missed" | "held" | "approved";

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import StaffFrame from "@/components/StaffFrame";
 import { getDb } from "@/lib/server/db";
 import { getLang, staffShop } from "@/lib/server/http";
 import * as repo from "@/lib/server/repo";
@@ -6,7 +7,7 @@ import { staffState } from "@/lib/server/service";
 import LoginForm from "./LoginForm";
 import StaffDashboard from "./StaffDashboard";
 
-export const metadata = { title: "السكرتيرة", robots: { index: false } };
+export const metadata = { title: "الطابور", robots: { index: false } };
 
 export default async function StaffPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -18,5 +19,9 @@ export default async function StaffPage({ params }: { params: Promise<{ slug: st
     return <LoginForm lang={lang} slug={exists.slug} name={exists.name} />;
   }
   const lang = await getLang(shop.defaultLang);
-  return <StaffDashboard lang={lang} slug={shop.slug} initial={await staffState(shop)} />;
+  return (
+    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} active="queue">
+      <StaffDashboard lang={lang} slug={shop.slug} initial={await staffState(shop)} />
+    </StaffFrame>
+  );
 }

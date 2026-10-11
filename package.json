@@ -15,13 +15,14 @@
     "vapid": "web-push generate-vapid-keys"
   },
   "dependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "lucide-react": "^1.55.0",
     "next": "16.4.0",
     "pg": "8.23.1",
     "qrcode": "1.5.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "web-push": "3.6.7",
-    "@electric-sql/pglite": "0.5.8"
+    "web-push": "3.6.7"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",

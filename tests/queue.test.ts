@@ -41,6 +41,11 @@ function mk(number: number, over: Partial<Ticket> = {}): Ticket {
     confirmedAt: null,
     notifiedSoonAt: null,
     closedAt: null,
+    waCode: null,
+    waUserId: null,
+    waPhone: null,
+    waWindowUntil: null,
+    waOptOut: false,
     ...over,
   };
 }

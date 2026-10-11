@@ -30,6 +30,7 @@ import {
   type Lang,
   type Shop,
   type ShopKind,
+  type ShopProfile,
   type ShopSettings,
   type Ticket,
   type WeeklyHours,
@@ -41,6 +42,17 @@ import { getDb, type Q } from "./db";
 import { getNotifier, type Notification } from "./notify";
 import * as repo from "./repo";
 import { getSms } from "./sms";
+import {
+  alertsMessage,
+  parseInbound,
+  parseIntent,
+  shortCode,
+  verifyMessage,
+  waConfig,
+  waLink,
+  waSendText,
+  type WaRecipient,
+} from "./whatsapp";
 
 const DAY_MS = 86_400_000;
 
@@ -203,6 +215,7 @@ export async function createShop(input: {
   pin?: unknown;
   lang?: unknown;
   signupCode?: unknown;
+  doctorName?: unknown;
 }) {
   const required = process.env.SIGNUP_CODE;
   if (required && !(typeof input.signupCode === "string" && safeEqual(input.signupCode, required))) {
@@ -231,6 +244,11 @@ export async function createShop(input: {
       defaultLang: langOf(input.lang, "ar"),
       trialEndsAt: new Date(now.getTime() + 60 * DAY_MS), // مجّاني أوّل شهرين
     });
+    if (typeof input.doctorName === "string" && input.doctorName.trim()) {
+      const profile = cleanProfile({ ...shop.profile, doctorName: input.doctorName });
+      await repo.updateShop(db, shop.id, { profile });
+      return { ...shop, profile };
+    }
     return shop;
   } catch (e) {
     if ((e as { code?: string }).code === "23505") throw new DomainError("slug_taken", 409);
@@ -246,18 +264,28 @@ export async function publicShop(slug: string) {
   const { tickets, closed, now } = await refreshDay(shop);
   const cur = currentTicket(tickets);
   const lt = localTime(now);
+  const avg = averageServiceMinutes(tickets, shop.settings.defaultServiceMin);
+  const waiting = lineup(tickets).filter((t) => !t.held).length;
+  // انتظار من يأخذ رقماً الآن
+  const waitNewMin = cur?.calledAt
+    ? Math.ceil(Math.max(avg - minutesBetween(cur.calledAt, now), 1) + waiting * avg)
+    : Math.ceil(waiting * avg);
   return {
     shop,
     view: {
       slug: shop.slug,
       name: shop.name,
       kind: shop.kind,
+      profile: shop.profile,
+      waitNewMin,
       blocker: ticketBlocker(shop, closed, now),
       hoursToday: shop.hours[String(lt.weekday)] ?? [],
       currentNumber: cur?.number ?? null,
-      waiting: lineup(tickets).filter((t) => !t.held).length,
-      avgServiceMin: Math.round(averageServiceMinutes(tickets, shop.settings.defaultServiceMin)),
+      waiting,
+      avgServiceMin: Math.round(avg),
       verifyPhone: phoneVerificationOn(),
+      waVerify: waConfig().enabled,
+      smsVerify: getSms() !== null,
       nextNumbers: lineup(tickets)
         .filter((t) => !t.held)
         .slice(0, 3)
@@ -325,42 +353,205 @@ export async function takeTicket(
   const phone = requirePhone(body.phone);
   await verifyCode(db, shop, phone, body.code, clockNow());
   const atDoor = typeof body.door === "string" && safeEqual(body.door, shop.doorCode);
-  const lang = langOf(body.lang, shop.defaultLang);
+  const { ticketId, existing } = await issueTicket(shop, { name, phone, lang: langOf(body.lang, shop.defaultLang), atDoor });
+  return { ticketId, existing };
+}
 
-  const { result } = await mutate(shop, async ({ q, now, day, closed, tickets }) => {
-    const existing = tickets.find((t) => t.phone === phone);
+/** رمز واتساب قصير للتذكرة، فريد في اليوم على مستوى المنصّة (رقم «دوري» واحد). */
+async function freshWaCode(q: Q, day: string): Promise<string> {
+  for (let i = 0; i < 6; i++) {
+    const code = shortCode();
+    if (!(await repo.findTicketByWaCode(q, day, code))) return code;
+  }
+  return shortCode(7).slice(0, 5);
+}
+
+/**
+ * يُصدر تذكرة لهاتف تحقّقنا منه (برمز SMS أو بواتساب).
+ * تذكرة واحدة لكلّ هاتف في اليوم: إن وُجدت نُرجعها (ونسجّل الوصول إن كان عند الباب).
+ */
+export async function issueTicket(
+  shop: Shop,
+  o: { name: string; phone: string; lang: Lang; atDoor: boolean; wa?: { userId: string | null; phone: string | null; windowUntil: Date } },
+): Promise<{ ticketId: string; existing: boolean; ticket: Ticket; tickets: Ticket[] }> {
+  const { result, tickets } = await mutate(shop, async ({ q, now, day, closed, tickets }) => {
+    const existing = tickets.find((t) => t.phone === o.phone);
     if (existing) {
-      // تذكرة واحدة لكلّ هاتف في اليوم: نُرجع الموجودة (ونسجّل الوصول إن كان عند الباب)
-      const actions = atDoor && ["waiting", "called", "deferred"].includes(existing.status)
-        ? safeCheckIn(existing, now, shop)
-        : [];
+      if (o.wa) await repo.waLinkTicket(q, existing.id, o.wa);
+      const actions =
+        o.atDoor && ["waiting", "called", "deferred"].includes(existing.status) ? safeCheckIn(existing, now, shop) : [];
       return { actions, result: { ticketId: existing.id, existing: true } };
     }
     const blocker = ticketBlocker(shop, closed, now);
     if (blocker) throw new DomainError(blocker, 409);
     const since = new Date(now.getTime() - NO_SHOW_RETENTION_DAYS * DAY_MS);
-    const noShows = await repo.countNoShows(q, shop.id, phone, since);
+    const noShows = await repo.countNoShows(q, shop.id, o.phone, since);
     const number = await repo.allocateNumber(q, shop.id, day);
-    const flags = initialFlags(tickets, shop.settings, now, { arrived: atDoor, source: "online" });
+    const flags = initialFlags(tickets, shop.settings, now, { arrived: o.atDoor, source: "online" });
     const ticket = await repo.insertTicket(q, {
       shopId: shop.id,
       day,
       number,
-      name,
-      phone,
-      lang,
+      name: o.name,
+      phone: o.phone,
+      lang: o.lang,
       source: "online",
       status: noShows >= shop.settings.noShowLimit ? "pending_approval" : "waiting",
       createdAt: now,
       arrivedAt: flags.arrivedAt ?? null,
       confirmedAt: flags.confirmedAt ?? null,
       notifiedSoonAt: flags.notifiedSoonAt ?? null,
+      waCode: await freshWaCode(q, day),
     });
+    if (o.wa) await repo.waLinkTicket(q, ticket.id, o.wa);
     return { actions: [], result: { ticketId: ticket.id, existing: false } };
   });
-  return result;
+  return { ...result, ticket: tickets.find((t) => t.id === result.ticketId)!, tickets };
 }
 
+// ————————————————————————— واتساب —————————————————————————
+
+/** الخطوة 1: المريض يكتب اسمه (وهاتفه) ← نعطيه رابط wa.me برمز قصير. */
+export async function startWaVerification(
+  slug: string,
+  body: { name?: unknown; phone?: unknown; lang?: unknown; door?: unknown },
+) {
+  if (!waConfig().enabled) throw new DomainError("wa_unavailable", 503);
+  const db = await getDb();
+  const shop = await shopOr404(db, slug);
+  const name = cleanName(body.name);
+  const phone = requirePhone(body.phone);
+  const now = clockNow();
+  const qd = await repo.getDay(db, shop.id, dayKey(now));
+  const existing = await repo.findTicketByPhone(db, shop.id, dayKey(now), phone);
+  if (!existing) {
+    const blocker = ticketBlocker(shop, qd.closed, now);
+    if (blocker) throw new DomainError(blocker, 409);
+  }
+  if ((await repo.countRecentWaVerifications(db, shop.id, phone, new Date(now.getTime() - 30 * 60000))) >= 5) {
+    throw new DomainError("too_many_codes", 429);
+  }
+  const lang = langOf(body.lang, shop.defaultLang);
+  const atDoor = typeof body.door === "string" && safeEqual(body.door, shop.doorCode);
+  for (let i = 0; i < 5; i++) {
+    try {
+      const v = await repo.insertWaVerification(db, {
+        shopId: shop.id,
+        code: shortCode(),
+        name,
+        phone,
+        lang,
+        atDoor,
+        now,
+        expiresAt: new Date(now.getTime() + 20 * 60000),
+      });
+      return { id: v.id, code: `V-${v.code}`, link: waLink(verifyMessage(v.code))! };
+    } catch (e) {
+      if ((e as { code?: string }).code !== "23505") throw e;
+    }
+  }
+  throw new DomainError("generic", 500);
+}
+
+/** الخطوة 2: الصفحة تسأل: هل وصلت رسالته؟ */
+export async function waVerificationStatus(slug: string, id: string) {
+  const db = await getDb();
+  const shop = await shopOr404(db, slug);
+  const v = await repo.getWaVerification(db, id);
+  if (!v || v.shopId !== shop.id) throw new DomainError("not_found", 404);
+  if (v.ticketId) return { status: "done" as const, ticketId: v.ticketId };
+  if (v.expiresAt < clockNow()) return { status: "expired" as const, ticketId: null };
+  return { status: "pending" as const, ticketId: null };
+}
+
+function waTexts(lang: Lang) {
+  return {
+    t: (k: Parameters<typeof t>[1], vars?: Record<string, string | number>) => t(lang, k, vars),
+  };
+}
+
+function ticketUrl(id: string) {
+  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  return base ? `${base}/t/${id}` : null;
+}
+
+/** يعالج رسائل واتساب الواردة (بعد التحقّق من التوقيع). */
+export async function handleWhatsappInbound(payload: unknown) {
+  const db = await getDb();
+  for (const m of parseInbound(payload)) {
+    if (!(await repo.waMarkInbound(db, m.id))) continue; // عولجت من قبل
+    const now = clockNow();
+    const phone = m.from ? normalizePhone(`+${m.from}`) : null;
+    const who = { userId: m.userId, phone };
+    const me: WaRecipient = { phone, userId: m.userId };
+    const windowUntil = new Date(m.timestamp.getTime() + DAY_MS);
+    await repo.waTouchUser(db, who, windowUntil, dayKey(new Date(now.getTime() - DAY_MS)));
+    const intent = parseIntent(m.text, m.buttonId);
+    try {
+      await handleIntent(intent, { db, now, who, me, windowUntil });
+    } catch (e) {
+      console.error("[whatsapp] intent", intent.kind, e);
+    }
+  }
+}
+
+async function handleIntent(
+  intent: ReturnType<typeof parseIntent>,
+  c: { db: Q; now: Date; who: { userId: string | null; phone: string | null }; me: WaRecipient; windowUntil: Date },
+) {
+  const reply = (text: string) => waSendText(c.me, text).catch((e) => console.error("[whatsapp] reply", e));
+  if (intent.kind === "verify") {
+    const v = await repo.getWaVerificationByCode(c.db, intent.code);
+    const lang = (v?.lang === "fr" ? "fr" : "ar") as Lang;
+    const { t: tr } = waTexts(lang);
+    if (!v || (!v.ticketId && v.expiresAt < c.now)) return reply(tr("wa_codeExpired"));
+    const shop = (await repo.getShopById(c.db, v.shopId))!;
+    let ticketId = v.ticketId;
+    if (!ticketId) {
+      // رقم الواتساب هو الرقم المؤكَّد؛ إن أخفاه واتساب نعتمد ما كتبه المريض
+      const r = await issueTicket(shop, {
+        name: v.name,
+        phone: c.who.phone ?? v.phone,
+        lang,
+        atDoor: v.atDoor,
+        wa: { ...c.who, windowUntil: c.windowUntil },
+      });
+      ticketId = r.ticketId;
+      await repo.completeWaVerification(c.db, v.id, ticketId, c.now);
+    }
+    const view = await ticketView(ticketId);
+    const url = ticketUrl(ticketId);
+    const ahead = view.ahead === null ? "" : view.ahead === 0 ? tr("ahead0") : tr("aheadN", { n: view.ahead });
+    return reply(
+      [tr("wa_ticketOk", { shop: shop.name, n: view.number }), ahead, tr("wa_willAlert"), url].filter(Boolean).join("\n"),
+    );
+  }
+  if (intent.kind === "alerts") {
+    const ticket = await repo.findTicketByWaCode(c.db, dayKey(c.now), intent.code);
+    if (!ticket || !["pending_approval", "waiting", "called", "deferred"].includes(ticket.status)) {
+      return reply(t("ar", "wa_codeExpired") + "\n" + t("fr", "wa_codeExpired"));
+    }
+    await repo.waLinkTicket(c.db, ticket.id, { ...c.who, windowUntil: c.windowUntil });
+    const shop = (await repo.getShopById(c.db, ticket.shopId))!;
+    return reply(t(ticket.lang, "wa_alertsOn", { shop: shop.name, n: ticket.number }));
+  }
+  if (intent.kind === "coming" || intent.kind === "cancel") {
+    const ticket = await repo.getTicket(c.db, intent.ticketId);
+    // الزرّ يعمل فقط لصاحب التذكرة
+    if (!ticket || !((c.who.userId && ticket.waUserId === c.who.userId) || (c.who.phone && ticket.waPhone === c.who.phone))) return;
+    try {
+      await ticketAction(ticket.id, { action: intent.kind === "coming" ? "confirm" : "cancel" });
+      return reply(t(ticket.lang, intent.kind === "coming" ? "wa_thanksComing" : "wa_cancelled"));
+    } catch {
+      return reply(t(ticket.lang, "err_ticket_closed"));
+    }
+  }
+  if (intent.kind === "stop") {
+    await repo.waOptOut(c.db, c.who, dayKey(new Date(c.now.getTime() - DAY_MS)));
+    return reply(`${t("ar", "wa_stopped")}\n${t("fr", "wa_stopped")}`);
+  }
+  return reply(`${t("ar", "wa_help")}\n${t("fr", "wa_help")}`);
+}
 function safeCheckIn(ticket: Ticket, now: Date, shop: Shop): Action[] {
   try {
     return planCheckIn(ticket, now, shop.settings);
@@ -393,7 +584,12 @@ export async function ticketView(id: string) {
     held: ticket.held,
     lang: ticket.lang,
     arrived: Boolean(ticket.arrivedAt),
-    shop: { slug: shop.slug, name: shop.name, kind: shop.kind },
+    shop: { slug: shop.slug, name: shop.name, kind: shop.kind, profile: shop.profile },
+    createdAt: ticket.createdAt.toISOString(),
+    /** كم شخصاً نودي منذ أخذ رقمه (لشريط التقدّم) */
+    servedSince: tickets.filter((x) => x.id !== ticket.id && x.calledAt && x.calledAt > ticket.createdAt).length,
+    calledAt: ticket.calledAt?.toISOString() ?? null,
+    serverTime: now.toISOString(),
     currentNumber: cur?.number ?? null,
     ahead,
     etaMin: ahead === null ? null : estimateWaitMinutes(tickets, ticket, now, s),
@@ -410,6 +606,10 @@ export async function ticketView(id: string) {
     confirmTimeoutMin: s.confirmTimeoutMin,
     lateWindowMin: s.lateWindowMin,
     pushKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null,
+    wa: {
+      linked: Boolean(ticket.waUserId || ticket.waPhone) && !ticket.waOptOut,
+      link: waConfig().enabled && ticket.waCode ? waLink(alertsMessage(ticket.waCode)) : null,
+    },
   };
 }
 
@@ -505,6 +705,8 @@ export async function staffState(shop: Shop) {
       paidUntil: shop.paidUntil?.toISOString() ?? null,
       active: isSubscriptionActive(shop, now),
       noShowLimit: shop.settings.noShowLimit,
+      callGraceMin: shop.settings.callGraceMin,
+      profileComplete: Boolean(shop.profile.address || shop.profile.phone || shop.profile.doctorName),
     },
     closed,
     blocker: ticketBlocker(shop, closed, now),
@@ -512,7 +714,7 @@ export async function staffState(shop: Shop) {
     current: cur
       ? { ...row(cur), minutes: cur.calledAt ? Math.floor(minutesBetween(cur.calledAt, now)) : 0 }
       : null,
-    waiting: lineup(tickets).map(row),
+    waiting: lineup(tickets).map((t) => ({ ...row(t), eta: t.held ? null : estimateWaitMinutes(tickets, t, now, shop.settings) })),
     pending,
     deferred: tickets
       .filter((t) => t.status === "deferred")
@@ -598,6 +800,26 @@ export async function staffAction(
   return { ok: true };
 }
 
+function cleanProfile(v: unknown): ShopProfile {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const str = (x: unknown, max: number) => {
+    const t = typeof x === "string" ? x.replace(/\s+/g, " ").trim() : "";
+    if (t.length > max) throw new DomainError("invalid_settings");
+    return t || null;
+  };
+  const mapsUrl = str(o.mapsUrl, 500);
+  if (mapsUrl && !/^https:\/\/\S+$/.test(mapsUrl)) throw new DomainError("invalid_settings");
+  const phone = str(o.phone, 20);
+  if (phone && !/^[+\d][\d\s-]{5,19}$/.test(phone)) throw new DomainError("invalid_settings");
+  return {
+    doctorName: str(o.doctorName, 80),
+    specialty: str(o.specialty, 80),
+    address: str(o.address, 160),
+    phone,
+    mapsUrl,
+  };
+}
+
 const SETTING_LIMITS: Record<keyof ShopSettings, [number, number]> = {
   confirmAhead: [1, 30],
   confirmTimeoutMin: [2, 60],
@@ -617,6 +839,7 @@ export async function updateSettings(
     lang?: unknown;
     newPin?: unknown;
     rotateDoor?: unknown;
+    profile?: unknown;
   },
 ) {
   const db = await getDb();
@@ -649,6 +872,7 @@ export async function updateSettings(
     patch.bumpSession = true;
   }
   if (body.rotateDoor === true) patch.doorCode = randomToken(6);
+  if (body.profile !== undefined) patch.profile = cleanProfile(body.profile);
   await repo.updateShop(db, shop.id, patch);
   return (await repo.getShopById(db, shop.id))!;
 }
@@ -664,5 +888,6 @@ export async function runCron() {
     new Date(now.getTime() - NO_SHOW_RETENTION_DAYS * DAY_MS), // سجلّ الغياب يُمحى بعد شهرين
     new Date(now.getTime() - DAY_MS),
   );
+  await repo.purgeWa(db, new Date(now.getTime() - 2 * DAY_MS));
   return { stale, ...purged };
 }

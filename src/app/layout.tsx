@@ -1,8 +1,16 @@
 import type { Metadata, Viewport } from "next";
+import { Readex_Pro } from "next/font/google";
 import { getLang } from "@/lib/server/http";
 import { dirOf } from "@/lib/i18n";
 import SwRegister from "@/components/SwRegister";
 import "./globals.css";
+
+// خطّ عربي/لاتيني حديث، يُخدَم من موقعنا نفسه (لا طلبات إلى Google عند الزيارة)
+const readex = Readex_Pro({
+  subsets: ["arabic", "latin"],
+  variable: "--font-readex",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: { default: "دوري — Dawri", template: "%s · دوري" },
@@ -21,7 +29,7 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const lang = await getLang();
   return (
-    <html lang={lang} dir={dirOf(lang)}>
+    <html lang={lang} dir={dirOf(lang)} className={readex.variable}>
       <body className="min-h-dvh font-sans antialiased">
         {children}
         <SwRegister />

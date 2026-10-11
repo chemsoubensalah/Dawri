@@ -13,6 +13,7 @@ import type { NotifyType, Shop, Ticket } from "../domain/types";
 import { getDb } from "./db";
 import * as repo from "./repo";
 import { getSms } from "./sms";
+import { waConfig, waSendButtons, waSendTemplate, waSendText } from "./whatsapp";
 
 export interface Notification {
   type: NotifyType;
@@ -55,6 +56,32 @@ export function smsTypes(): Set<NotifyType> {
   return new Set(v.split(",").map((x) => x.trim() as NotifyType).filter((x) => SMS_ALLOWED.includes(x)));
 }
 
+/** يُرجع true إن أُرسلت رسالة واتساب. */
+async function sendWhatsapp(n: Notification, msg: ReturnType<typeof renderNotification>): Promise<boolean> {
+  const r = { phone: n.ticket.waPhone, userId: n.ticket.waUserId };
+  const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  const text = [`*${msg.title}*`, msg.body, base ? `${base}${msg.url}` : null].filter(Boolean).join("\n");
+  const windowOpen = n.ticket.waWindowUntil && n.ticket.waWindowUntil > new Date();
+  if (windowOpen) {
+    const askConfirm = n.type === "confirm" || n.type === "held" || (n.type === "soon" && n.ticket.confirmAskedAt && !n.ticket.confirmedAt);
+    if (askConfirm) {
+      await waSendButtons(r, text, [
+        { id: `c:${n.ticket.id}`, title: t(n.ticket.lang, "wa_btnComing") },
+        { id: `x:${n.ticket.id}`, title: t(n.ticket.lang, "wa_btnCancel") },
+      ]);
+    } else {
+      await waSendText(r, text);
+    }
+    return true;
+  }
+  const tpl = waConfig().templateTurn;
+  if (tpl && (n.type === "soon" || n.type === "called")) {
+    await waSendTemplate(r, tpl, n.ticket.lang, [n.shop.name, String(n.ticket.number)]);
+    return true;
+  }
+  return false;
+}
+
 let vapidReady: boolean | null = null;
 
 async function webPush() {
@@ -89,7 +116,18 @@ export const defaultNotifier: Notifier = {
         }
       }
     }
-    if (n.ticket.phone && smsTypes().has(n.type)) {
+    // واتساب: داخل نافذة الـ24 ساعة رسالة عادية (بأزرار لسؤال التأكيد)، وخارجها قالب معتمد إن وُجد
+    const waLinked = (n.ticket.waUserId || n.ticket.waPhone) && !n.ticket.waOptOut;
+    let waSent = false;
+    if (waLinked && waConfig().enabled) {
+      try {
+        waSent = await sendWhatsapp(n, msg);
+      } catch (e) {
+        console.error("[whatsapp] send", e);
+      }
+    }
+    // SMS فقط لمن لم يصله واتساب (توفير الكلفة)
+    if (!waSent && n.ticket.phone && smsTypes().has(n.type)) {
       const sms = getSms();
       await sms?.send(n.ticket.phone, `${msg.title} ${msg.body}`).catch((e) => console.error("[sms]", e));
     }

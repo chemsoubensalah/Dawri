@@ -21,7 +21,6 @@ async function staffPage(browser: Browser) {
   await page.getByLabel("أدخل الرمز").fill("1234");
   await page.getByRole("button", { name: "دخول" }).click();
   await expect(page.getByTestId("next")).toBeVisible();
-  page.on("dialog", (d) => d.accept());
   return page;
 }
 
@@ -52,8 +51,9 @@ test("رحلة كاملة: رقم ← نداء ← غياب ← عودة ← خ�
   await expect(staff.getByTestId("current-number")).toHaveText(String(n1));
   await expect(page.getByTestId("status")).toContainText("دورك الآن", { timeout: 15_000 });
 
-  // لم يحضر ← يُؤجَّل وتُنادى فاطمة
+  // لم يحضر ← نافذة تأكيد ← يُؤجَّل وتُنادى فاطمة
   await staff.getByTestId("no-show").click();
+  await staff.getByTestId("confirm-yes").click();
   await expect(staff.getByTestId("current-number")).toHaveText(String(n2));
   await expect(staff.getByText("مؤجَّلون")).toBeVisible();
   await expect(page.getByTestId("status")).toContainText("دورك مؤجَّل");

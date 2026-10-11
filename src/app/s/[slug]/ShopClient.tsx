@@ -1,13 +1,23 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import LangSwitch from "@/components/LangSwitch";
+import { BellRing, CheckCircle2, Hourglass, KeyRound, Loader2, MessageCircle, Phone, QrCode, ShieldCheck, Ticket, User, Users } from "lucide-react";
+import ClinicCard from "@/components/ClinicCard";
+import { Stat } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
-import { errorText, t, type DictKey } from "@/lib/i18n";
+import { errorText, t } from "@/lib/i18n";
 import { api, ApiError, saveTicket, savedTicket, unlockAudio, usePoll } from "@/lib/client";
 import type { PublicShopView } from "@/lib/server/service";
 
 const PROFILE = "dawri:profile";
+
+function fmtWait(lang: Lang, min: number) {
+  if (min <= 0) return t(lang, "sp_noWait");
+  if (min < 60) return t(lang, "sp_min", { n: min });
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return t(lang, "sp_hmin", { h, m: String(m).padStart(2, "0") });
+}
 
 export default function ShopClient({ lang, initial, door }: { lang: Lang; initial: PublicShopView; door: string | null }) {
   const router = useRouter();
@@ -16,7 +26,8 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState<"form" | "code">("form");
+  const [step, setStep] = useState<"form" | "code" | "wa">("form");
+  const [wa, setWa] = useState<{ id: string; link: string; code: string; expired?: boolean } | null>(null);
   const [devCode, setDevCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -36,6 +47,14 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
 
   usePoll(async () => setView(await api<PublicShopView>(`/api/s/${view.slug}`)), 20000);
 
+  // ننتظر رسالة واتساب: تتحقّق الصفحة كلّ ثانيتين ونصف (وفوراً عند الرجوع من واتساب)
+  usePoll(async () => {
+    if (step !== "wa" || !wa || wa.expired) return;
+    const r = await api<{ status: "pending" | "done" | "expired"; ticketId: string | null }>(`/api/s/${view.slug}/wa-verify/${wa.id}`);
+    if (r.status === "done" && r.ticketId) finish(r.ticketId);
+    else if (r.status === "expired") setWa({ ...wa, expired: true });
+  }, 2500);
+
   async function run(fn: () => Promise<void>) {
     unlockAudio(); // نحن داخل نقرة الزبون: نفتح الصوت لبقيّة الزيارة
     setBusy(true);
@@ -53,8 +72,6 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
     saveTicket(view.slug, ticketId);
     try {
       sessionStorage.setItem("dawri:justTook", ticketId); // صفحة التذكرة تُصدر نغمة التأكيد
-    } catch {}
-    try {
       localStorage.setItem(PROFILE, JSON.stringify({ name, phone }));
     } catch {}
     router.push(`/t/${ticketId}`);
@@ -71,6 +88,13 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
       setStep("code");
     });
 
+  const startWa = () =>
+    run(async () => {
+      const r = await api<{ id: string; link: string; code: string }>(`/api/s/${view.slug}/wa-verify`, { name, phone, lang, door });
+      setWa(r);
+      setStep("wa");
+    });
+
   const confirm = () =>
     run(async () => {
       const tk = await api<{ ticketId: string }>(`/api/s/${view.slug}/tickets`, { name, phone, code, door, lang });
@@ -81,115 +105,176 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
     run(async () => {
       await api(`/api/t/${mine}`, { action: "checkin", door });
       setArrivedMsg(true);
-      setTimeout(() => router.push(`/t/${mine}`), 800);
+      setTimeout(() => router.push(`/t/${mine}`), 900);
     });
 
-  const etaNew = Math.round((view.waiting + (view.currentNumber ? 1 : 0)) * view.avgServiceMin);
-
   return (
-    <main className="mx-auto max-w-md space-y-4 p-4">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-sm font-bold text-brand-700">{t(lang, "appName")}</div>
-          <h1 className="text-2xl font-extrabold leading-tight">{view.name}</h1>
-          <div className="text-slate-500">{t(lang, `kind_${view.kind}` as DictKey)}</div>
-        </div>
-        <LangSwitch lang={lang} />
-      </header>
+    <>
+      <ClinicCard
+        lang={lang}
+        name={view.name}
+        kind={view.kind}
+        profile={view.profile}
+        blocker={view.blocker}
+        hoursToday={view.hoursToday}
+      />
 
-      <section className="grid grid-cols-2 gap-3">
-        <div className="card text-center">
-          <div className="text-sm text-slate-500">{t(lang, "nowServing")}</div>
-          <div className="num text-4xl font-black">{view.currentNumber ?? "—"}</div>
-        </div>
-        <div className="card text-center">
-          <div className="text-sm text-slate-500">{t(lang, "waitingCount")}</div>
-          <div className="num text-4xl font-black">{view.waiting}</div>
-          {view.waiting > 0 && (
-            <div className="text-xs text-slate-500">≈ {etaNew} {t(lang, "minutes")}</div>
-          )}
-        </div>
+      <section className="grid grid-cols-3 gap-2.5" aria-live="polite">
+        <Stat icon={<Ticket size={13} />} label={t(lang, "nowServing")} value={view.currentNumber ?? "—"} />
+        <Stat icon={<Users size={13} />} label={t(lang, "waitingCount")} value={view.waiting} />
+        <Stat icon={<Hourglass size={13} />} label={t(lang, "sp_wait")} value={<span className="text-lg">{fmtWait(lang, view.waitNewMin)}</span>} />
       </section>
 
       {mine && door ? (
-        <section className="card space-y-3 text-center">
-          <p className="text-lg font-semibold">{t(lang, "yourTicketToday")}</p>
+        <section className="card space-y-4 text-center">
           {arrivedMsg ? (
-            <p className="text-xl font-bold text-brand-700">{t(lang, "arrivedOk")}</p>
+            <div className="animate-pop py-4">
+              <CheckCircle2 size={56} className="mx-auto text-brand-600" />
+              <p className="mt-2 text-xl font-bold text-brand-800">{t(lang, "arrivedOk")}</p>
+            </div>
           ) : (
-            <button className="btn-primary w-full py-5 text-2xl" onClick={checkIn} disabled={busy}>
-              {t(lang, "iArrived")}
-            </button>
+            <>
+              <QrCode size={40} className="mx-auto text-brand-600" />
+              <p className="text-lg font-bold">{t(lang, "yourTicketToday")}</p>
+              <p className="text-slate-600">{t(lang, "sp_arrivedQ")}</p>
+              <button className="btn-primary w-full py-5 text-2xl" onClick={checkIn} disabled={busy}>
+                {t(lang, "iArrived")}
+              </button>
+            </>
           )}
-          <a className="block font-semibold text-brand-700 underline" href={`/t/${mine}`}>
+          <a className="block font-semibold text-brand-700 hover:underline" href={`/t/${mine}`}>
             {t(lang, "openMyTicket")}
           </a>
-          {error && <p className="font-semibold text-red-700" role="alert">{error}</p>}
+          {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
         </section>
       ) : view.blocker ? (
-        <section className="card space-y-2 text-center">
-          <p className="text-xl font-bold text-amber-700">{errorText(lang, view.blocker)}</p>
-          <p className="text-slate-600">
-            {t(lang, "hoursToday")}:{" "}
-            <span dir="ltr" className="num font-semibold">
-              {view.hoursToday.length ? view.hoursToday.map(([a, b]) => `${a}–${b}`).join(" · ") : t(lang, "closedToday")}
-            </span>
-          </p>
+        <section className="card text-center">
+          <Hourglass size={36} className="mx-auto text-amber-500" />
+          <p className="mt-2 text-lg font-bold">{errorText(lang, view.blocker)}</p>
+          <p className="mt-1 text-sm text-slate-600">{t(lang, "sp_comeBack")}</p>
         </section>
       ) : (
-        <section className="card space-y-4">
-          <h2 className="text-xl font-extrabold">{t(lang, "takeNumber")}</h2>
+        <section className="card p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold">{t(lang, "takeNumber")}</h2>
+            {view.verifyPhone && (
+              <ol className="flex items-center gap-1.5 text-xs font-semibold text-slate-400" aria-label="steps">
+                {[1, 2].map((n) => {
+                  const on = (step === "form" ? 1 : 2) >= n;
+                  return (
+                    <li key={n} className={`inline-flex size-6 items-center justify-center rounded-full ${on ? "bg-brand-600 text-white" : "bg-slate-100"}`}>
+                      {n}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </div>
+
           {step === "form" ? (
             <form
-              className="space-y-3"
+              className="mt-5 space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
-                sendCode();
+                if (view.waVerify && view.verifyPhone) startWa();
+                else sendCode();
               }}
             >
               <div>
                 <label className="label" htmlFor="name">{t(lang, "yourName")}</label>
-                <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required minLength={2} maxLength={60} />
+                <div className="relative">
+                  <User size={18} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-slate-400 ltr:left-4 rtl:right-4" />
+                  <input id="name" className="input ps-11" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required minLength={2} maxLength={60} />
+                </div>
               </div>
               <div>
                 <label className="label" htmlFor="phone">{t(lang, "yourPhone")}</label>
-                <input
-                  id="phone"
-                  className="input num"
-                  dir="ltr"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  placeholder={t(lang, "phonePlaceholder")}
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  required
-                />
+                <div className="relative">
+                  <Phone size={18} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-slate-400 ltr:left-4 rtl:right-4" />
+                  <input
+                    id="phone"
+                    className="input num ps-11 text-start"
+                    dir="ltr"
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                    placeholder={t(lang, "phonePlaceholder")}
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    required
+                  />
+                </div>
               </div>
-              {error && <p className="font-semibold text-red-700" role="alert">{error}</p>}
-              <button className="btn-primary w-full" disabled={busy}>
-                {view.verifyPhone ? t(lang, "sendCode") : t(lang, "takeNumber")}
-              </button>
+              {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
+              {view.waVerify && view.verifyPhone ? (
+                <>
+                  <button className="btn w-full bg-[#25D366] text-lg text-white shadow-sm hover:bg-[#1ebe5b] focus-visible:ring-green-200" disabled={busy}>
+                    <MessageCircle size={20} /> {busy ? "…" : t(lang, "sp_viaWa")}
+                  </button>
+                  <p className="text-center text-xs text-slate-500">{t(lang, "sp_viaWaHint")}</p>
+                  {view.smsVerify && (
+                    <button type="button" className="w-full text-center text-sm font-semibold text-slate-500 hover:text-ink" onClick={sendCode} disabled={busy}>
+                      {t(lang, "sp_viaSms")}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <button className="btn-primary w-full text-lg" disabled={busy}>
+                  {busy ? "…" : view.verifyPhone ? t(lang, "sendCode") : t(lang, "takeNumber")}
+                </button>
+              )}
             </form>
+          ) : step === "wa" && wa ? (
+            <div className="mt-5 space-y-4 text-center">
+              <p className="font-semibold text-slate-700">{t(lang, "sp_waStep")}</p>
+              {wa.expired ? (
+                <>
+                  <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{t(lang, "sp_waExpired")}</p>
+                  <button type="button" className="btn-secondary w-full" onClick={() => setStep("form")}>
+                    {t(lang, "changePhone")}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <a
+                    href={wa.link}
+                    className="btn w-full bg-[#25D366] py-4 text-lg text-white shadow-sm hover:bg-[#1ebe5b]"
+                    data-testid="wa-open"
+                  >
+                    <MessageCircle size={22} /> {t(lang, "sp_waOpen")}
+                  </a>
+                  <p className="num text-sm text-slate-500" dir="ltr">{wa.code}</p>
+                  <p className="flex items-center justify-center gap-2 text-sm text-slate-600">
+                    <Loader2 size={16} className="animate-spin" /> {t(lang, "sp_waWaiting")}
+                  </p>
+                  <p className="text-xs leading-relaxed text-slate-400">{t(lang, "sp_waConsent")}</p>
+                  <button type="button" className="w-full text-center text-sm text-slate-500 hover:text-ink" onClick={() => setStep("form")}>
+                    {t(lang, "changePhone")}
+                  </button>
+                </>
+              )}
+            </div>
           ) : (
             <form
-              className="space-y-3"
+              className="mt-5 space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
                 confirm();
               }}
             >
-              <p className="text-slate-700">{t(lang, "codeSent")}</p>
+              <p className="flex items-center gap-2 text-slate-700">
+                <KeyRound size={18} className="text-brand-600" /> {t(lang, "codeSent")}
+              </p>
               {devCode && (
-                <p className="rounded-xl bg-amber-50 p-2 text-center text-amber-800">
-                  {t(lang, "demoCode")} <b className="num" dir="ltr">{devCode}</b>
+                <p className="rounded-xl bg-amber-50 p-2.5 text-center text-sm text-amber-800 ring-1 ring-amber-200">
+                  {t(lang, "demoCode")} <b className="num text-base" dir="ltr">{devCode}</b>
                 </p>
               )}
               <div>
                 <label className="label" htmlFor="code">{t(lang, "codeLabel")}</label>
                 <input
                   id="code"
-                  className="input num text-center text-2xl tracking-[0.4em]"
+                  className="input num text-center text-3xl font-bold tracking-[0.5em]"
                   dir="ltr"
                   inputMode="numeric"
                   autoComplete="one-time-code"
@@ -200,19 +285,34 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
                   autoFocus
                 />
               </div>
-              {error && <p className="font-semibold text-red-700" role="alert">{error}</p>}
-              <button className="btn-primary w-full" disabled={busy || code.length !== 6}>
-                {t(lang, "confirmTicket")}
+              {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
+              <button className="btn-primary w-full text-lg" disabled={busy || code.length !== 6}>
+                {busy ? "…" : t(lang, "confirmTicket")}
               </button>
-              <button type="button" className="w-full text-center text-sm text-slate-500 underline" onClick={() => setStep("form")}>
+              <button type="button" className="w-full text-center text-sm text-slate-500 hover:text-ink" onClick={() => setStep("form")}>
                 {t(lang, "changePhone")}
               </button>
             </form>
           )}
-          <p className="text-sm text-slate-500">{t(lang, "privacy")}</p>
+          <p className="mt-5 flex items-start gap-2 text-xs leading-relaxed text-slate-500">
+            <ShieldCheck size={16} className="mt-px shrink-0 text-brand-600" /> {t(lang, "privacy")}
+          </p>
         </section>
       )}
+
+      <section className="grid grid-cols-3 gap-2 text-center text-xs text-slate-600">
+        {[
+          [<Ticket key="1" size={20} />, t(lang, "sp_how1")],
+          [<Hourglass key="2" size={20} />, t(lang, "sp_how2")],
+          [<BellRing key="3" size={20} />, t(lang, "sp_how3")],
+        ].map(([icon, label], i) => (
+          <div key={i} className="flex flex-col items-center gap-1.5 rounded-2xl bg-white/70 p-3 ring-1 ring-slate-200/70">
+            <span className="text-brand-600">{icon}</span>
+            {label}
+          </div>
+        ))}
+      </section>
       <p className="text-center text-sm text-slate-500">{t(lang, "noSmartphone")}</p>
-    </main>
+    </>
   );
 }
