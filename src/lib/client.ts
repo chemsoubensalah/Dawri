@@ -92,24 +92,120 @@ export function saveTicket(slug: string, id: string) {
   } catch {}
 }
 
-/** صوت تنبيه قصير بلا ملفّات (Web Audio) + اهتزاز. */
-export function alertBeep() {
+// ——— الأصوات (Web Audio: بلا ملفّات صوتية، لا شيء يُحمَّل على 3G) ———
+
+export type Sound = "new" | "taken" | "next" | "moved" | "alarm";
+
+/** [التردّد Hz, البداية ث, المدّة ث, الشدّة] */
+type Tone = [number, number, number, number];
+
+const SOUNDS: Record<Sound, Tone[]> = {
+  // زبون جديد أخذ رقماً (شاشة السكرتيرة): نغمتان صاعدتان
+  new: [
+    [660, 0, 0.16, 0.35],
+    [990, 0.18, 0.28, 0.35],
+  ],
+  // أخذتَ رقمك (هاتف الزبون): ثلاث نغمات مبهجة
+  taken: [
+    [523, 0, 0.14, 0.3],
+    [659, 0.15, 0.14, 0.3],
+    [784, 0.3, 0.3, 0.3],
+  ],
+  // «التالي» (شاشة السكرتيرة وشاشة القاعة): دينغ-دونغ
+  next: [
+    [880, 0, 0.35, 0.4],
+    [660, 0.38, 0.55, 0.4],
+  ],
+  // تقدّم الطابور (هاتف الزبون): نغمة قصيرة لطيفة
+  moved: [[740, 0, 0.12, 0.2]],
+  // دورك / تعال الآن: إنذار قويّ متكرّر
+  alarm: [0, 0.35, 0.7, 1.4, 1.75, 2.1].map((t) => [880, t, 0.28, 0.5] as Tone),
+};
+
+type W = Window & { webkitAudioContext?: typeof AudioContext; __dawriSoundLog?: Sound[] };
+let ctx: AudioContext | null = null;
+
+function audio(): AudioContext | null {
   try {
-    navigator.vibrate?.([300, 150, 300, 150, 600]);
-  } catch {}
+    if (!ctx) {
+      const C = window.AudioContext ?? (window as W).webkitAudioContext;
+      if (!C) return null;
+      ctx = new C();
+    }
+    return ctx;
+  } catch {
+    return null;
+  }
+}
+
+const MUTE_KEY = "dawri:muted";
+
+export function isMuted(): boolean {
   try {
-    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const ctx = new Ctx();
-    [0, 0.35, 0.7].forEach((at) => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.frequency.value = 880;
-      g.gain.setValueAtTime(0.0001, ctx.currentTime + at);
-      g.gain.exponentialRampToValueAtTime(0.4, ctx.currentTime + at + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.3);
-      o.connect(g).connect(ctx.destination);
-      o.start(ctx.currentTime + at);
-      o.stop(ctx.currentTime + at + 0.32);
-    });
+    return localStorage.getItem(MUTE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setMuted(m: boolean) {
+  try {
+    localStorage.setItem(MUTE_KEY, m ? "1" : "0");
   } catch {}
+}
+
+/** هل يسمح المتصفّح بالصوت الآن؟ (يمنعه قبل أوّل لمسة على الصفحة) */
+export function audioReady(): boolean {
+  return audio()?.state === "running";
+}
+
+/** يُستدعى داخل لمسة/نقرة: يفتح الصوت لبقيّة الزيارة. */
+export async function unlockAudio(): Promise<boolean> {
+  const c = audio();
+  if (!c) return false;
+  try {
+    if (c.state !== "running") await c.resume();
+    // iOS يحتاج صوتاً فعلياً داخل اللمسة: نغمة صامتة قصيرة
+    const o = c.createOscillator();
+    const g = c.createGain();
+    g.gain.value = 0.0001;
+    o.connect(g).connect(c.destination);
+    o.start();
+    o.stop(c.currentTime + 0.01);
+  } catch {}
+  return c.state === "running";
+}
+
+export function playSound(sound: Sound) {
+  const w = window as W;
+  (w.__dawriSoundLog ??= []).push(sound); // للاختبارات
+  if (sound === "alarm") {
+    try {
+      navigator.vibrate?.([400, 150, 400, 150, 800]);
+    } catch {}
+  } else if (sound === "taken" || sound === "new") {
+    try {
+      navigator.vibrate?.(120);
+    } catch {}
+  }
+  if (isMuted()) return;
+  const c = audio();
+  if (!c) return;
+  if (c.state !== "running") c.resume().catch(() => {});
+  const t0 = c.currentTime + 0.02;
+  for (const [freq, at, dur, vol] of SOUNDS[sound]) {
+    try {
+      const o = c.createOscillator();
+      const g = c.createGain();
+      o.type = sound === "alarm" ? "square" : "sine";
+      o.frequency.value = freq;
+      const v = sound === "alarm" ? vol * 0.5 : vol;
+      g.gain.setValueAtTime(0.0001, t0 + at);
+      g.gain.exponentialRampToValueAtTime(v, t0 + at + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + dur);
+      o.connect(g).connect(c.destination);
+      o.start(t0 + at);
+      o.stop(t0 + at + dur + 0.02);
+    } catch {}
+  }
 }

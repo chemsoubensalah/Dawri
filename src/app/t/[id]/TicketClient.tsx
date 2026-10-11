@@ -2,9 +2,10 @@
 import { useEffect, useRef, useState } from "react";
 import LangSwitch from "@/components/LangSwitch";
 import PushButton from "@/components/PushButton";
+import SoundGate from "@/components/SoundGate";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
-import { alertBeep, api, ApiError, saveTicket, usePoll } from "@/lib/client";
+import { api, ApiError, playSound, saveTicket, usePoll } from "@/lib/client";
 import type { TicketView } from "@/lib/server/service";
 
 const ACTIVE = ["pending_approval", "waiting", "called", "deferred"];
@@ -16,17 +17,29 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
   const [error, setError] = useState("");
   const prev = useRef(initial);
 
-  useEffect(() => saveTicket(initial.shop.slug, initial.id), [initial.shop.slug, initial.id]);
+  useEffect(() => {
+    saveTicket(initial.shop.slug, initial.id);
+    // أخذ رقمه للتوّ (من صفحة المحلّ): نغمة تأكيد
+    try {
+      if (sessionStorage.getItem("dawri:justTook") === initial.id) {
+        sessionStorage.removeItem("dawri:justTook");
+        playSound("taken");
+      }
+    } catch {}
+  }, [initial.shop.slug, initial.id]);
 
-  // تنبيه صوتيّ واهتزاز حين يتغيّر شيء مهمّ والصفحة مفتوحة
+  // الأصوات حين يتغيّر شيء والصفحة مفتوحة
   useEffect(() => {
     const p = prev.current;
     if (
       (v.status === "called" && p.status !== "called") ||
+      (v.status === "deferred" && p.status !== "deferred") ||
       (v.comeNow && !p.comeNow) ||
       (v.askConfirm && !p.askConfirm)
     ) {
-      alertBeep();
+      playSound("alarm"); // دورك / تعال الآن / هل ما زلت قادماً؟
+    } else if (v.currentNumber !== p.currentNumber && v.currentNumber !== null && v.status === "waiting") {
+      playSound("moved"); // تقدّم الطابور
     }
     prev.current = v;
     const prefix = v.status === "called" ? "🔔 " : v.ahead !== null ? `(${v.ahead}) ` : "";
@@ -76,6 +89,8 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
       {!online && (
         <div className="rounded-xl bg-slate-800 p-2 text-center text-sm text-white">{t(lang, "offline")}</div>
       )}
+
+      {active && <SoundGate lang={lang} />}
 
       <section
         className={`card text-center ${v.status === "called" ? "bg-brand-600 text-white ring-brand-600" : ""}`}
@@ -169,7 +184,7 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
               <p className="text-center text-slate-700">{t(lang, "checkInHint")}</p>
             )}
             <PushButton lang={lang} ticketId={v.id} pushKey={v.pushKey} />
-            <p className="text-center text-sm text-slate-500">{t(lang, "keepOpen")}</p>
+            <p className="text-center text-sm text-slate-500">{t(lang, "keepScreenOn")}</p>
           </section>
           {!v.askConfirm && v.status !== "called" && (
             <button className="btn-danger w-full" onClick={() => act("cancel")} disabled={busy}>

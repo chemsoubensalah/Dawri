@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import LangSwitch from "@/components/LangSwitch";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t, type DictKey } from "@/lib/i18n";
-import { api, ApiError, saveTicket, savedTicket, usePoll } from "@/lib/client";
+import { api, ApiError, saveTicket, savedTicket, unlockAudio, usePoll } from "@/lib/client";
 import type { PublicShopView } from "@/lib/server/service";
 
 const PROFILE = "dawri:profile";
@@ -37,6 +37,7 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
   usePoll(async () => setView(await api<PublicShopView>(`/api/s/${view.slug}`)), 20000);
 
   async function run(fn: () => Promise<void>) {
+    unlockAudio(); // نحن داخل نقرة الزبون: نفتح الصوت لبقيّة الزيارة
     setBusy(true);
     setError("");
     try {
@@ -50,6 +51,9 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
 
   const finish = (ticketId: string) => {
     saveTicket(view.slug, ticketId);
+    try {
+      sessionStorage.setItem("dawri:justTook", ticketId); // صفحة التذكرة تُصدر نغمة التأكيد
+    } catch {}
     try {
       localStorage.setItem(PROFILE, JSON.stringify({ name, phone }));
     } catch {}

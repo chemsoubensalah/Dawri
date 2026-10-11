@@ -103,3 +103,35 @@ test("ملصق QR وشاشة القاعة", async ({ browser }) => {
   expect(manifest.ok()).toBe(true);
   expect((await staff.request.get("/icons/192")).headers()["content-type"]).toContain("image/png");
 });
+
+test("الأصوات: زبون جديد، أخذ الرقم، التالي، دورك", async ({ page, browser }) => {
+  const sounds = (p: Page) => p.evaluate(() => (window as unknown as { __dawriSoundLog?: string[] }).__dawriSoundLog ?? []);
+  const staff = await staffPage(browser);
+  // ننهي ما بقي من الاختبارات السابقة كي يكون الزبون الجديد هو التالي
+  while (await staff.getByTestId("next").isEnabled()) {
+    await staff.getByTestId("next").click();
+    await staff.waitForTimeout(300);
+    if ((await staff.getByTestId("queue").count()) === 0) break;
+  }
+
+  // 1) الزبون يأخذ رقماً ← نغمة التأكيد على هاتفه
+  const n = await takeNumber(page, "صوت");
+  await expect.poll(() => sounds(page)).toContain("taken");
+
+  // 2) شاشة السكرتيرة تسمع «زبون جديد» وتعرض رسالة
+  await expect(staff.getByTestId("newcomer")).toContainText(`${n}`, { timeout: 15_000 });
+  await expect.poll(() => sounds(staff)).toContain("new");
+
+  // 3) «التالي» ← دينغ-دونغ عند السكرتيرة، وإنذار «دورك» على هاتف الزبون
+  if ((await staff.getByTestId("current-number").textContent())?.trim() !== String(n)) {
+    await staff.getByTestId("next").click();
+  }
+  await expect(staff.getByTestId("current-number")).toHaveText(String(n));
+  await expect.poll(() => sounds(staff)).toContain("next");
+  await expect(page.getByTestId("status")).toContainText("دورك الآن", { timeout: 15_000 });
+  await expect.poll(() => sounds(page)).toContain("alarm");
+
+  // زرّ الكتم يعمل ويُحفظ
+  await staff.getByTestId("mute-toggle").click();
+  expect(await staff.evaluate(() => localStorage.getItem("dawri:muted"))).toBe("1");
+});

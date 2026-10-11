@@ -1,9 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import LangSwitch from "@/components/LangSwitch";
+import SoundGate from "@/components/SoundGate";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
-import { api, ApiError, usePoll } from "@/lib/client";
+import { api, ApiError, playSound, usePoll } from "@/lib/client";
 import type { StaffState } from "@/lib/server/service";
 
 type Row = StaffState["waiting"][number];
@@ -27,6 +28,22 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
   const [addPhone, setAddPhone] = useState("");
   const [addPresent, setAddPresent] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [newcomer, setNewcomer] = useState<string | null>(null);
+
+  // زبون جديد أخذ رقماً من هاتفه ← صوت + رسالة. (من تضيفه السكرتيرة بنفسها لا يُصدر صوتاً)
+  const known = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const all = [...s.waiting, ...s.pending, ...(s.current ? [s.current] : []), ...s.deferred];
+    if (known.current) {
+      const fresh = all.filter((r) => !known.current!.has(r.id) && r.source === "online");
+      if (fresh.length) {
+        playSound("new");
+        const last = fresh[fresh.length - 1];
+        setNewcomer(t(lang, "newCustomer", { n: last.number, name: last.name }));
+      }
+    }
+    known.current = new Set([...(known.current ?? []), ...all.map((r) => r.id)]);
+  }, [s, lang]);
 
   usePoll(async () => {
     try {
@@ -59,9 +76,13 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
   }
 
   const cur = s.current;
-  const next = () => act({ action: "next", current: cur?.id ?? null });
-  const noShow = () => {
-    if (confirm(t(lang, "confirmNoShow"))) act({ action: "no_show_next", current: cur?.id ?? null });
+  const next = async () => {
+    if (await act({ action: "next", current: cur?.id ?? null })) playSound("next");
+  };
+  const noShow = async () => {
+    if (confirm(t(lang, "confirmNoShow")) && (await act({ action: "no_show_next", current: cur?.id ?? null }))) {
+      playSound("next");
+    }
   };
 
   const badges = (r: Row) => (
@@ -90,9 +111,23 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
           >
             {s.closed ? `🔒 ${t(lang, "queueIsClosed")} — ${t(lang, "openQueue")}` : `🟢 ${t(lang, "queueIsOpen")} — ${t(lang, "closeQueue")}`}
           </button>
+          <SoundGate lang={lang} part="toggle" />
           <LangSwitch lang={lang} />
         </div>
       </header>
+
+      <SoundGate lang={lang} />
+
+      {newcomer && (
+        <button
+          type="button"
+          className="w-full rounded-2xl bg-sky-50 p-3 text-center font-bold text-sky-900 ring-1 ring-sky-200"
+          onClick={() => setNewcomer(null)}
+          data-testid="newcomer"
+        >
+          {newcomer} ✕
+        </button>
+      )}
 
       {!online && <div className="rounded-xl bg-slate-800 p-2 text-center text-sm text-white">{t(lang, "offline")}</div>}
       {!s.shop.active ? (
