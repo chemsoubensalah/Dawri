@@ -20,6 +20,7 @@ export function diagnose(e: unknown): string {
   const err = (e ?? {}) as { code?: string; message?: string };
   const code = String(err.code ?? "");
   const msg = String(err.message ?? "");
+  if (/YOUR-PASSWORD/.test(msg)) return "db_password_placeholder";
   if (code === "42P01") return "db_tables_missing"; // الجداول غير موجودة: شغّل ملفّ SQL
   if (code === "28P01" || code === "28000" || /password|Tenant or user not found|SASL/i.test(msg)) return "db_auth";
   if (code === "ERR_INVALID_URL" || /Invalid URL/i.test(msg)) return "db_url_invalid";

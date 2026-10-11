@@ -20,9 +20,30 @@ export interface Db extends Q {
   kind: "pg" | "pglite";
 }
 
+/**
+ * يصلح أخطاء اللصق الشائعة في رابط Supabase قبل قراءته:
+ * مسافات أو علامات تنصيص زائدة، «DATABASE_URL=» في البداية، أقواس [ ] حول كلمة السرّ،
+ * ورموز غير مُرمَّزة في كلمة السرّ (# / ? @ %…).
+ */
+export function normalizeDbUrl(raw: string): string {
+  let s = raw.trim().replace(/^DATABASE_URL\s*=\s*/i, "").trim();
+  s = s.replace(/^["'](.*)["']$/s, "$1").trim();
+  // الفاصل بين كلمة السرّ والعنوان هو آخر @ (العنوان لا يحتوي @)
+  const m = /^(postgres(?:ql)?:\/\/)([^:@/]+):(.*)@([^@/?#\s]+)(\/[^?#\s]*)?(\?[^#\s]*)?$/s.exec(s);
+  if (!m) return s;
+  const [, scheme, user, rawPass, host, path = "", query = ""] = m;
+  let pass = rawPass;
+  if (/^\[.*\]$/.test(pass)) pass = pass.slice(1, -1); // [كلمة السرّ] ← كلمة السرّ
+  if (pass === "YOUR-PASSWORD") throw new Error("DATABASE_URL still contains the [YOUR-PASSWORD] placeholder");
+  try {
+    pass = decodeURIComponent(pass); // إن كانت مُرمَّزة مسبقاً لا نرمّزها مرّتين
+  } catch {}
+  return `${scheme}${user}:${encodeURIComponent(pass)}@${host}${path}${query}`;
+}
+
 export async function createPgDb(url: string): Promise<Db> {
   const { Pool } = await import("pg");
-  const u = new URL(url);
+  const u = new URL(normalizeDbUrl(url));
   const local = ["localhost", "127.0.0.1", "::1"].includes(u.hostname) || u.searchParams.get("sslmode") === "disable";
   u.searchParams.delete("sslmode");
   const ssl = local
