@@ -5,7 +5,8 @@ import { getLang } from "@/lib/server/http";
 
 export default async function Home() {
   const lang = await getLang();
-  const showDemo = !process.env.DATABASE_URL || process.env.DAWRI_DEMO === "1";
+  // المحلّ التجريبي /s/demo لا يوجد إلّا في وضع التطوير المحلّي (بلا DATABASE_URL)
+  const showDemo = !process.env.DATABASE_URL;
   return (
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col gap-6 p-5">
       <header className="flex items-center justify-between">
