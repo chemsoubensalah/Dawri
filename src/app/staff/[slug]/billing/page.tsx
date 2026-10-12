@@ -6,7 +6,7 @@ import { t, tn, drTitle } from "@/lib/i18n";
 import { chargilyConfig, manualPayment, plans } from "@/lib/server/billing";
 import { now as clockNow } from "@/lib/server/clock";
 import { getDb } from "@/lib/server/db";
-import { getLang, staffShop } from "@/lib/server/http";
+import { getLang, ownerShop } from "@/lib/server/http";
 import * as repo from "@/lib/server/repo";
 import { isSubscriptionActive } from "@/lib/server/service";
 import PayButton from "./PayButton";
@@ -24,7 +24,7 @@ export default async function BillingPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
-  const shop = await staffShop(slug);
+  const shop = await ownerShop(slug);
   if (!shop) redirect(`/staff/${slug}`);
   const lang = await getLang(shop.defaultLang);
   const now = clockNow();

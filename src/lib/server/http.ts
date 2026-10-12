@@ -94,6 +94,20 @@ export async function requireStaff(slug: string): Promise<Shop> {
   return shop;
 }
 
+/**
+ * صاحب العيادة فقط (الإعدادات، الاشتراك، إعدادات الميزات).
+ * حالياً = أيّ جلسة صالحة؛ تصير أدقّ مع أدوار «الطبيب/السكرتيرة».
+ */
+export async function ownerShop(slug: string): Promise<Shop | null> {
+  return staffShop(slug);
+}
+
+export async function requireOwner(slug: string): Promise<Shop> {
+  const shop = await ownerShop(slug);
+  if (!shop) throw new DomainError("unauthorized", 401);
+  return shop;
+}
+
 export function setSessionCookie(res: NextResponse, shop: Shop, token: string) {
   res.cookies.set(sessionCookieName(shop.id), token, {
     httpOnly: true,
