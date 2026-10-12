@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { DomainError } from "@/lib/domain/types";
@@ -8,14 +9,15 @@ import ShopClient from "./ShopClient";
 
 type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | undefined>> };
 
-async function load(slug: string) {
+// cache: العنوان والصفحة يشتركان في استعلام واحد لقاعدة البيانات
+const load = cache(async (slug: string) => {
   try {
     return await publicShop(slug);
   } catch (e) {
     if (e instanceof DomainError && e.status === 404) notFound();
     throw e;
   }
-}
+});
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
