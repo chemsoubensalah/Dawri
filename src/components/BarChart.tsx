@@ -12,7 +12,7 @@ export interface Bar {
  * مخطّط أعمدة لسلسلة واحدة: أعمدة رفيعة بنهاية مدوّرة 4px، فجوة 2px، خطوط شبكة خافتة،
  * وتلميح عند المرور/اللمس. لون واحد (لا حاجة لمفتاح — العنوان يسمّي السلسلة).
  */
-export default function BarChart({ data, height = 180, color = "#059669", unit = "" }: { data: Bar[]; height?: number; color?: string; unit?: string }) {
+export default function BarChart({ data, height = 180, color = "var(--color-brand-600)", unit = "" }: { data: Bar[]; height?: number; color?: string; unit?: string }) {
   const [hover, setHover] = useState<number | null>(null);
   const max = Math.max(1, ...data.map((d) => d.value));
   const nice = (() => {

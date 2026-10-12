@@ -45,10 +45,10 @@
 }
 @keyframes pulse-ring {
   0% {
-    box-shadow: 0 0 0 0 rgb(16 185 129 / 0.55);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-brand-500) 55%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 22px rgb(16 185 129 / 0);
+    box-shadow: 0 0 0 22px color-mix(in srgb, var(--color-brand-500) 0%, transparent);
   }
 }
 
@@ -77,7 +77,7 @@ body {
 /* خلفية زخرفية خفيفة للصفحات العامّة */
 .bg-mesh {
   background:
-    radial-gradient(60rem 30rem at 110% -10%, rgb(16 185 129 / 0.14), transparent 60%),
+    radial-gradient(60rem 30rem at 110% -10%, color-mix(in srgb, var(--color-brand-500) 14%, transparent), transparent 60%),
     radial-gradient(40rem 24rem at -10% 10%, rgb(14 165 233 / 0.1), transparent 60%),
     #f5f7fa;
 }

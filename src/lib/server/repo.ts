@@ -2,6 +2,7 @@
 import {
   DEFAULT_SETTINGS,
   OPEN_STATUSES,
+  readLook,
   type Lang,
   type Shop,
   type ShopSettings,
@@ -41,6 +42,7 @@ export function rowToShop(r: Row): Shop {
       phone: (r.phone as string | null) ?? null,
       mapsUrl: (r.maps_url as string | null) ?? null,
     },
+    look: readLook(r.look == null ? {} : json(r.look)),
   };
 }
 
@@ -113,7 +115,7 @@ export async function insertShop(
 export async function updateShop(
   q: Q,
   id: string,
-  patch: Partial<Pick<Shop, "name" | "hours" | "settings" | "defaultLang" | "pinHash" | "doorCode" | "profile">> & {
+  patch: Partial<Pick<Shop, "name" | "hours" | "settings" | "defaultLang" | "pinHash" | "doorCode" | "profile" | "look">> & {
     bumpSession?: boolean;
   },
 ) {
@@ -136,6 +138,7 @@ export async function updateShop(
     set("phone", patch.profile.phone);
     set("maps_url", patch.profile.mapsUrl);
   }
+  if (patch.look !== undefined) set("look", JSON.stringify(patch.look));
   if (patch.bumpSession) sets.push("session_version = session_version + 1");
   if (!sets.length) return;
   params.push(id);

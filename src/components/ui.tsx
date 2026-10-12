@@ -7,8 +7,8 @@ export function LogoMark({ size = 36, className = "" }: { size?: number; classNa
     <svg width={size} height={size} viewBox="0 0 48 48" className={className} aria-hidden="true">
       <defs>
         <linearGradient id="dawri-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#10b981" />
-          <stop offset="1" stopColor="#047857" />
+          <stop offset="0" style={{ stopColor: "var(--color-brand-500)" }} />
+          <stop offset="1" style={{ stopColor: "var(--color-brand-700)" }} />
         </linearGradient>
       </defs>
       <rect width="48" height="48" rx="14" fill="url(#dawri-g)" />

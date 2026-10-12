@@ -25,6 +25,8 @@ import {
 import {
   DEFAULT_SETTINGS,
   DomainError,
+  isDisplayStyle,
+  isTheme,
   NO_SHOW_RETENTION_DAYS,
   type Action,
   type Lang,
@@ -277,6 +279,7 @@ export async function publicShop(slug: string) {
       name: shop.name,
       kind: shop.kind,
       profile: shop.profile,
+      look: shop.look,
       waitNewMin,
       blocker: ticketBlocker(shop, closed, now),
       hoursToday: shop.hours[String(lt.weekday)] ?? [],
@@ -603,7 +606,7 @@ export async function ticketView(id: string) {
     held: ticket.held,
     lang: ticket.lang,
     arrived: Boolean(ticket.arrivedAt),
-    shop: { slug: shop.slug, name: shop.name, kind: shop.kind, profile: shop.profile },
+    shop: { slug: shop.slug, name: shop.name, kind: shop.kind, profile: shop.profile, look: shop.look },
     createdAt: ticket.createdAt.toISOString(),
     /** كم شخصاً نودي منذ أخذ رقمه (لشريط التقدّم) */
     servedSince: tickets.filter((x) => x.id !== ticket.id && x.calledAt && x.calledAt > ticket.createdAt).length,
@@ -860,6 +863,7 @@ export async function updateSettings(
     newPin?: unknown;
     rotateDoor?: unknown;
     profile?: unknown;
+    look?: unknown;
   },
 ) {
   const db = await getDb();
@@ -893,6 +897,20 @@ export async function updateSettings(
   }
   if (body.rotateDoor === true) patch.doorCode = randomToken(6);
   if (body.profile !== undefined) patch.profile = cleanProfile(body.profile);
+  if (body.look !== undefined) {
+    const o = (body.look && typeof body.look === "object" ? body.look : null) as Record<string, unknown> | null;
+    if (!o) throw new DomainError("invalid_settings");
+    const look = { ...shop.look };
+    if (o.theme !== undefined) {
+      if (!isTheme(o.theme)) throw new DomainError("invalid_settings");
+      look.theme = o.theme;
+    }
+    if (o.display !== undefined) {
+      if (!isDisplayStyle(o.display)) throw new DomainError("invalid_settings");
+      look.display = o.display;
+    }
+    patch.look = look;
+  }
   await repo.updateShop(db, shop.id, patch);
   return (await repo.getShopById(db, shop.id))!;
 }

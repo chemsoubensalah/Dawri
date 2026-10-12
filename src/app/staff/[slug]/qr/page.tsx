@@ -27,7 +27,7 @@ export default async function QrPoster({ params }: { params: Promise<{ slug: str
   ];
 
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} active="qr">
+    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} theme={shop.look.theme} active="qr">
       <div className="no-print mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{t(lang, "nav_poster")}</h1>
@@ -53,7 +53,7 @@ export default async function QrPoster({ params }: { params: Promise<{ slug: str
               <p className="text-[clamp(1.3rem,3.8vw,2.2rem)] leading-tight font-bold text-ink" dir="rtl">{t("ar", "posterTitle")}</p>
               <p className="mt-1 text-[clamp(1rem,2.6vw,1.5rem)] font-semibold text-slate-500" dir="ltr">{t("fr", "posterTitle")}</p>
             </div>
-            <div className="w-[52%] rounded-[1.5rem] bg-white p-4 shadow-[0_0_0_6px_#ecfdf5,0_0_0_8px_#a7f3d0]" dangerouslySetInnerHTML={{ __html: svg }} />
+            <div className="w-[52%] rounded-[1.5rem] bg-white p-4 shadow-[0_0_0_6px_var(--color-brand-50),0_0_0_8px_var(--color-brand-200)]" dangerouslySetInnerHTML={{ __html: svg }} />
             <ol className="grid w-full grid-cols-3 gap-3 text-center">
               {steps.map(([icon, k], i) => (
                 <li key={i} className="rounded-2xl bg-slate-50 p-3">

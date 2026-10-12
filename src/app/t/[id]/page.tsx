@@ -25,7 +25,7 @@ export default async function TicketPage({
   }
   const lang = await getLang(view.lang, sp.lang);
   return (
-    <PatientShell lang={lang}>
+    <PatientShell lang={lang} theme={view.shop.look.theme}>
       <TicketClient lang={lang} initial={view} />
     </PatientShell>
   );

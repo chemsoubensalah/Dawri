@@ -94,6 +94,38 @@ export const DEFAULT_SETTINGS: ShopSettings = {
 
 export const NO_SHOW_RETENTION_DAYS = 60;
 
+/** ألوان التطبيق التي يختار منها الطبيب (القيم في src/lib/theme.ts). */
+export const THEMES = ["emerald", "teal", "sky", "blue", "indigo", "violet", "rose", "orange", "slate"] as const;
+export type ThemeKey = (typeof THEMES)[number];
+
+/** تصاميم شاشة القاعة. */
+export const DISPLAY_STYLES = ["night", "light", "color"] as const;
+export type DisplayStyle = (typeof DISPLAY_STYLES)[number];
+
+export interface ShopLook {
+  theme: ThemeKey;
+  display: DisplayStyle;
+}
+
+export const DEFAULT_LOOK: ShopLook = { theme: "emerald", display: "night" };
+
+export function isTheme(v: unknown): v is ThemeKey {
+  return (THEMES as readonly unknown[]).includes(v);
+}
+
+export function isDisplayStyle(v: unknown): v is DisplayStyle {
+  return (DISPLAY_STYLES as readonly unknown[]).includes(v);
+}
+
+/** يقرأ المظهر المخزَّن مع قيم افتراضية لكلّ ما هو مفقود أو غير صالح. */
+export function readLook(v: unknown): ShopLook {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  return {
+    theme: isTheme(o.theme) ? o.theme : DEFAULT_LOOK.theme,
+    display: isDisplayStyle(o.display) ? o.display : DEFAULT_LOOK.display,
+  };
+}
+
 export type ShopKind = "doctor" | "dentist" | "lab" | "barber" | "other";
 
 export interface Shop {
@@ -114,6 +146,8 @@ export interface Shop {
   createdAt: Date;
   /** ملفّ العيادة الظاهر للمرضى (اختياري) */
   profile: ShopProfile;
+  /** لون التطبيق وتصميم شاشة القاعة */
+  look: ShopLook;
 }
 
 export interface ShopProfile {

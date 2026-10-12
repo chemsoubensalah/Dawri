@@ -373,4 +373,20 @@ describe("الإعدادات", () => {
     expect(s.settings.callGraceMin).toBe(0);
     expect(s.hours["0"]).toEqual([]);
   });
+
+  it("المظهر: لون التطبيق وتصميم الشاشة يُحفظان ويظهران للمرضى", async () => {
+    expect(shop.look).toEqual({ theme: "emerald", display: "night" });
+    await expect(svc.updateSettings(shop, { look: { theme: "pink" } })).rejects.toThrow("invalid_settings");
+    await expect(svc.updateSettings(shop, { look: { display: "neon" } })).rejects.toThrow("invalid_settings");
+    await expect(svc.updateSettings(shop, { look: "blue" })).rejects.toThrow("invalid_settings");
+    const s = await svc.updateSettings(shop, { look: { theme: "blue", display: "light" } });
+    expect(s.look).toEqual({ theme: "blue", display: "light" });
+    // تعديل جزئي يُبقي الباقي
+    const s2 = await svc.updateSettings(s, { look: { display: "color" } });
+    expect(s2.look).toEqual({ theme: "blue", display: "color" });
+    // حفظ إعدادات أخرى لا يمسّ المظهر
+    const s3 = await svc.updateSettings(s2, { settings: { callGraceMin: 3 } });
+    expect(s3.look).toEqual({ theme: "blue", display: "color" });
+    expect((await svc.publicShop(shop.slug)).view.look).toEqual({ theme: "blue", display: "color" });
+  });
 });

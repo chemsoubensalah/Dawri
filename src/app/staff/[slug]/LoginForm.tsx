@@ -4,12 +4,13 @@ import Link from "next/link";
 import { Delete, Lock } from "lucide-react";
 import LangSwitch from "@/components/LangSwitch";
 import { Logo } from "@/components/ui";
-import type { Lang } from "@/lib/domain/types";
+import type { Lang, ThemeKey } from "@/lib/domain/types";
+import { themeVars } from "@/lib/theme";
 import { dirOf, errorText, t } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
 
 /** دخول السكرتيرة: لوحة أرقام كبيرة تناسب اللمس، وتعمل بلوحة المفاتيح أيضاً. */
-export default function LoginForm({ lang, slug, name }: { lang: Lang; slug: string; name: string }) {
+export default function LoginForm({ lang, slug, name, theme = "emerald" }: { lang: Lang; slug: string; name: string; theme?: ThemeKey }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,7 +40,7 @@ export default function LoginForm({ lang, slug, name }: { lang: Lang; slug: stri
   };
 
   return (
-    <div className="bg-mesh flex min-h-dvh flex-col" dir={dirOf(lang)} lang={lang}>
+    <div className="bg-mesh flex min-h-dvh flex-col" dir={dirOf(lang)} lang={lang} style={themeVars(theme)}>
       <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-4">
         <Link href="/"><Logo size={32} /></Link>
         <LangSwitch lang={lang} />

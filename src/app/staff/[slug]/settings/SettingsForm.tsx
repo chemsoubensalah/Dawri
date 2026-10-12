@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BellRing, Building2, CheckCircle2, Clock3, KeyRound, ListChecks, MessageCircle, Plus, Save, Smartphone, Trash2, XCircle } from "lucide-react";
-import type { Interval, Lang, ShopProfile, ShopSettings, WeeklyHours } from "@/lib/domain/types";
+import { BellRing, Building2, Check, CheckCircle2, Clock3, ExternalLink, KeyRound, ListChecks, MessageCircle, Palette, Plus, Save, Smartphone, Trash2, XCircle } from "lucide-react";
+import { DISPLAY_STYLES, THEMES, type DisplayStyle, type Interval, type Lang, type ShopLook, type ShopProfile, type ShopSettings, type ThemeKey, type WeeklyHours } from "@/lib/domain/types";
+import { applyTheme, swatch } from "@/lib/theme";
 import { errorText, t, type DictKey } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
 import type { ChannelStatus } from "@/lib/server/channels";
@@ -18,6 +19,39 @@ const FIELDS: (keyof ShopSettings)[] = [
   "noShowLimit",
   "defaultServiceMin",
 ];
+
+/** مصغّر لتصميم شاشة القاعة (يتبع اللون المختار عبر متغيّرات brand). */
+function DisplayThumb({ style }: { style: DisplayStyle }) {
+  const bg =
+    style === "night"
+      ? "bg-[#061420]"
+      : style === "light"
+        ? "bg-[#eef1f5]"
+        : "bg-[linear-gradient(135deg,var(--color-brand-600),var(--color-brand-900))]";
+  const card = style === "light" ? "bg-white ring-1 ring-slate-200" : style === "night" ? "bg-white/10" : "bg-white/15";
+  const ball =
+    style === "color"
+      ? "bg-white text-brand-700"
+      : "bg-[radial-gradient(circle_at_30%_25%,var(--color-brand-400),var(--color-brand-700)_70%)] text-white";
+  const bar = style === "light" ? "bg-slate-300" : "bg-white/40";
+  return (
+    <div className={`relative aspect-video w-full overflow-hidden rounded-xl p-2 ${bg}`} aria-hidden>
+      <div className="flex items-center justify-between">
+        <span className={`h-1.5 w-10 rounded-full ${bar}`} />
+        <span className={`h-1.5 w-5 rounded-full ${bar}`} />
+      </div>
+      <div className="mt-1.5 grid h-[calc(100%-0.875rem)] grid-cols-[1.5fr_1fr] gap-1.5">
+        <div className={`flex items-center justify-center rounded-lg ${card}`}>
+          <span className={`num flex size-9 items-center justify-center rounded-full text-sm font-bold ${ball}`}>12</span>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <div className={`flex-1 rounded-lg ${card}`} />
+          <div className="flex-1 rounded-lg bg-white" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Section({ id, icon, title, sub, children }: { id: string; icon: React.ReactNode; title: string; sub?: string; children: React.ReactNode }) {
   return (
@@ -43,18 +77,34 @@ export default function SettingsForm({
   lang: Lang;
   slug: string;
   channels: ChannelStatus;
-  initial: { name: string; hours: WeeklyHours; settings: ShopSettings; defaultLang: Lang; profile: ShopProfile };
+  initial: { name: string; hours: WeeklyHours; settings: ShopSettings; defaultLang: Lang; profile: ShopProfile; look: ShopLook };
 }) {
   const [name, setName] = useState(initial.name);
   const [profile, setProfile] = useState<ShopProfile>(initial.profile);
   const [hours, setHours] = useState<WeeklyHours>(initial.hours);
   const [settings, setSettings] = useState(initial.settings);
   const [defaultLang, setDefaultLang] = useState(initial.defaultLang);
+  const [look, setLook] = useState<ShopLook>(initial.look);
+  // آخر لون محفوظ: نعيده إن غادر الطبيب الصفحة دون حفظ
+  const savedTheme = useRef<ThemeKey>(initial.look.theme);
   const [newPin, setNewPin] = useState("");
   const [rotateDoor, setRotateDoor] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const router = useRouter();
+
+  const pickTheme = (theme: ThemeKey) => {
+    setLook((l) => ({ ...l, theme }));
+    const root = document.querySelector<HTMLElement>("[data-theme-root]");
+    if (root) applyTheme(root, theme); // معاينة حيّة في الصفحة كلّها
+  };
+  useEffect(
+    () => () => {
+      const root = document.querySelector<HTMLElement>("[data-theme-root]");
+      if (root) applyTheme(root, savedTheme.current);
+    },
+    [],
+  );
 
   const setDay = (d: string, v: Interval[]) => setHours((h) => ({ ...h, [d]: v }));
   const setP = (k: keyof ShopProfile, v: string) => setProfile((p) => ({ ...p, [k]: v || null }));
@@ -72,9 +122,11 @@ export default function SettingsForm({
         hours,
         settings,
         lang: defaultLang,
+        look,
         newPin: newPin || undefined,
         rotateDoor,
       });
+      savedTheme.current = look.theme;
       setMsg({ ok: true, text: t(lang, "saved") });
       router.refresh(); // يحدّث الاسم في الشريط العلوي
       setNewPin("");
@@ -111,6 +163,7 @@ export default function SettingsForm({
           {(
             [
               ["profile", "se_profile"],
+              ["look", "se_look"],
               ["hours", "hours"],
               ["rules", "se_rules"],
               ["alerts", "se_alerts"],
@@ -166,6 +219,82 @@ export default function SettingsForm({
                 ))}
               </div>
             </div>
+          </div>
+        </Section>
+
+        <Section id="look" icon={<Palette size={20} />} title={t(lang, "se_look")} sub={t(lang, "se_lookSub")}>
+          <div className="label">{t(lang, "se_color")}</div>
+          <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-5 lg:grid-cols-9" role="radiogroup" aria-label={t(lang, "se_color")}>
+            {THEMES.map((th) => {
+              const on = look.theme === th;
+              return (
+                <button
+                  type="button"
+                  key={th}
+                  role="radio"
+                  aria-checked={on}
+                  data-testid={`theme-${th}`}
+                  onClick={() => pickTheme(th)}
+                  className={`flex flex-col items-center gap-1.5 rounded-2xl p-2 text-xs font-semibold transition ${
+                    on ? "bg-slate-50 text-ink ring-2 ring-slate-900/80" : "text-slate-500 hover:bg-slate-50"
+                  }`}
+                >
+                  <span
+                    className="inline-flex size-10 items-center justify-center rounded-full text-white shadow-[inset_0_-4px_10px_rgb(0_0_0/0.18)]"
+                    style={{ background: swatch(th) }}
+                  >
+                    {on && <Check size={20} strokeWidth={3} />}
+                  </span>
+                  {t(lang, `theme_${th}` as DictKey)}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-xs text-slate-500">{t(lang, "se_lookNote")}</p>
+
+          <div className="mt-6 flex flex-wrap items-end justify-between gap-2">
+            <div className="text-sm font-semibold text-slate-600">{t(lang, "se_display")}</div>
+            <a
+              href={`/d/${slug}?style=${look.display}&theme=${look.theme}`}
+              target="_blank"
+              rel="noopener"
+              className="btn-ghost btn-sm text-brand-700"
+            >
+              <ExternalLink size={15} /> {t(lang, "se_preview")}
+            </a>
+          </div>
+          <div className="mt-2 grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label={t(lang, "se_display")}>
+            {DISPLAY_STYLES.map((ds) => {
+              const on = look.display === ds;
+              return (
+                <button
+                  type="button"
+                  key={ds}
+                  role="radio"
+                  aria-checked={on}
+                  data-testid={`display-${ds}`}
+                  onClick={() => setLook((l) => ({ ...l, display: ds }))}
+                  className={`relative rounded-2xl bg-white p-2.5 text-start transition ${
+                    on ? "ring-2 ring-brand-600 shadow-(--shadow-brand)" : "ring-1 ring-slate-200 hover:ring-slate-300"
+                  }`}
+                >
+                  <DisplayThumb style={ds} />
+                  <div className="mt-2.5 flex items-start justify-between gap-2 px-1">
+                    <div>
+                      <div className="font-bold text-ink">{t(lang, `ds_${ds}` as DictKey)}</div>
+                      <div className="text-xs text-slate-500">{t(lang, `ds_${ds}Hint` as DictKey)}</div>
+                    </div>
+                    <span
+                      className={`mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full ${
+                        on ? "bg-brand-600 text-white" : "ring-1 ring-slate-300"
+                      }`}
+                    >
+                      {on && <Check size={13} strokeWidth={3} />}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </Section>
 

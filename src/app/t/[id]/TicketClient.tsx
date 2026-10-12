@@ -45,8 +45,8 @@ function Ring({ ahead, progress }: { ahead: number; progress: number }) {
       />
       <defs>
         <linearGradient id="ring-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#34d399" />
-          <stop offset="1" stopColor="#047857" />
+          <stop offset="0" style={{ stopColor: "var(--color-brand-400)" }} />
+          <stop offset="1" style={{ stopColor: "var(--color-brand-700)" }} />
         </linearGradient>
       </defs>
       <text x="56" y="64" textAnchor="middle" fontSize="28" fontWeight="700" fill="#0b1b2b" className="num">

@@ -29,7 +29,7 @@ export default async function ShopPage({ params, searchParams }: Props) {
   const { shop, view } = await load(slug);
   const lang = await getLang(shop.defaultLang, sp.lang);
   return (
-    <PatientShell lang={lang}>
+    <PatientShell lang={lang} theme={shop.look.theme}>
       <ShopClient lang={lang} initial={view} door={sp.c ?? null} />
     </PatientShell>
   );
