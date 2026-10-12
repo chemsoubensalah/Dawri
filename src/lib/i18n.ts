@@ -440,6 +440,11 @@ const ar = {
   dp_footer: "طابور إلكتروني «دوري» — لا أسماء على الشاشة احتراماً للخصوصية",
   dp_voice: "النداء الصوتي",
   dp_full: "ملء الشاشة",
+  dp_number: "الرقم",
+  dp_upcoming: "الأرقام القادمة",
+  dp_avg: "مدّة الكشف",
+  dp_min: "{n} د",
+  dp_doctor: "الطبيب",
   pq_s1: "امسح الرمز بكاميرا هاتفك",
   pq_s2: "خذ رقمك وانتظر حيث تشاء",
   pq_s3: "تعال حين يصلك «تعال الآن»",
@@ -955,6 +960,11 @@ const fr: Dict = {
   dp_footer: "File d'attente Dawri — aucun nom affiché, par respect de la vie privée",
   dp_voice: "Annonce vocale",
   dp_full: "Plein écran",
+  dp_number: "Numéro",
+  dp_upcoming: "Prochains numéros",
+  dp_avg: "Consultation",
+  dp_min: "{n} min",
+  dp_doctor: "Médecin",
   pq_s1: "Scannez avec l'appareil photo",
   pq_s2: "Prenez votre numéro, attendez où vous voulez",
   pq_s3: "Venez à l'alerte « Venez maintenant »",
@@ -1073,4 +1083,13 @@ export function tn(lang: Lang, key: string, n: number, vars?: Record<string, str
 /** «أمامك 7 أشخاص» بالصيغة الصحيحة. */
 export function aheadText(lang: Lang, n: number): string {
   return n === 0 ? t(lang, "ahead0") : n === 1 ? t(lang, "ahead1") : tn(lang, "aheadN", n);
+}
+
+/** «د. أحمد» / «Dr Ahmed» للأطبّاء — دون تكرار اللقب إن كتبه صاحبه. */
+export function drTitle(lang: Lang, kind: string, name: string | null | undefined): string | null {
+  const n = name?.trim();
+  if (!n) return null;
+  if (kind !== "doctor" && kind !== "dentist") return n;
+  if (/^(د\s*\.|دكتور|الدكتور|الدكتورة|الطبيب|الطبيبة|dr\b|dr\.|docteur|pr\b|pr\.|professeur)/i.test(n)) return n;
+  return lang === "ar" ? `د. ${n}` : `Dr ${n}`;
 }

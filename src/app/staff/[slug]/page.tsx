@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import StaffFrame from "@/components/StaffFrame";
+import { drTitle } from "@/lib/i18n";
 import { getDb } from "@/lib/server/db";
 import { getLang, staffShop } from "@/lib/server/http";
 import * as repo from "@/lib/server/repo";
@@ -20,7 +21,7 @@ export default async function StaffPage({ params }: { params: Promise<{ slug: st
   }
   const lang = await getLang(shop.defaultLang);
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} active="queue">
+    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} active="queue">
       <StaffDashboard lang={lang} slug={shop.slug} initial={await staffState(shop)} />
     </StaffFrame>
   );

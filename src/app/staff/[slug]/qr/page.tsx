@@ -3,7 +3,7 @@ import QRCode from "qrcode";
 import { BellRing, Hourglass, QrCode, Smartphone, UserCheck } from "lucide-react";
 import StaffFrame from "@/components/StaffFrame";
 import { LogoMark } from "@/components/ui";
-import { t, type DictKey } from "@/lib/i18n";
+import { t, type DictKey, drTitle } from "@/lib/i18n";
 import { baseUrl, getLang, staffShop } from "@/lib/server/http";
 import PrintButton from "./PrintButton";
 
@@ -19,7 +19,7 @@ export default async function QrPoster({ params }: { params: Promise<{ slug: str
   const doorUrl = `${base}/s/${shop.slug}?c=${encodeURIComponent(shop.doorCode)}`;
   const shareUrl = `${base}/s/${shop.slug}`;
   const svg = await QRCode.toString(doorUrl, { type: "svg", errorCorrectionLevel: "M", margin: 0, color: { dark: "#0b1b2b", light: "#ffffff" } });
-  const sub = [shop.profile.doctorName, shop.profile.specialty].filter(Boolean).join(" · ");
+  const sub = [drTitle(lang, shop.kind, shop.profile.doctorName), shop.profile.specialty].filter(Boolean).join(" · ");
   const steps: [React.ReactNode, DictKey, DictKey][] = [
     [<QrCode key="1" size={28} />, "pq_s1", "pq_s1"],
     [<Hourglass key="2" size={28} />, "pq_s2", "pq_s2"],
@@ -27,7 +27,7 @@ export default async function QrPoster({ params }: { params: Promise<{ slug: str
   ];
 
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} active="qr">
+    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} active="qr">
       <div className="no-print mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{t(lang, "nav_poster")}</h1>

@@ -23,6 +23,7 @@ export default function StaffFrame({
   lang,
   slug,
   name,
+  doctor,
   active,
   actions,
   children,
@@ -30,6 +31,8 @@ export default function StaffFrame({
   lang: Lang;
   slug: string;
   name: string;
+  /** اسم الطبيب كما يُعرض (بعد drTitle). */
+  doctor?: string | null;
   active: StaffTab;
   actions?: ReactNode;
   children: ReactNode;
@@ -42,7 +45,11 @@ export default function StaffFrame({
             <LogoMark size={34} />
             <span className="min-w-0 leading-tight">
               <span className="block truncate font-bold text-ink">{name}</span>
-              <span className="block text-xs text-slate-500">{t(lang, "nav_space")}</span>
+              {doctor ? (
+                <span className="block truncate text-sm font-semibold text-brand-700">{doctor}</span>
+              ) : (
+                <span className="block text-xs text-slate-500">{t(lang, "nav_space")}</span>
+              )}
             </span>
           </Link>
           <div className="flex shrink-0 items-center gap-2">

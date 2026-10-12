@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { CalendarCheck2, CheckCircle2, CreditCard, Landmark, MessageCircle, ShieldCheck, XCircle } from "lucide-react";
 import StaffFrame from "@/components/StaffFrame";
 import { Chip } from "@/components/ui";
-import { t, tn } from "@/lib/i18n";
+import { t, tn, drTitle } from "@/lib/i18n";
 import { chargilyConfig, manualPayment, plans } from "@/lib/server/billing";
 import { now as clockNow } from "@/lib/server/clock";
 import { getDb } from "@/lib/server/db";
@@ -44,7 +44,7 @@ export default async function BillingPage({
   const ref = `DAWRI-${shop.slug.toUpperCase()}`;
 
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} active="billing">
+    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} active="billing">
       <div className="mx-auto max-w-4xl space-y-5">
         <h1 className="text-2xl font-bold">{t(lang, "nav_billing")}</h1>
 

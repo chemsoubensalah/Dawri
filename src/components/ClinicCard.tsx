@@ -1,6 +1,6 @@
 import { Clock3, MapPin, Phone, Stethoscope } from "lucide-react";
 import type { Lang, ShopKind, ShopProfile } from "@/lib/domain/types";
-import { errorText, t, type DictKey } from "@/lib/i18n";
+import { drTitle, errorText, t, type DictKey } from "@/lib/i18n";
 import { Chip, LiveDot } from "./ui";
 
 /** بطاقة العيادة كما يراها المريض. */
@@ -21,7 +21,8 @@ export default function ClinicCard({
   hoursToday?: [string, string][];
   compact?: boolean;
 }) {
-  const sub = [profile.doctorName, profile.specialty || t(lang, `kind_${kind}` as DictKey)].filter(Boolean).join(" · ");
+  const doctor = drTitle(lang, kind, profile.doctorName);
+  const sub = profile.specialty || t(lang, `kind_${kind}` as DictKey);
   return (
     <section className="card overflow-hidden p-0">
       <div className="flex items-start gap-4 p-5">
@@ -30,6 +31,7 @@ export default function ClinicCard({
         </span>
         <div className="min-w-0 flex-1">
           <h1 className="text-xl leading-snug font-bold text-ink">{name}</h1>
+          {doctor && <p className="mt-0.5 text-lg leading-snug font-bold text-brand-700">{doctor}</p>}
           <p className="truncate text-sm text-slate-500">{sub}</p>
           {blocker !== undefined && (
             <div className="mt-2 flex flex-wrap items-center gap-2">

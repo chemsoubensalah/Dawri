@@ -5,7 +5,7 @@ import BarChart from "@/components/BarChart";
 import StaffFrame from "@/components/StaffFrame";
 import { Stat } from "@/components/ui";
 import { dayKey } from "@/lib/domain/time";
-import { t, tn } from "@/lib/i18n";
+import { t, tn, drTitle } from "@/lib/i18n";
 import { now as clockNow } from "@/lib/server/clock";
 import { getDb } from "@/lib/server/db";
 import { getLang, staffShop } from "@/lib/server/http";
@@ -61,7 +61,7 @@ export default async function StatsPage({
   const min = (n: number | null) => (n === null ? "—" : t(lang, "sp_min", { n }));
 
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} active="stats">
+    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} active="stats">
       <div className="space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold">{t(lang, "nav_stats")}</h1>
