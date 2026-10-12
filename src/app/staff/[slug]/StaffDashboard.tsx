@@ -191,7 +191,9 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
           <ShieldAlert size={20} /> {t(lang, "subscriptionExpired")}
         </a>
       )}
-      <SoundGate lang={lang} />
+      <div className="max-w-xl">
+        <SoundGate lang={lang} />
+      </div>
 
       {newcomer && (
         <button

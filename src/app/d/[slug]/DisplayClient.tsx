@@ -94,7 +94,7 @@ export default function DisplayClient({ lang, initial, qr }: { lang: Lang; initi
       </header>
 
       <div className="relative mx-auto w-full max-w-md px-6 pt-3">
-        <SoundGate lang={lang} />
+        <SoundGate lang={lang} tone="dark" />
       </div>
 
       {/* ——— المحتوى ——— */}

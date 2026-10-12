@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { Volume2 } from "lucide-react";
 import type { Lang } from "@/lib/domain/types";
 import { t } from "@/lib/i18n";
 import { audioReady, isMuted, playSound, setMuted, unlockAudio } from "@/lib/client";
@@ -9,7 +10,16 @@ import { audioReady, isMuted, playSound, setMuted, unlockAudio } from "@/lib/cli
  * هذا المكوّن: يفتح الصوت عند أوّل لمسة في أيّ مكان، ويُظهر زرّاً واضحاً ما دام الصوت مقفلاً،
  * وزرّ كتم/تشغيل اختيارياً (للسكرتيرة).
  */
-export default function SoundGate({ lang, part = "banner" }: { lang: Lang; part?: "banner" | "toggle" }) {
+export default function SoundGate({
+  lang,
+  part = "banner",
+  tone = "light",
+}: {
+  lang: Lang;
+  part?: "banner" | "toggle";
+  /** «dark» لشاشة القاعة. */
+  tone?: "light" | "dark";
+}) {
   const [ready, setReady] = useState(true); // لا نُظهر الزرّ قبل التحقّق (تفادي الوميض)
   const [muted, setMutedState] = useState(false);
 
@@ -33,7 +43,11 @@ export default function SoundGate({ lang, part = "banner" }: { lang: Lang; part?
       {part === "banner" && !ready && !muted && (
         <button
           type="button"
-          className="w-full rounded-2xl bg-amber-100 p-3 text-center font-bold text-amber-900 ring-1 ring-amber-300"
+          className={`group flex w-full animate-fade-up items-center gap-3 rounded-2xl p-2.5 text-start ring-1 transition ${
+            tone === "dark"
+              ? "bg-white/[0.07] ring-white/15 hover:bg-white/10"
+              : "bg-white shadow-[0_6px_20px_-12px_rgb(15_23_42/0.35)] ring-slate-200 hover:ring-brand-300"
+          }`}
           onClick={async () => {
             if (await unlockAudio()) {
               setReady(true);
@@ -42,7 +56,20 @@ export default function SoundGate({ lang, part = "banner" }: { lang: Lang; part?
           }}
           data-testid="sound-gate"
         >
-          🔊 {t(lang, "soundEnable")}
+          <span
+            className={`inline-flex size-10 shrink-0 animate-pulse-ring items-center justify-center rounded-full ${
+              tone === "dark" ? "bg-brand-500/20 text-brand-300" : "bg-brand-50 text-brand-600"
+            }`}
+          >
+            <Volume2 size={20} />
+          </span>
+          <span className="min-w-0 flex-1 leading-tight">
+            <span className={`block font-bold ${tone === "dark" ? "text-white" : "text-ink"}`}>{t(lang, "soundEnable")}</span>
+            <span className={`block truncate text-sm ${tone === "dark" ? "text-slate-400" : "text-slate-500"}`}>{t(lang, "soundHint")}</span>
+          </span>
+          <span className="shrink-0 rounded-full bg-brand-600 px-4 py-2 text-sm font-bold text-white transition group-hover:bg-brand-700">
+            {t(lang, "soundCta")}
+          </span>
         </button>
       )}
       {part === "toggle" && (
