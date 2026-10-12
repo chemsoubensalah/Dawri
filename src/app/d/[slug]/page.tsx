@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
-import { DomainError, isDisplayStyle, isTheme } from "@/lib/domain/types";
+import { DomainError, isDisplayStyle, isHexColor, isTheme } from "@/lib/domain/types";
 import { baseUrl, getLang } from "@/lib/server/http";
 import { publicShop } from "@/lib/server/service";
 import DisplayClient from "./DisplayClient";
@@ -16,11 +16,13 @@ export default async function Display({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const { slug } = await params;
-  // ?style=…&theme=… للمعاينة من الإعدادات قبل الحفظ
+  // ?style=…&theme=…&custom=rrggbb للمعاينة من الإعدادات قبل الحفظ
   const sp = await searchParams;
+  const custom = sp.custom ? `#${sp.custom}` : null;
+  const theme = isTheme(sp.theme) && (sp.theme !== "custom" || isHexColor(custom)) ? sp.theme : null;
   const preview = {
     skin: isDisplayStyle(sp.style) ? sp.style : undefined,
-    theme: isTheme(sp.theme) ? sp.theme : undefined,
+    look: theme ? { theme, custom: isHexColor(custom) ? custom : null } : undefined,
   };
   try {
     const { shop, view } = await publicShop(slug);

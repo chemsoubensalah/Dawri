@@ -375,18 +375,23 @@ describe("الإعدادات", () => {
   });
 
   it("المظهر: لون التطبيق وتصميم الشاشة يُحفظان ويظهران للمرضى", async () => {
-    expect(shop.look).toEqual({ theme: "emerald", display: "night" });
-    await expect(svc.updateSettings(shop, { look: { theme: "pink" } })).rejects.toThrow("invalid_settings");
+    expect(shop.look).toEqual({ theme: "emerald", custom: null, display: "night" });
+    await expect(svc.updateSettings(shop, { look: { theme: "gold-glitter" } })).rejects.toThrow("invalid_settings");
     await expect(svc.updateSettings(shop, { look: { display: "neon" } })).rejects.toThrow("invalid_settings");
     await expect(svc.updateSettings(shop, { look: "blue" })).rejects.toThrow("invalid_settings");
-    const s = await svc.updateSettings(shop, { look: { theme: "blue", display: "light" } });
-    expect(s.look).toEqual({ theme: "blue", display: "light" });
+    // لون خاصّ: يجب أن يكون #rrggbb صالحاً
+    await expect(svc.updateSettings(shop, { look: { theme: "custom" } })).rejects.toThrow("invalid_settings");
+    await expect(svc.updateSettings(shop, { look: { theme: "custom", custom: "red" } })).rejects.toThrow("invalid_settings");
+    const c = await svc.updateSettings(shop, { look: { theme: "custom", custom: "#C0FFEE", display: "board" } });
+    expect(c.look).toEqual({ theme: "custom", custom: "#c0ffee", display: "board" });
+    const s = await svc.updateSettings(c, { look: { theme: "blue", display: "light" } });
+    expect(s.look).toEqual({ theme: "blue", custom: "#c0ffee", display: "light" });
     // تعديل جزئي يُبقي الباقي
-    const s2 = await svc.updateSettings(s, { look: { display: "color" } });
-    expect(s2.look).toEqual({ theme: "blue", display: "color" });
+    const s2 = await svc.updateSettings(s, { look: { display: "kids" } });
+    expect(s2.look).toEqual({ theme: "blue", custom: "#c0ffee", display: "kids" });
     // حفظ إعدادات أخرى لا يمسّ المظهر
     const s3 = await svc.updateSettings(s2, { settings: { callGraceMin: 3 } });
-    expect(s3.look).toEqual({ theme: "blue", display: "color" });
-    expect((await svc.publicShop(shop.slug)).view.look).toEqual({ theme: "blue", display: "color" });
+    expect(s3.look.display).toBe("kids");
+    expect((await svc.publicShop(shop.slug)).view.look).toEqual({ theme: "blue", custom: "#c0ffee", display: "kids" });
   });
 });

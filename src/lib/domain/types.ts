@@ -94,23 +94,50 @@ export const DEFAULT_SETTINGS: ShopSettings = {
 
 export const NO_SHOW_RETENTION_DAYS = 60;
 
-/** ألوان التطبيق التي يختار منها الطبيب (القيم في src/lib/theme.ts). */
-export const THEMES = ["emerald", "teal", "sky", "blue", "indigo", "violet", "rose", "orange", "slate"] as const;
-export type ThemeKey = (typeof THEMES)[number];
+/** ألوان التطبيق الجاهزة (القيم في src/lib/theme.ts)، مرتّبة حسب درجة اللون. */
+export const THEMES = [
+  "emerald",
+  "green",
+  "teal",
+  "cyan",
+  "sky",
+  "blue",
+  "navy",
+  "indigo",
+  "violet",
+  "purple",
+  "fuchsia",
+  "pink",
+  "rose",
+  "red",
+  "orange",
+  "amber",
+  "brown",
+  "slate",
+] as const;
+export type PresetTheme = (typeof THEMES)[number];
+/** «custom» = لون يختاره الطبيب بنفسه (look.custom). */
+export type ThemeKey = PresetTheme | "custom";
 
-/** تصاميم شاشة القاعة. */
-export const DISPLAY_STYLES = ["night", "light", "color"] as const;
+/** تصاميم شاشة القاعة — تخطيطات مختلفة كلّياً (src/app/d/[slug]/layouts). */
+export const DISPLAY_STYLES = ["night", "light", "color", "focus", "board", "led", "elegant", "kids", "portrait"] as const;
 export type DisplayStyle = (typeof DISPLAY_STYLES)[number];
 
 export interface ShopLook {
   theme: ThemeKey;
+  /** لون الطبيب الخاصّ (#rrggbb) — مستعمل حين theme = "custom" */
+  custom: string | null;
   display: DisplayStyle;
 }
 
-export const DEFAULT_LOOK: ShopLook = { theme: "emerald", display: "night" };
+export const DEFAULT_LOOK: ShopLook = { theme: "emerald", custom: null, display: "night" };
 
 export function isTheme(v: unknown): v is ThemeKey {
-  return (THEMES as readonly unknown[]).includes(v);
+  return v === "custom" || (THEMES as readonly unknown[]).includes(v);
+}
+
+export function isHexColor(v: unknown): v is string {
+  return typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v);
 }
 
 export function isDisplayStyle(v: unknown): v is DisplayStyle {
@@ -120,10 +147,10 @@ export function isDisplayStyle(v: unknown): v is DisplayStyle {
 /** يقرأ المظهر المخزَّن مع قيم افتراضية لكلّ ما هو مفقود أو غير صالح. */
 export function readLook(v: unknown): ShopLook {
   const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
-  return {
-    theme: isTheme(o.theme) ? o.theme : DEFAULT_LOOK.theme,
-    display: isDisplayStyle(o.display) ? o.display : DEFAULT_LOOK.display,
-  };
+  const custom = isHexColor(o.custom) ? o.custom.toLowerCase() : null;
+  let theme = isTheme(o.theme) ? o.theme : DEFAULT_LOOK.theme;
+  if (theme === "custom" && !custom) theme = DEFAULT_LOOK.theme;
+  return { theme, custom, display: isDisplayStyle(o.display) ? o.display : DEFAULT_LOOK.display };
 }
 
 export type ShopKind = "doctor" | "dentist" | "lab" | "barber" | "other";

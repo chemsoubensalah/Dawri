@@ -44,7 +44,7 @@ export default async function BillingPage({
   const ref = `DAWRI-${shop.slug.toUpperCase()}`;
 
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} theme={shop.look.theme} active="billing">
+    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="billing">
       <div className="mx-auto max-w-4xl space-y-5">
         <h1 className="text-2xl font-bold">{t(lang, "nav_billing")}</h1>
 

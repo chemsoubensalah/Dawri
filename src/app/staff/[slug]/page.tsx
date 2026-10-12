@@ -17,11 +17,11 @@ export default async function StaffPage({ params }: { params: Promise<{ slug: st
     const exists = await repo.getShopBySlug(await getDb(), slug.toLowerCase());
     if (!exists) notFound();
     const lang = await getLang(exists.defaultLang);
-    return <LoginForm lang={lang} slug={exists.slug} name={exists.name} theme={exists.look.theme} />;
+    return <LoginForm lang={lang} slug={exists.slug} name={exists.name} look={exists.look} />;
   }
   const lang = await getLang(shop.defaultLang);
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} theme={shop.look.theme} active="queue">
+    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="queue">
       <StaffDashboard lang={lang} slug={shop.slug} initial={await staffState(shop)} />
     </StaffFrame>
   );

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import LangSwitch from "./LangSwitch";
 import LogoutButton from "./LogoutButton";
 import { LogoMark } from "./ui";
-import type { Lang, ThemeKey } from "@/lib/domain/types";
+import { DEFAULT_LOOK, type Lang, type ShopLook } from "@/lib/domain/types";
 import { themeVars } from "@/lib/theme";
 import { dirOf, t, type DictKey } from "@/lib/i18n";
 
@@ -25,7 +25,7 @@ export default function StaffFrame({
   slug,
   name,
   doctor,
-  theme = "emerald",
+  look = DEFAULT_LOOK,
   active,
   actions,
   children,
@@ -35,13 +35,13 @@ export default function StaffFrame({
   name: string;
   /** اسم الطبيب كما يُعرض (بعد drTitle). */
   doctor?: string | null;
-  theme?: ThemeKey;
+  look?: ShopLook;
   active: StaffTab;
   actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-dvh bg-[#f3f5f8]" dir={dirOf(lang)} lang={lang} style={themeVars(theme)} data-theme-root>
+    <div className="min-h-dvh bg-[#f3f5f8]" dir={dirOf(lang)} lang={lang} style={themeVars(look)} data-theme-root>
       <header className="no-print sticky top-0 z-30 border-b border-slate-200/70 bg-white/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-3 pt-3 sm:px-5">
           <Link href={`/staff/${slug}`} className="flex min-w-0 items-center gap-2.5">

@@ -13,7 +13,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
   if (!shop) redirect(`/staff/${slug}`);
   const lang = await getLang(shop.defaultLang);
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} theme={shop.look.theme} active="settings">
+    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="settings">
       <SettingsForm
         lang={lang}
         slug={shop.slug}

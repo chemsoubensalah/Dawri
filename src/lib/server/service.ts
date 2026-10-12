@@ -26,6 +26,7 @@ import {
   DEFAULT_SETTINGS,
   DomainError,
   isDisplayStyle,
+  isHexColor,
   isTheme,
   NO_SHOW_RETENTION_DAYS,
   type Action,
@@ -905,10 +906,15 @@ export async function updateSettings(
       if (!isTheme(o.theme)) throw new DomainError("invalid_settings");
       look.theme = o.theme;
     }
+    if (o.custom !== undefined) {
+      if (o.custom !== null && !isHexColor(o.custom)) throw new DomainError("invalid_settings");
+      look.custom = o.custom === null ? null : o.custom.toLowerCase();
+    }
     if (o.display !== undefined) {
       if (!isDisplayStyle(o.display)) throw new DomainError("invalid_settings");
       look.display = o.display;
     }
+    if (look.theme === "custom" && !look.custom) throw new DomainError("invalid_settings");
     patch.look = look;
   }
   await repo.updateShop(db, shop.id, patch);

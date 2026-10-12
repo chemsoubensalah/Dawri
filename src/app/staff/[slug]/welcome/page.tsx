@@ -27,7 +27,7 @@ export default async function Welcome({ params }: { params: Promise<{ slug: stri
   ];
 
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} theme={shop.look.theme} active="welcome">
+    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="welcome">
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <section className="space-y-4">
           <div className="card flex items-center gap-4 bg-gradient-to-br from-brand-600 to-brand-800 text-white ring-0">
