@@ -157,7 +157,14 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
         <section className="card text-center">
           <Hourglass size={36} className="mx-auto text-amber-500" />
           <p className="mt-2 text-lg font-bold">{errorText(lang, view.blocker)}</p>
-          <p className="mt-1 text-sm text-slate-600">{t(lang, "sp_comeBack")}</p>
+          {(view.blocker === "on_break" || view.blocker === "not_open_yet") && view.resumesAt ? (
+            <p className="mx-auto mt-3 inline-flex items-center gap-2 rounded-2xl bg-amber-50 px-4 py-2.5 font-semibold text-amber-900 ring-1 ring-amber-200" data-testid="resumes-at">
+              {t(lang, "sp_resumesAt")}
+              <b className="num text-xl" dir="ltr">{view.resumesAt}</b>
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-slate-600">{t(lang, "sp_comeBack")}</p>
+          )}
           {/* من أخذ رقماً اليوم ثمّ أُغلق الطابور يستطيع استرجاع تذكرته */}
           <button type="button" className="mt-3 text-sm font-semibold text-brand-700 hover:underline" onClick={() => setRecover(true)}>
             {t(lang, "sp_haveTicket")}
@@ -305,7 +312,13 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
             </form>
           )}
           <p className="mt-5 flex items-start gap-2 text-xs leading-relaxed text-slate-500">
-            <ShieldCheck size={16} className="mt-px shrink-0 text-brand-600" /> {t(lang, "privacy")}
+            <ShieldCheck size={16} className="mt-px shrink-0 text-brand-600" />
+            <span>
+              {t(lang, "privacy")}{" "}
+              <a href="/privacy" target="_blank" className="font-semibold text-brand-700 underline-offset-2 hover:underline">
+                {t(lang, "lg_privacy")}
+              </a>
+            </span>
           </p>
         </section>
       )}

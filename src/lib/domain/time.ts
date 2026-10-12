@@ -67,6 +67,25 @@ export function isWithinHours(hours: WeeklyHours, now: Date): boolean {
   });
 }
 
+/**
+ * خارج الساعات الآن: متى يُفتح أخذ الأرقام اليوم؟
+ * afterBreak = كانت هناك فترة قبلها اليوم (استراحة) وليس افتتاح اليوم.
+ */
+export function nextOpeningToday(hours: WeeklyHours, now: Date): { at: string; afterBreak: boolean } | null {
+  const t = localTime(now);
+  const intervals: Interval[] = hours[String(t.weekday)] ?? [];
+  let next: Interval | null = null;
+  let afterBreak = false;
+  for (const iv of intervals) {
+    const a = parseHHMM(iv[0])!;
+    const b = parseHHMM(iv[1])!;
+    if (t.minutes >= a && t.minutes < b) return null; // مفتوح الآن
+    if (b <= t.minutes) afterBreak = true;
+    if (a > t.minutes && (!next || a < parseHHMM(next[0])!)) next = iv;
+  }
+  return next ? { at: next[0], afterBreak } : null;
+}
+
 /** السبت–الخميس 06:00–16:00، الجمعة مغلق. */
 export const DEFAULT_HOURS: WeeklyHours = {
   "6": [["06:00", "16:00"]],

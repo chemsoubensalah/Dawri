@@ -7,7 +7,7 @@
  */
 import crypto from "node:crypto";
 import { DomainError, type Lang, type Shop } from "../domain/types";
-import { priceNumber } from "../pricing";
+import { priceNumber, yearPriceNumber } from "../pricing";
 import { now as clockNow } from "./clock";
 import { getDb } from "./db";
 import * as repo from "./repo";
@@ -20,12 +20,11 @@ export function chargilyConfig() {
   return { secret, base: base.replace(/\/$/, ""), enabled: Boolean(secret), test: secret.startsWith("test_") };
 }
 
-/** الخطط: شهري، أو سنوي بسعر 10 أشهر (شهران مجّاناً). */
+/** الخطط: شهري، أو سنوي بسعر مخفّض. */
 export function plans() {
-  const month = priceNumber();
   return [
-    { months: 1, amount: month },
-    { months: 12, amount: month * 10 },
+    { months: 1, amount: priceNumber() },
+    { months: 12, amount: yearPriceNumber() },
   ];
 }
 

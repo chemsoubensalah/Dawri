@@ -1,12 +1,29 @@
-/** سعر الاشتراك الشهري المعروض (بالدينار). يُضبط بالمتغيّر NEXT_PUBLIC_PRICE_DZD. */
-export function priceDzd(): string {
-  const raw = Number(process.env.NEXT_PUBLIC_PRICE_DZD ?? 2500);
-  const n = Number.isFinite(raw) && raw > 0 ? Math.round(raw) : 2500;
-  // 2 500 دج — مسافة رقيقة بين الآلاف
-  return `${n.toLocaleString("fr-FR").replace(/[\u202f\u00a0]/g, " ")} DA`;
+/**
+ * الأسعار المعروضة (بالدينار). شهري: NEXT_PUBLIC_PRICE_DZD (افتراضياً 1000)،
+ * سنوي: NEXT_PUBLIC_PRICE_YEAR_DZD (افتراضياً 9000 — أقلّ من 12 شهراً، وأقلّ من المنافسين).
+ */
+function envPrice(v: string | undefined, fallback: number): number {
+  const n = Number(v ?? fallback);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : fallback;
 }
 
 export function priceNumber(): number {
-  const raw = Number(process.env.NEXT_PUBLIC_PRICE_DZD ?? 2500);
-  return Number.isFinite(raw) && raw > 0 ? Math.round(raw) : 2500;
+  return envPrice(process.env.NEXT_PUBLIC_PRICE_DZD, 1000);
+}
+
+export function yearPriceNumber(): number {
+  return envPrice(process.env.NEXT_PUBLIC_PRICE_YEAR_DZD, 9000);
+}
+
+/** «1 000 DA» — مسافة بين الآلاف */
+export function formatDzd(n: number): string {
+  return `${n.toLocaleString("fr-FR").replace(/[  ]/g, " ")} DA`;
+}
+
+export function priceDzd(): string {
+  return formatDzd(priceNumber());
+}
+
+export function yearPriceDzd(): string {
+  return formatDzd(yearPriceNumber());
 }

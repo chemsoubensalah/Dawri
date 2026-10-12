@@ -19,6 +19,7 @@ const FIELDS: (keyof ShopSettings)[] = [
   "lateWindowMin",
   "noShowLimit",
   "defaultServiceMin",
+  "dailyLimit",
 ];
 
 function Section({ id, icon, title, sub, children }: { id: string; icon: React.ReactNode; title: string; sub?: string; children: React.ReactNode }) {

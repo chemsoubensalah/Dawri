@@ -80,6 +80,8 @@ export interface ShopSettings {
   noShowLimit: number;
   /** مدّة الزبون الافتراضية قبل أن تتوفّر بيانات اليوم. */
   defaultServiceMin: number;
+  /** أقصى عدد تذاكر في اليوم (0 = بلا حدّ). السكرتيرة تستطيع الإضافة يدوياً بعده. */
+  dailyLimit: number;
 }
 
 export const DEFAULT_SETTINGS: ShopSettings = {
@@ -90,6 +92,7 @@ export const DEFAULT_SETTINGS: ShopSettings = {
   lateWindowMin: 15,
   noShowLimit: 2,
   defaultServiceMin: 10,
+  dailyLimit: 0,
 };
 
 export const NO_SHOW_RETENTION_DAYS = 60;

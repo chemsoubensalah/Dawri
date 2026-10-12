@@ -17,7 +17,8 @@ let checkoutSeq = 0;
 beforeAll(async () => {
   delete process.env.DATABASE_URL;
   process.env.CHARGILY_SECRET_KEY = "test_sk_secret123";
-  process.env.NEXT_PUBLIC_PRICE_DZD = "2500";
+  process.env.NEXT_PUBLIC_PRICE_DZD = "1000";
+  process.env.NEXT_PUBLIC_PRICE_YEAR_DZD = "9000";
   db = await createPgliteDb();
   await migrate(db);
   setDb(db);
@@ -46,14 +47,14 @@ beforeEach(async () => {
 });
 
 const sign = (raw: string) => crypto.createHmac("sha256", "test_sk_secret123").update(raw).digest("hex");
-const paidEvent = (id: string, amount = 2500) =>
+const paidEvent = (id: string, amount = 1000) =>
   JSON.stringify({ id: `evt_${id}`, entity: "event", livemode: "false", type: "checkout.paid", data: { id, entity: "checkout", amount, status: "paid", currency: "dzd" } });
 
 describe("Chargily", () => {
-  it("السنوي بسعر 10 أشهر", () => {
+  it("السنوي بسعر مخفّض", () => {
     expect(plans()).toEqual([
-      { months: 1, amount: 2500 },
-      { months: 12, amount: 25000 },
+      { months: 1, amount: 1000 },
+      { months: 12, amount: 9000 },
     ]);
   });
 
@@ -62,14 +63,14 @@ describe("Chargily", () => {
     expect(r.url).toMatch(/^https:\/\/pay\.chargily\.dz\//);
     expect(requests[0].url).toBe("https://pay.chargily.net/test/api/v2/checkouts");
     expect(requests[0].body).toMatchObject({
-      amount: 2500,
+      amount: 1000,
       currency: "dzd",
       locale: "ar",
       chargily_pay_fees_allocation: "merchant",
       webhook_endpoint: "https://dawri.example/api/billing/chargily",
     });
     const payments = await repo.listPayments(db, shop.id);
-    expect(payments[0]).toMatchObject({ status: "pending", months: 1, amount: 2500 });
+    expect(payments[0]).toMatchObject({ status: "pending", months: 1, amount: 1000 });
   });
 
   it("checkout.paid: يمدّد الاشتراك بعد نهاية التجربة، مرّة واحدة فقط", async () => {

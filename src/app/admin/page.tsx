@@ -4,7 +4,7 @@ import { adminEnabled, isAdmin } from "@/lib/server/admin";
 import { now as clockNow } from "@/lib/server/clock";
 import { getDb } from "@/lib/server/db";
 import * as repo from "@/lib/server/repo";
-import { priceNumber } from "@/lib/pricing";
+import { priceNumber, yearPriceNumber } from "@/lib/pricing";
 import AdminLogin, { ExtendForm, ResetPinButton } from "./AdminClient";
 
 export const metadata = { title: "Admin", robots: { index: false } };
@@ -75,7 +75,7 @@ export default async function AdminPage() {
                     </td>
                     <td className="num p-3">{s.tickets30d}</td>
                     <td className="p-3">
-                      <ExtendForm shopId={s.id} price={priceNumber()} />
+                      <ExtendForm shopId={s.id} price={priceNumber()} yearPrice={yearPriceNumber()} />
                     </td>
                   </tr>
                 );

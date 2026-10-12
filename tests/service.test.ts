@@ -472,3 +472,49 @@ describe("الإعدادات", () => {
     expect((await svc.publicShop(shop.slug)).view.look).toEqual({ theme: "blue", custom: "#c0ffee", display: "kids" });
   });
 });
+
+describe("الاستراحات والحدّ اليومي", () => {
+  const at = (hhmm: string) => (clock = new Date(`2026-10-11T${hhmm}:00+01:00`)); // الأحد بتوقيت الجزائر
+
+  it("استراحة بين فترتين: «الطبيب في استراحة» + وقت الاستئناف، ثمّ يعود أخذ الأرقام", async () => {
+    shop = await svc.updateSettings(shop, { hours: { "0": [["08:00", "12:00"], ["14:00", "18:00"]] } });
+    at("07:30");
+    let v = (await svc.publicShop(shop.slug)).view;
+    expect(v.blocker).toBe("not_open_yet");
+    expect(v.resumesAt).toBe("08:00");
+    at("12:30");
+    v = (await svc.publicShop(shop.slug)).view;
+    expect(v.blocker).toBe("on_break");
+    expect(v.resumesAt).toBe("14:00");
+    await expect(svc.requestCode(shop.slug, { name: "علي", phone: newPhone() })).rejects.toThrow("on_break");
+    at("14:00");
+    v = (await svc.publicShop(shop.slug)).view;
+    expect(v.blocker).toBeNull();
+    await take("علي");
+    at("19:00");
+    v = (await svc.publicShop(shop.slug)).view;
+    expect(v.blocker).toBe("outside_hours");
+    expect(v.resumesAt).toBeNull();
+  });
+
+  it("الحدّ اليومي: «اكتملت التذاكر» للمرضى، والسكرتيرة تستطيع الإضافة يدوياً", async () => {
+    shop = await svc.updateSettings(shop, { settings: { dailyLimit: 2 } });
+    expect(shop.settings.dailyLimit).toBe(2);
+    await take("أمين");
+    await take("بشرى");
+    expect((await svc.publicShop(shop.slug)).view.blocker).toBe("day_full");
+    await expect(svc.requestCode(shop.slug, { name: "جميلة", phone: newPhone() })).rejects.toThrow("day_full");
+    await act({ action: "add", name: "الحاج" });
+    expect((await state()).waiting.length).toBe(3);
+    await expect(svc.updateSettings(shop, { settings: { dailyLimit: 9999 } })).rejects.toThrow("invalid_settings");
+  });
+
+  it("بعد 30 يوماً يُمحى اسم المريض وهاتفه وتبقى التذكرة للإحصاءات", async () => {
+    const { ticketId } = await take("سارة", "0550123499");
+    advance(31 * 24 * 60);
+    await svc.runCron();
+    const tk = await repo.getTicket(db, ticketId);
+    expect(tk!.name).toBe("—");
+    expect(tk!.phone).toBeNull();
+  });
+});

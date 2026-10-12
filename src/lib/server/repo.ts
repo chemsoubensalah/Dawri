@@ -320,10 +320,20 @@ export async function insertNoShow(q: Q, shopId: string, phone: string, ticketId
   ]);
 }
 
-export async function purgeOld(q: Q, noShowsBefore: Date, codesBefore: Date) {
+export async function purgeOld(q: Q, noShowsBefore: Date, codesBefore: Date, ticketsBefore?: Date) {
   const a = await q.query("delete from no_shows where created_at < $1 returning id", [noShowsBefore]);
   const b = await q.query("delete from phone_codes where created_at < $1 returning id", [codesBefore]);
-  return { noShows: a.length, codes: b.length };
+  let anonymized = 0;
+  if (ticketsBefore) {
+    // التذاكر القديمة: نُبقي الأرقام للإحصاءات ونمحو الاسم والهاتف
+    await q.query("delete from push_subscriptions where ticket_id in (select id from tickets where created_at < $1)", [ticketsBefore]);
+    const c = await q.query(
+      "update tickets set name = '—', phone = null where created_at < $1 and (phone is not null or name <> '—') returning id",
+      [ticketsBefore],
+    );
+    anonymized = c.length;
+  }
+  return { noShows: a.length, codes: b.length, anonymized };
 }
 
 // ——— رموز التحقّق ———

@@ -146,6 +146,12 @@ export default function NewShopForm({ lang, needsCode }: { lang: Lang; needsCode
       {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
       <button className="btn-primary w-full text-lg" disabled={busy}>{busy ? "…" : t(lang, "nw_create")}</button>
       <p className="text-center text-xs text-slate-500">{t(lang, "nw_trialNote")}</p>
+      <p className="text-center text-xs text-slate-500">
+        {t(lang, "nw_agree")}{" "}
+        <a href="/terms" target="_blank" className="font-semibold text-brand-700 hover:underline">{t(lang, "lg_terms")}</a>
+        {" · "}
+        <a href="/privacy" target="_blank" className="font-semibold text-brand-700 hover:underline">{t(lang, "lg_privacy")}</a>
+      </p>
     </form>
   );
 }

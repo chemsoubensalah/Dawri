@@ -24,7 +24,7 @@ import LangSwitch from "@/components/LangSwitch";
 import { Chip, IconBubble, Logo, SectionTitle } from "@/components/ui";
 import { t, type DictKey } from "@/lib/i18n";
 import { getLang } from "@/lib/server/http";
-import { priceDzd } from "@/lib/pricing";
+import { priceDzd, priceNumber, yearPriceDzd, yearPriceNumber } from "@/lib/pricing";
 import type { Lang } from "@/lib/domain/types";
 
 function PhoneMock({ lang }: { lang: Lang }) {
@@ -102,6 +102,8 @@ export default async function Home() {
   const Arrow = lang === "ar" ? ArrowLeft : ArrowRight;
   const showDemo = !process.env.DATABASE_URL;
   const price = priceDzd();
+  const yearPrice = yearPriceDzd();
+  const savePct = Math.max(0, Math.round((1 - yearPriceNumber() / (priceNumber() * 12)) * 100));
 
   return (
     <div className="bg-mesh min-h-dvh">
@@ -247,7 +249,12 @@ export default async function Home() {
                   <span className="num text-5xl font-bold tracking-tight" dir="ltr">{price}</span>
                   <span className="mb-1.5 text-slate-500">{t(lang, "l_perMonth")}</span>
                 </div>
-                <p className="mt-1 text-sm text-slate-500">{t(lang, "l_noCommission")}</p>
+                <p className="mt-2 rounded-xl bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-800">
+                  {t(lang, "l_orYear")}
+                  <span className="num" dir="ltr">{yearPrice}</span> {t(lang, "l_perYear")}
+                  {savePct > 0 && <span className="num ms-1.5 inline-block rounded-full bg-brand-600 px-2 py-0.5 text-xs text-white" dir="ltr">−{savePct}%</span>}
+                </p>
+                <p className="mt-2 text-sm text-slate-500">{t(lang, "l_noCommission")}</p>
                 <ul className="mt-6 space-y-2.5">
                   {PLAN.map((k) => (
                     <li key={k} className="flex items-center gap-2.5 text-slate-700">
@@ -294,7 +301,9 @@ export default async function Home() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 text-sm text-slate-500 sm:flex-row">
           <Logo size={28} sub={false} />
           <p>{t(lang, "privacy")}</p>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap justify-center gap-4">
+            <Link href="/privacy" className="hover:text-ink">{t(lang, "lg_privacy")}</Link>
+            <Link href="/terms" className="hover:text-ink">{t(lang, "lg_terms")}</Link>
             <Link href="/login" className="hover:text-ink">{t(lang, "l_login")}</Link>
             <Link href="/new" className="hover:text-ink">{t(lang, "l_startFree")}</Link>
           </div>

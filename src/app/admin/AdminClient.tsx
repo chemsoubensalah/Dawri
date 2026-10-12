@@ -28,7 +28,7 @@ export default function AdminLogin() {
   );
 }
 
-export function ExtendForm({ shopId, price }: { shopId: string; price: number }) {
+export function ExtendForm({ shopId, price, yearPrice }: { shopId: string; price: number; yearPrice: number }) {
   const [months, setMonths] = useState(1);
   const [amount, setAmount] = useState(price);
   const [note, setNote] = useState("");
@@ -47,7 +47,7 @@ export function ExtendForm({ shopId, price }: { shopId: string; price: number })
         }
       }}
     >
-      <select className="rounded-lg border border-slate-200 px-2 py-1" value={months} onChange={(e) => { const m = Number(e.target.value); setMonths(m); setAmount(m === 12 ? price * 10 : price * m); }}>
+      <select className="rounded-lg border border-slate-200 px-2 py-1" value={months} onChange={(e) => { const m = Number(e.target.value); setMonths(m); setAmount(m === 12 ? yearPrice : price * m); }}>
         {[1, 3, 6, 12].map((m) => (
           <option key={m} value={m}>+{m} شهر</option>
         ))}

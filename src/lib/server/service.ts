@@ -3,7 +3,7 @@
  * كلّ تغيير في طابور يوم ما يجري داخل معاملة تقفل صفّ ذلك اليوم.
  */
 import crypto from "node:crypto";
-import { dayKey, isValidHours, isWithinHours, localTime, minutesBetween, DEFAULT_HOURS } from "../domain/time";
+import { dayKey, isValidHours, isWithinHours, localTime, minutesBetween, nextOpeningToday, DEFAULT_HOURS } from "../domain/time";
 import { formatPhone, normalizePhone } from "../domain/phone";
 import {
   averageServiceMinutes,
@@ -60,6 +60,8 @@ import {
 } from "./whatsapp";
 
 const DAY_MS = 86_400_000;
+/** مدّة حفظ اسم المريض وهاتفه في التذاكر (ثمّ تُجهَّل، وتبقى الأعداد للإحصاءات). */
+export const TICKET_RETENTION_DAYS = 30;
 
 // ————————————————————————— أدوات مشتركة —————————————————————————
 
@@ -99,10 +101,15 @@ function langOf(v: unknown, fallback: Lang): Lang {
 }
 
 /** سبب رفض أخذ رقم الآن، أو null إن كان مسموحاً. */
-function ticketBlocker(shop: Shop, closed: boolean, now: Date): string | null {
+/** لماذا لا يستطيع المريض أخذ رقم الآن؟ (issued = عدد الأرقام الموزّعة اليوم) */
+function ticketBlocker(shop: Shop, closed: boolean, now: Date, issued: number): string | null {
   if (!isSubscriptionActive(shop, now)) return "subscription";
   if (closed) return "queue_closed";
-  if (!isWithinHours(shop.hours, now)) return "outside_hours";
+  if (!isWithinHours(shop.hours, now)) {
+    const next = nextOpeningToday(shop.hours, now);
+    return next ? (next.afterBreak ? "on_break" : "not_open_yet") : "outside_hours";
+  }
+  if (shop.settings.dailyLimit > 0 && issued >= shop.settings.dailyLimit) return "day_full";
   return null;
 }
 
@@ -287,7 +294,9 @@ export async function publicShop(slug: string) {
       profile: shop.profile,
       look: shop.look,
       waitNewMin,
-      blocker: ticketBlocker(shop, closed, now),
+      blocker: ticketBlocker(shop, closed, now, tickets.length),
+      /** وقت استئناف أخذ الأرقام اليوم (استراحة أو قبل الافتتاح) */
+      resumesAt: nextOpeningToday(shop.hours, now)?.at ?? null,
       hoursToday: shop.hours[String(lt.weekday)] ?? [],
       currentNumber: cur?.number ?? null,
       waiting,
@@ -317,7 +326,7 @@ export async function requestCode(slug: string, body: { name?: unknown; phone?: 
   // من لديه تذكرة اليوم يستطيع استرجاعها بالرمز حتى خارج الساعات
   const existing = await repo.findTicketByPhone(db, shop.id, dayKey(now), phone);
   if (!existing) {
-    const blocker = ticketBlocker(shop, qd.closed, now);
+    const blocker = ticketBlocker(shop, qd.closed, now, qd.lastNumber);
     if (blocker) throw new DomainError(blocker, 409);
   }
   if (!phoneVerificationOn()) return { sent: false, verify: false, devCode: undefined as string | undefined };
@@ -391,7 +400,7 @@ export async function issueTicket(
         o.atDoor && ["waiting", "called", "deferred"].includes(existing.status) ? safeCheckIn(existing, now, shop) : [];
       return { actions, result: { ticketId: existing.id, existing: true } };
     }
-    const blocker = ticketBlocker(shop, closed, now);
+    const blocker = ticketBlocker(shop, closed, now, tickets.length);
     if (blocker) throw new DomainError(blocker, 409);
     const since = new Date(now.getTime() - NO_SHOW_RETENTION_DAYS * DAY_MS);
     const noShows = await repo.countNoShows(q, shop.id, o.phone, since);
@@ -434,7 +443,7 @@ export async function startWaVerification(
   const qd = await repo.getDay(db, shop.id, dayKey(now));
   const existing = await repo.findTicketByPhone(db, shop.id, dayKey(now), phone);
   if (!existing) {
-    const blocker = ticketBlocker(shop, qd.closed, now);
+    const blocker = ticketBlocker(shop, qd.closed, now, qd.lastNumber);
     if (blocker) throw new DomainError(blocker, 409);
   }
   if ((await repo.countRecentWaVerifications(db, shop.id, phone, new Date(now.getTime() - 30 * 60000))) >= 5) {
@@ -739,7 +748,7 @@ export async function staffState(shop: Shop) {
       hasEmail: Boolean(shop.ownerEmail),
     },
     closed,
-    blocker: ticketBlocker(shop, closed, now),
+    blocker: ticketBlocker(shop, closed, now, tickets.length),
     hoursToday: shop.hours[String(lt.weekday)] ?? [],
     current: cur
       ? { ...row(cur), minutes: cur.calledAt ? Math.floor(minutesBetween(cur.calledAt, now)) : 0 }
@@ -858,6 +867,7 @@ const SETTING_LIMITS: Record<keyof ShopSettings, [number, number]> = {
   lateWindowMin: [5, 120],
   noShowLimit: [1, 10],
   defaultServiceMin: [1, 120],
+  dailyLimit: [0, 500],
 };
 
 export async function updateSettings(
@@ -1017,6 +1027,7 @@ export async function runCron() {
     db,
     new Date(now.getTime() - NO_SHOW_RETENTION_DAYS * DAY_MS), // سجلّ الغياب يُمحى بعد شهرين
     new Date(now.getTime() - DAY_MS),
+    new Date(now.getTime() - TICKET_RETENTION_DAYS * DAY_MS), // الاسم والهاتف يُمحيان بعد 30 يوماً
   );
   await repo.purgeWa(db, new Date(now.getTime() - 2 * DAY_MS));
   // صفحات دفع Chargily تنتهي بعد 30 دقيقة: ما بقي معلّقاً بعد ساعة = لم يكتمل
