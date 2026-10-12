@@ -1,6 +1,11 @@
+import * as appointments from "./i18n-parts/appointments";
+import * as clinics from "./i18n-parts/clinics";
+import * as growth from "./i18n-parts/growth";
+import * as reviews from "./i18n-parts/reviews";
+import * as sms from "./i18n-parts/sms";
 import type { Lang } from "./domain/types";
 
-const ar = {
+const arCore = {
   appName: "دوري",
   tagline: "خذ رقمك من هاتفك، وتعال حين يقترب دورك.",
   langSwitch: "Français",
@@ -622,10 +627,20 @@ const ar = {
   sp_haveTicket: "لديّ رقم اليوم — استرجعه",
 };
 
+/** القاموس = النصوص الأساسية + نصوص كلّ ميزة (src/lib/i18n-parts). */
+const ar = {
+  ...arCore,
+  ...appointments.ar,
+  ...sms.ar,
+  ...reviews.ar,
+  ...clinics.ar,
+  ...growth.ar,
+};
+
 export type Dict = typeof ar;
 export type DictKey = keyof Dict;
 
-const fr: Dict = {
+const frCore: typeof arCore = {
   appName: "Dawri",
   tagline: "Prenez votre numéro sur votre téléphone, venez quand votre tour approche.",
   langSwitch: "العربية",
@@ -1235,6 +1250,15 @@ const fr: Dict = {
   a11y_close: "Fermer",
   a11y_backspace: "Effacer un chiffre",
   sp_haveTicket: "J'ai déjà un numéro aujourd'hui",
+};
+
+const fr: Dict = {
+  ...frCore,
+  ...appointments.fr,
+  ...sms.fr,
+  ...reviews.fr,
+  ...clinics.fr,
+  ...growth.fr,
 };
 
 export const dicts: Record<Lang, Dict> = { ar, fr };
