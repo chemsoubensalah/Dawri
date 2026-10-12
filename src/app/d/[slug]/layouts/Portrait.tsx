@@ -110,24 +110,39 @@ function NowCard({ lang, v }: Pick<LayoutProps, "lang" | "v">) {
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <div
-        className="flex min-h-0 flex-1 flex-col items-center justify-center gap-[1.5vh] rounded-t-[2.25rem] bg-white px-6 pt-[clamp(1rem,3vh,2.5rem)] pb-[clamp(0.5rem,1.5vh,1.25rem)] text-center"
+        className="flex min-h-0 flex-1 flex-col items-center justify-center gap-[0.5vh] rounded-t-[2.25rem] bg-white px-6 pt-[clamp(0.75rem,2vh,1.75rem)] pb-[clamp(0.5rem,1.5vh,1.25rem)] text-center"
         style={edgeNotch("bottom", r)}
       >
         <div className="inline-flex items-center gap-2.5 rounded-full bg-brand-50 px-[1.1em] py-[0.35em] text-[clamp(1rem,min(1.7vw,2.8vh),1.9rem)] leading-normal font-bold text-brand-800 ring-1 ring-brand-100">
           <span className="relative flex size-[0.55em]">
-            <span className="absolute inline-flex size-full rounded-full bg-brand-600 opacity-60 motion-safe:animate-ping" />
-            <span className="relative inline-flex size-full rounded-full bg-brand-600" />
+            {n !== null ? (
+              <>
+                <span className="absolute inline-flex size-full rounded-full bg-brand-600 opacity-60 motion-safe:animate-ping" />
+                <span className="relative inline-flex size-full rounded-full bg-brand-600" />
+              </>
+            ) : (
+              <span className="relative inline-flex size-full rounded-full bg-slate-300" />
+            )}
           </span>
           {t(lang, "displayNow")}
         </div>
-        <div
-          key={n ?? "none"}
-          data-testid="display-number"
-          className="num text-[min(40vw,20vh)] leading-[0.95] font-bold tracking-tight text-brand-700 motion-safe:animate-pop lg:landscape:text-[min(36vh,21vw)]"
-          dir="ltr"
-        >
-          {n ?? "—"}
-        </div>
+        {n !== null ? (
+          <div
+            key={n}
+            data-testid="display-number"
+            className="num text-[min(40vw,19vh)] leading-[0.95] font-bold tracking-tight text-brand-700 motion-safe:animate-pop lg:landscape:text-[min(39vh,24vw)]"
+            dir="ltr"
+          >
+            {n}
+          </div>
+        ) : (
+          /* لا رقم بعد: تذكرة باهتة وسطر هادئ بدل «—» عملاقة تبدو كشريط معطوب */
+          <div data-testid="display-number" className="flex flex-col items-center gap-[1.5vh] py-[1vh]">
+            <span className="sr-only">—</span>
+            <Ticket aria-hidden className="size-[min(18vh,12vw)] text-brand-200" strokeWidth={1.5} />
+            <span className="text-[clamp(1.2rem,min(3vw,3.2vh),2.6rem)] leading-normal font-bold text-slate-400">{L(lang, "idle")}</span>
+          </div>
+        )}
       </div>
       <div
         className="flex items-center justify-center gap-3 rounded-b-[2.25rem] border-t-2 border-dashed border-slate-300 bg-white px-6 py-[clamp(0.8rem,2.4vh,1.8rem)] text-center"
@@ -147,7 +162,7 @@ function Upcoming({ lang, v }: Pick<LayoutProps, "lang" | "v">) {
   const rtl = lang === "ar";
   const labels = [t(lang, "db_upNext"), L(lang, "then"), L(lang, "after")];
   const r = "clamp(0.55rem,1.2vh,0.9rem)";
-  const row = "[--stub:clamp(5.5rem,24vw,16rem)] lg:landscape:[--stub:min(10vw,15vh)]";
+  const row = "[--stub:clamp(5.5rem,20vw,14rem)] lg:landscape:[--stub:min(10vw,15vh)]";
   return (
     <section className="flex flex-col gap-[clamp(0.6rem,1.4vh,1.1rem)] lg:landscape:min-h-0 lg:landscape:flex-1">
       <h2 className="flex items-center gap-2.5 text-[clamp(1.05rem,min(1.7vw,2.8vh),1.9rem)] leading-normal font-bold text-white/90">
@@ -155,30 +170,30 @@ function Upcoming({ lang, v }: Pick<LayoutProps, "lang" | "v">) {
         {t(lang, "dp_upcoming")}
       </h2>
       {v.nextNumbers.length > 0 ? (
-        <ol className="flex flex-col gap-[clamp(0.5rem,1.2vh,1rem)]">
+        <ol className="flex flex-col gap-[clamp(0.5rem,1.2vh,1rem)] lg:landscape:min-h-0 lg:landscape:flex-1">
           {v.nextNumbers.map((n, i) => {
             const first = i === 0;
             const eta = (i + 1) * v.avgServiceMin;
             return (
               <li
                 key={n}
-                className={`flex items-stretch rounded-[1.1rem] ${row} ${first ? "bg-white text-brand-800" : "bg-white/[0.12] text-white"}`}
+                className={`flex items-stretch rounded-[1.1rem] lg:landscape:max-h-[16vh] lg:landscape:flex-1 ${row} ${first ? "bg-white text-brand-800" : "bg-white/[0.12] text-white"}`}
                 style={stubNotch(rtl, r)}
               >
                 <div
-                  className={`num flex w-(--stub) shrink-0 items-center justify-center py-[clamp(0.4rem,1.1vh,1rem)] text-[min(9vw,5vh)] leading-tight font-bold lg:landscape:text-[min(6.4vh,3.6vw)] ${first ? "bg-brand-50" : "bg-white/[0.05]"}`}
+                  className={`num flex w-(--stub) shrink-0 items-center justify-center py-[clamp(0.4rem,1.1vh,1rem)] text-[min(8vw,4vh)] leading-tight font-bold lg:landscape:text-[min(6.4vh,3.6vw)] ${first ? "bg-brand-50" : "bg-white/[0.05]"}`}
                   dir="ltr"
                 >
                   {n}
                 </div>
                 <div className={`flex min-w-0 flex-1 items-center justify-between gap-3 border-s-2 border-dashed px-[clamp(0.8rem,1.6vw,1.75rem)] ${first ? "border-brand-200" : "border-white/20"}`}>
                   <span
-                    className={`rounded-full px-[0.8em] py-[0.15em] text-[clamp(0.95rem,min(1.5vw,2.5vh),1.7rem)] leading-normal font-bold ${first ? "bg-brand-700 text-white" : "text-white/90"}`}
+                    className={`rounded-full px-[0.8em] py-[0.15em] text-[clamp(0.95rem,min(3vw,2.4vh),2.2rem)] leading-normal font-bold lg:landscape:text-[clamp(0.95rem,min(1.5vw,2.5vh),1.7rem)] ${first ? "bg-brand-700 text-white" : "text-white/90"}`}
                   >
                     {labels[i]}
                   </span>
                   {eta > 0 && (
-                    <span className={`flex shrink-0 items-center gap-1.5 text-[clamp(0.9rem,min(1.35vw,2.3vh),1.5rem)] leading-normal font-semibold ${first ? "text-slate-600" : "text-white/70"}`}>
+                    <span className={`flex shrink-0 items-center gap-1.5 text-[clamp(0.9rem,min(2.6vw,2vh),1.9rem)] leading-normal font-semibold lg:landscape:text-[clamp(0.9rem,min(1.35vw,2.3vh),1.5rem)] ${first ? "text-slate-600" : "text-white/70"}`}>
                       <Clock3 className="size-[1em]" />
                       <span className="num">{L(lang, "eta", { n: eta })}</span>
                     </span>
@@ -189,7 +204,8 @@ function Upcoming({ lang, v }: Pick<LayoutProps, "lang" | "v">) {
           })}
         </ol>
       ) : (
-        <div className="flex items-center justify-center rounded-[1.1rem] border-2 border-dashed border-white/20 px-5 py-[clamp(1rem,3vh,2rem)] text-center text-[clamp(1rem,min(1.5vw,2.5vh),1.6rem)] leading-normal text-white/75">
+        <div className="flex flex-col items-center justify-center gap-[1vh] rounded-[1.1rem] border-2 border-dashed border-white/20 px-5 py-[clamp(1rem,3vh,2rem)] text-center text-[clamp(1rem,min(3vw,2.4vh),2rem)] leading-normal text-white/75 lg:landscape:flex-1 lg:landscape:text-[clamp(1rem,min(1.5vw,2.5vh),1.6rem)]">
+          <Ticket aria-hidden className="size-[clamp(2rem,min(8vw,6vh),4.5rem)] text-white/30" strokeWidth={1.5} />
           {t(lang, "emptyQueue")}
         </div>
       )}
@@ -204,8 +220,8 @@ function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: s
         {icon}
       </span>
       <div className="min-w-0">
-        <div className="truncate text-[clamp(0.8rem,min(1.15vw,1.9vh),1.2rem)] leading-normal font-semibold text-white/70">{label}</div>
-        <div className="num text-[clamp(1.5rem,min(2.6vw,4.4vh),3rem)] leading-tight font-bold">{value}</div>
+        <div className="truncate text-[clamp(0.8rem,min(2.4vw,1.9vh),1.6rem)] leading-normal font-semibold text-white/70 lg:landscape:text-[clamp(0.8rem,min(1.15vw,1.9vh),1.2rem)]">{label}</div>
+        <div className="num text-[clamp(1.5rem,min(5vw,4.4vh),3.4rem)] leading-tight font-bold lg:landscape:text-[clamp(1.5rem,min(2.6vw,4.4vh),3rem)]">{value}</div>
       </div>
     </div>
   );
@@ -213,14 +229,14 @@ function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: s
 
 function QrCard({ lang, qr }: Pick<LayoutProps, "lang" | "qr">) {
   return (
-    <section className="flex items-center gap-[clamp(0.8rem,1.4vw,1.5rem)] rounded-[1.75rem] bg-white p-[clamp(0.6rem,1.4vh,1.1rem)] text-ink lg:landscape:mt-auto">
+    <section className="flex items-center gap-[clamp(0.8rem,1.4vw,1.5rem)] rounded-[1.75rem] bg-white p-[clamp(0.6rem,1.4vh,1.1rem)] text-ink">
       <div
-        className="w-[clamp(110px,15vh,180px)] shrink-0 rounded-xl bg-white p-1 ring-4 ring-brand-100 [&_svg]:block [&_svg]:h-auto [&_svg]:w-full"
+        className="w-[clamp(100px,min(14vw,8vh),150px)] shrink-0 lg:landscape:w-[clamp(110px,15vh,180px)] rounded-xl bg-white p-1 ring-4 ring-brand-100 [&_svg]:block [&_svg]:h-auto [&_svg]:w-full"
         dangerouslySetInnerHTML={{ __html: qr }}
       />
       <div className="min-w-0">
-        <div className="text-[clamp(1rem,min(1.45vw,2.5vh),1.65rem)] leading-normal font-bold">{t(lang, "posterTitle")}</div>
-        <p className="mt-1 text-[clamp(0.8rem,min(1.05vw,1.8vh),1.15rem)] leading-normal text-slate-600">{t(lang, "dp_scan")}</p>
+        <div className="text-[clamp(1rem,min(3.4vw,2.4vh),2rem)] leading-normal font-bold lg:landscape:text-[clamp(1rem,min(1.45vw,2.5vh),1.65rem)]">{t(lang, "posterTitle")}</div>
+        <p className="mt-1 text-[clamp(0.8rem,min(2.4vw,1.7vh),1.5rem)] leading-normal text-slate-600 lg:landscape:text-[clamp(0.8rem,min(1.05vw,1.8vh),1.15rem)]">{t(lang, "dp_scan")}</p>
       </div>
     </section>
   );
@@ -266,7 +282,7 @@ function Callout({ lang, n, doctor, onClose }: { lang: Lang; n: number; doctor: 
 function Layout({ lang, v, doctor, time, date, qr, callout, dismissCallout, voice, toggleVoice }: LayoutProps) {
   const gap = "gap-[clamp(0.75rem,1.8vh,1.5rem)]";
   return (
-    <main className={`relative flex min-h-dvh flex-col overflow-hidden text-white lg:landscape:h-dvh ${BG}`}>
+    <main className={`relative flex min-h-dvh flex-col overflow-hidden text-white lg:landscape:h-dvh [@media(orientation:portrait)_and_(min-width:700px)_and_(min-height:1200px)]:h-dvh ${BG}`}>
       <Backdrop />
       <Header v={v} doctor={doctor} time={time} date={date} />
 
@@ -275,7 +291,7 @@ function Layout({ lang, v, doctor, time, date, qr, callout, dismissCallout, voic
       </div>
 
       <div
-        className={`relative flex flex-1 flex-col ${gap} px-[clamp(1rem,3vw,3rem)] py-[clamp(0.75rem,2vh,1.75rem)] lg:landscape:grid lg:landscape:min-h-0 lg:landscape:grid-cols-[1.4fr_1fr] lg:landscape:gap-[clamp(1rem,2vw,2.25rem)]`}
+        className={`relative flex min-h-0 flex-1 flex-col ${gap} px-[clamp(1rem,3vw,3rem)] py-[clamp(0.75rem,2vh,1.75rem)] lg:landscape:grid lg:landscape:min-h-0 lg:landscape:grid-cols-[1.4fr_1fr] lg:landscape:gap-[clamp(1rem,2vw,2.25rem)]`}
       >
         {/* الطبيب + الرقم الحالي */}
         <div className={`flex min-h-0 flex-1 flex-col ${gap}`}>

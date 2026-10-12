@@ -39,8 +39,9 @@ function Balloon({
   float?: boolean;
 }) {
   const id = useId().replace(/:/g, "");
-  const text = n === null ? "—" : String(n);
-  const size = text.length >= 3 ? "text-[44cqw]" : "text-[62cqw]";
+  const text = n === null ? "" : String(n);
+  // رقم واحد يملأ المنطاد، ويصغر مع عدد الخانات ليبقى «88» و«123» داخل الجسم
+  const size = text.length >= 3 ? "text-[44cqw]" : text.length === 2 ? "text-[58cqw]" : "text-[70cqw]";
   return (
     <div
       className={`@container relative aspect-[200/270] shrink-0 ${float ? "motion-safe:animate-[dw-kids-float_7s_ease-in-out_infinite]" : ""} ${className}`}
@@ -72,14 +73,21 @@ function Balloon({
         <circle cx="72" cy="28" r="5" fill="#fff" fillOpacity="0.25" />
       </svg>
       <div className="absolute inset-x-0 top-0 flex h-[74%] items-center justify-center pt-[4%]">
-        <span
-          key={text}
-          data-testid={testId}
-          className={`num animate-pop leading-none font-bold tracking-tight text-white drop-shadow-[0_0.06em_0_rgb(0_0_0/0.22)] ${size}`}
-          dir="ltr"
-        >
-          {text}
-        </span>
+        {n === null ? (
+          // لا رقم بعد: وجه مبتسم ودود بدل شرطة تبدو كعلامة «ممنوع»
+          <span key="empty" data-testid={testId} className="animate-pop text-white/90 drop-shadow-[0_0.3cqw_0_rgb(0_0_0/0.22)]">
+            <Smile className="size-[38cqw]" strokeWidth={2.2} aria-hidden />
+          </span>
+        ) : (
+          <span
+            key={text}
+            data-testid={testId}
+            className={`num animate-pop leading-none font-bold tracking-tight text-white drop-shadow-[0_0.06em_0_rgb(0_0_0/0.22)] ${size}`}
+            dir="ltr"
+          >
+            {text}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -162,11 +170,11 @@ function DoctorRibbon({ lang, v, doctor }: Pick<LayoutProps, "lang" | "v" | "doc
         </div>
       )}
       <div className="flex max-w-full items-center gap-[1.4vh] rounded-[999px] bg-brand-700 py-[1vh] ps-[1vh] pe-[3.2vh] text-white shadow-[0_10px_0_-4px_var(--color-brand-900)]">
-        <span className="inline-flex size-[clamp(3rem,8.5vh,6.5rem)] shrink-0 items-center justify-center rounded-full bg-white text-brand-700">
+        <span className="inline-flex size-[clamp(3rem,8.5vh,6.5rem)] shrink-0 portrait:sm:size-[clamp(3rem,6vh,5rem)] items-center justify-center rounded-full bg-white text-brand-700">
           <Stethoscope className="size-1/2" strokeWidth={2.4} />
         </span>
         <div className="min-w-0">
-          <div className="line-clamp-2 text-[clamp(1.4rem,4.4vh,3.4rem)] leading-[1.4] font-extrabold">{title}</div>
+          <div className="line-clamp-2 text-[clamp(1.4rem,4.4vh,3.4rem)] leading-[1.4] font-extrabold portrait:sm:line-clamp-1 portrait:sm:text-[clamp(1.4rem,3.4vh,2.6rem)]">{title}</div>
           {v.profile.specialty && (
             <div className="line-clamp-1 text-[clamp(0.95rem,2.4vh,1.75rem)] leading-normal font-semibold text-brand-100">{v.profile.specialty}</div>
           )}
@@ -180,7 +188,7 @@ function Clock({ time, date }: { time: string; date: string }) {
   return (
     <div className="flex shrink-0 flex-col items-end gap-1">
       <div className="rounded-[2rem] bg-white px-[3vh] py-[1vh] shadow-[0_8px_0_-3px_var(--color-brand-200)] ring-2 ring-brand-100">
-        <div className="num text-[clamp(2rem,6.4vh,5rem)] leading-tight font-extrabold text-ink" dir="ltr">
+        <div className="num text-[clamp(2rem,6.4vh,5rem)] leading-tight font-extrabold text-ink portrait:sm:text-[clamp(2rem,4vh,3.5rem)]" dir="ltr">
           {time || " "}
         </div>
       </div>
@@ -222,13 +230,14 @@ function NextBubbles({ lang, nums }: { lang: Lang; nums: number[] }) {
 
 function Stat({ icon, label, value, tint }: { icon: ReactNode; label: string; value: string; tint: string }) {
   return (
-    <div className="flex min-w-0 items-center gap-[1.4vh] rounded-[1.6rem] bg-white p-[1.3vh] pe-[2vh] ring-2 ring-brand-100">
-      <span className="inline-flex size-[clamp(2.6rem,6.4vh,4.5rem)] shrink-0 items-center justify-center rounded-full text-ink" style={{ background: tint }}>
+    <div className="flex min-w-0 items-center gap-[1.4vh] rounded-[1.6rem] bg-white p-[1.3vh] pe-[2vh] ring-2 ring-brand-100 max-sm:flex-col max-sm:items-start max-sm:p-3">
+      <span className="inline-flex size-[clamp(2.6rem,6.4vh,4.5rem)] shrink-0 max-sm:size-10 items-center justify-center rounded-full text-ink" style={{ background: tint }}>
         {icon}
       </span>
       <div className="min-w-0">
-        <div className="truncate text-[clamp(0.85rem,2vh,1.35rem)] leading-normal font-semibold text-slate-600">{label}</div>
-        <div className="num text-[clamp(1.5rem,4.2vh,3rem)] leading-tight font-extrabold text-ink" dir="ltr">
+        <div className="line-clamp-2 text-[clamp(0.85rem,2vh,1.35rem)] leading-tight font-semibold text-slate-600">{label}</div>
+        {/* بلا dir="ltr": في العربية يأتي الرقم يميناً ثمّ الوحدة («10 د») كما يُقرأ */}
+        <div className="num text-[clamp(1.5rem,4.2vh,3rem)] leading-tight font-extrabold whitespace-nowrap text-ink">
           {value}
         </div>
       </div>
@@ -303,15 +312,15 @@ function KidsCallout({ lang, n, doctor, onClose }: { lang: Lang; n: number; doct
 function Layout({ lang, v, doctor, time, date, qr, callout, dismissCallout, voice, toggleVoice }: LayoutProps) {
   const cur = v.currentNumber;
   return (
-    <main className="relative flex min-h-dvh flex-col overflow-hidden bg-white text-ink lg:landscape:h-dvh">
+    <main className="relative flex min-h-dvh flex-col overflow-hidden bg-white text-ink portrait:sm:h-dvh lg:landscape:h-dvh">
       <Sky>
         <Sun className="-end-[3vh] -top-[4vh] size-[min(24vh,22vw)] max-lg:landscape:hidden portrait:hidden" />
       </Sky>
 
       {/* ——— الأعلى: الطبيب + الساعة ——— */}
-      <header className="relative z-10 flex flex-wrap items-start justify-between gap-4 px-[clamp(1rem,3vw,3.5rem)] pt-[clamp(1rem,3vh,2.5rem)] lg:landscape:flex-nowrap">
+      <header className="relative z-10 flex flex-wrap items-start justify-between gap-4 px-[clamp(1rem,3vw,3.5rem)] pt-[clamp(1rem,3vh,2.5rem)] portrait:sm:flex-nowrap portrait:sm:pt-[2vh] lg:landscape:flex-nowrap">
         <DoctorRibbon lang={lang} v={v} doctor={doctor} />
-        <div className="lg:landscape:me-[min(15vh,13vw)]">
+        <div className="shrink-0 lg:landscape:me-[min(15vh,13vw)]">
           <Clock time={time} date={date} />
         </div>
       </header>
@@ -321,18 +330,20 @@ function Layout({ lang, v, doctor, time, date, qr, callout, dismissCallout, voic
       </div>
 
       {/* ——— الوسط: المنطاد + العمود الجانبي ——— */}
-      <div className="relative z-10 grid flex-1 gap-[3vh] px-[clamp(1rem,3vw,3.5rem)] py-[2vh] lg:landscape:min-h-0 lg:landscape:grid-cols-[1.25fr_1fr] lg:landscape:items-center">
-        <section className="flex min-w-0 flex-col items-center justify-center gap-[1.2vh] text-center">
+      <div className="relative z-10 grid flex-1 gap-[3vh] px-[clamp(1rem,3vw,3.5rem)] py-[2vh] portrait:sm:min-h-0 portrait:sm:content-center portrait:sm:gap-[2vh] lg:landscape:min-h-0 lg:landscape:grid-cols-[1.4fr_1fr] lg:landscape:items-center">
+        <section className="flex min-w-0 flex-col items-center justify-center gap-[1.2vh] text-center portrait:sm:gap-[0.6vh]">
           <div className="relative">
-            <div className="absolute -top-[0.5vh] -start-[min(10vh,14vw)] z-10 inline-flex -rotate-6 items-center gap-2 rounded-full px-[2.4vh] py-[0.4vh] text-[clamp(1.1rem,3.4vh,2.6rem)] leading-normal font-extrabold whitespace-nowrap text-ink shadow-[0_5px_0_-2px_#e0a92e] rtl:rotate-6" style={{ background: SUN }}>
-              <Star className="size-[0.85em]" fill="currentColor" />
-              {cur !== null ? k(lang, "turn") : t(lang, "displayNow")}
-            </div>
+            {cur !== null && (
+              <div className="absolute -top-[0.5vh] -start-[min(10vh,14vw)] z-10 inline-flex -rotate-6 items-center gap-2 rounded-full px-[2.4vh] py-[0.4vh] text-[clamp(1.1rem,3.4vh,2.6rem)] leading-normal font-extrabold whitespace-nowrap text-ink shadow-[0_5px_0_-2px_#e0a92e] rtl:rotate-6" style={{ background: SUN }}>
+                <Star className="size-[0.85em]" fill="currentColor" />
+                {k(lang, "turn")}
+              </div>
+            )}
             <Balloon
               n={cur}
               testId="display-number"
               float
-              className="w-[min(72vw,36vh)] lg:landscape:w-[min(38vh,30vw)]"
+              className="w-[min(72vw,36vh)] portrait:sm:w-[min(56vw,23vh)] lg:landscape:w-[min(42vh,32vw)]"
             />
           </div>
           <p className="text-[clamp(1.5rem,4.4vh,3.4rem)] leading-normal font-extrabold text-brand-900">
@@ -345,15 +356,15 @@ function Layout({ lang, v, doctor, time, date, qr, callout, dismissCallout, voic
           )}
         </section>
 
-        <aside className="flex min-w-0 flex-col gap-[2vh] portrait:sm:grid portrait:sm:grid-cols-2 portrait:sm:items-start max-lg:landscape:grid max-lg:landscape:grid-cols-2">
-          <div className="rounded-[2.2rem] bg-white p-[2.2vh] shadow-[0_10px_0_-4px_var(--color-brand-200)] ring-2 ring-brand-100">
+        <aside className="flex min-w-0 flex-col gap-[2vh] portrait:sm:grid portrait:sm:grid-cols-2 portrait:sm:items-stretch max-lg:landscape:grid max-lg:landscape:grid-cols-2">
+          <div className="rounded-[2.2rem] portrait:sm:col-span-2 portrait:sm:p-[1.8vh] bg-white p-[2.2vh] shadow-[0_10px_0_-4px_var(--color-brand-200)] ring-2 ring-brand-100">
             <div className="mb-[1.6vh] flex items-center gap-2 text-[clamp(1.1rem,2.9vh,2rem)] leading-normal font-extrabold text-brand-900">
               <Sparkles className="size-[1em] shrink-0 text-brand-700" /> {t(lang, "dp_upcoming")}
             </div>
             <NextBubbles lang={lang} nums={v.nextNumbers} />
           </div>
-          <div className="flex flex-col gap-[2vh]">
-            <div className="grid grid-cols-2 gap-[1.6vh]">
+          <div className="flex flex-col gap-[2vh] portrait:sm:contents">
+            <div className="grid grid-cols-2 gap-[1.6vh] portrait:sm:grid-cols-1">
               <Stat icon={<Users className="size-1/2" />} label={t(lang, "waitingCount")} value={String(v.waiting)} tint={LILAC} />
               <Stat icon={<Clock3 className="size-1/2" />} label={t(lang, "dp_avg")} value={t(lang, "dp_min", { n: v.avgServiceMin })} tint={MINT} />
             </div>

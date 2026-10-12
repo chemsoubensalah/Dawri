@@ -23,21 +23,27 @@ const tb = (lang: Lang, k: BoardKey) => t(lang, `lay_board_${k}` as DictKey);
 
 type Face = "amber" | "white";
 const INK: Record<Face, string> = { amber: "text-[#ffcc33]", white: "text-[#f4f5f6]" };
-const GHOST: Record<Face, string> = { amber: "text-[#ffcc33]/[0.09]", white: "text-white/[0.1]" };
+/** الأصفار البادئة: نسيج خافت لا يُقرأ رقماً من بعيد. */
+const GHOST: Record<Face, string> = { amber: "text-[#ffcc33]/[0.05]", white: "text-white/[0.06]" };
+/** شرطة «لا رقم بعد» (- - -) كلوحة رحلات تنتظر التحديث: أوضح من الشبح، أخفت من الحبر. */
+const DASH: Record<Face, string> = { amber: "text-[#ffcc33]/45", white: "text-white/35" };
 
 /** وجه اللوح: نصف علوي أفتح، نصف سفلي أغمق، وظلّ داخلي خفيف — كلّه بوحدة em فيكبر مع الخطّ. */
 const FACE =
   "rounded-[0.08em] bg-[linear-gradient(180deg,#2d3137_0%,#24282d_50%,#1b1e22_50%,#141619_100%)] shadow-[inset_0_0.02em_0_rgb(255_255_255/0.09),inset_0_-0.05em_0.08em_rgb(0_0_0/0.45),0_0.03em_0.05em_rgb(0_0_0/0.55)]";
-const TILE = "relative h-[1.12em] w-[0.74em] shrink-0";
+/** الحرف (1em) يملأ معظم ارتفاع اللوح، مع هامش جانبي للأرقام العريضة. */
+const TILE = "relative h-[1em] w-[0.78em] shrink-0";
 /** شقّ المفصل الأفقي الذي يقطع الحرف — علامة اللوح القلّاب. */
 const SPLIT =
   "pointer-events-none absolute inset-x-0 top-1/2 h-[0.016em] min-h-px -translate-y-1/2 bg-black/90 shadow-[0_0.012em_0_rgb(255_255_255/0.07)]";
 
-type Glyph = { ch: string; ghost?: boolean };
+type Glyph = { ch: string; ghost?: boolean; dash?: boolean };
 
 /** لوح واحد. ghost = صفر بادئ باهت يُرسم بـ CSS (فلا يدخل في نصّ الرقم). flipKey = يقلب عند تغيّره. */
 function Flap({ g, face, flipKey, delay = 0 }: { g: Glyph; face: Face; flipKey?: string; delay?: number }) {
-  const glyph = g.ghost ? (
+  const glyph = g.dash ? (
+    <span className={`block h-[0.09em] w-[0.42em] rounded-full bg-current ${DASH[face]}`} />
+  ) : g.ghost ? (
     <span className={`num leading-none font-bold before:content-['0'] ${GHOST[face]}`} />
   ) : (
     <span className={`num leading-none font-bold ${INK[face]}`}>{g.ch}</span>
@@ -64,9 +70,9 @@ function Flap({ g, face, flipKey, delay = 0 }: { g: Glyph; face: Face; flipKey?:
   );
 }
 
-/** رقم على ألواح بعرض ثابت (7 ← 0 0 7، الأصفار باهتة). null ← ألواح فارغة كلوحة تنتظر التحديث. */
+/** رقم على ألواح بعرض ثابت (7 ← 0 0 7، الأصفار باهتة). null ← شرطات (- - -) كلوحة تنتظر التحديث. */
 function glyphs(n: number | null, width: number): Glyph[] {
-  if (n === null) return Array.from({ length: width }, () => ({ ch: "" }));
+  if (n === null) return Array.from({ length: width }, () => ({ ch: "-", dash: true }));
   const s = String(n);
   const pad = Math.max(0, width - s.length);
   return [...Array.from({ length: pad }, () => ({ ch: "0", ghost: true })), ...[...s].map((ch) => ({ ch }))];
@@ -104,7 +110,7 @@ function Clock({ time, className = "" }: { time: string; className?: string }) {
             <span className="size-[0.11em] rounded-full bg-white/90" />
           </span>
         ) : (
-          <Flap key={i} g={{ ch: ch === "-" ? "" : ch }} face="white" />
+          <Flap key={i} g={ch === "-" ? { ch, dash: true } : { ch }} face="white" />
         ),
       )}
     </span>
@@ -166,7 +172,7 @@ const SIGN =
   "bg-[linear-gradient(90deg,var(--color-brand-800),var(--color-brand-700)_45%)] shadow-[inset_0_1px_0_rgb(255_255_255/0.12),inset_0_-1px_0_rgb(0_0_0/0.35)] rtl:bg-[linear-gradient(270deg,var(--color-brand-800),var(--color-brand-700)_45%)]";
 /** أعمدة الجدول بوحدة em لحجم خطّ الصفّ، فتبقى الأعمدة متطابقة. */
 const COLS =
-  "grid grid-cols-[2.45em_minmax(0,1fr)_2.1em] items-center gap-x-[0.35em] px-[0.35em] sm:grid-cols-[2.45em_minmax(0,1fr)_2.6em] sm:gap-x-[0.45em] sm:px-[0.45em]";
+  "grid grid-cols-[2.5em_minmax(0,1fr)_2.1em] items-center gap-x-[0.35em] px-[0.35em] sm:grid-cols-[2.5em_minmax(0,1fr)_2.6em] sm:gap-x-[0.45em] sm:px-[0.45em]";
 const ROWS: { key: BoardKey; tone: Tone }[] = [
   { key: "next", tone: "next" },
   { key: "ready", tone: "ready" },
@@ -200,8 +206,9 @@ function Header({ lang, v, doctor, time, date }: Pick<LayoutProps, "lang" | "v" 
       <div className="order-last min-w-0 basis-full empty:hidden lg:landscape:order-none lg:landscape:w-[min(26rem,30vw)] lg:landscape:shrink-0 lg:landscape:basis-auto">
         <SoundGate lang={lang} tone="dark" />
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <Clock time={time} className="text-[clamp(1.6rem,5.2vw,3.4rem)] lg:landscape:text-[5.4vh]" />
+      {/* على الهاتف: الساعة والتاريخ في سطر خاصّ فيأخذ الاسم العرض كلّه */}
+      <div className="flex shrink-0 flex-col items-end gap-1 max-sm:order-1 max-sm:basis-full max-sm:flex-row-reverse max-sm:items-center max-sm:justify-between max-sm:border-t max-sm:border-white/15 max-sm:pt-2.5">
+        <Clock time={time} className="text-[clamp(1.6rem,5.2vw,3.4rem)] max-sm:text-[1.5rem] lg:landscape:text-[5.4vh]" />
         <span className="text-[clamp(0.75rem,2vw,1.3rem)] leading-normal text-white/80 lg:landscape:text-[clamp(0.8rem,2vh,1.3rem)]">{date}</span>
       </div>
     </header>
@@ -212,10 +219,10 @@ function Header({ lang, v, doctor, time, date }: Pick<LayoutProps, "lang" | "v" 
 function NowRow({ lang, cur, flipKey }: { lang: Lang; cur: number | null; flipKey: string }) {
   const on = cur !== null;
   return (
-    <div className="relative flex flex-1 flex-col justify-center gap-4 bg-[radial-gradient(70%_100%_at_25%_0%,color-mix(in_srgb,var(--color-brand-500)_13%,transparent),transparent_70%)] px-4 pt-4 pb-6 sm:px-8 sm:pt-6 lg:landscape:min-h-0 lg:landscape:gap-[1.8vh] lg:landscape:px-[2vw] lg:landscape:py-[2vh] rtl:bg-[radial-gradient(70%_100%_at_75%_0%,color-mix(in_srgb,var(--color-brand-500)_13%,transparent),transparent_70%)]">
+    <div className="relative flex flex-1 flex-col justify-center gap-4 portrait:sm:flex-none portrait:sm:py-10 bg-[radial-gradient(70%_100%_at_25%_0%,color-mix(in_srgb,var(--color-brand-500)_13%,transparent),transparent_70%)] px-4 pt-4 pb-6 sm:px-8 sm:pt-6 lg:landscape:min-h-0 lg:landscape:gap-[1.8vh] lg:landscape:px-[2vw] lg:landscape:py-[2vh] rtl:bg-[radial-gradient(70%_100%_at_75%_0%,color-mix(in_srgb,var(--color-brand-500)_13%,transparent),transparent_70%)]">
       <Eyebrow className="text-[clamp(0.9rem,2.4vw,1.6rem)] lg:landscape:text-[clamp(0.9rem,2.4vh,1.6rem)]">{t(lang, "displayNow")}</Eyebrow>
       <div className="flex flex-col items-center gap-5 lg:landscape:flex-row lg:landscape:justify-between lg:landscape:gap-[2vw]">
-        <div data-testid="display-number" className="text-[min(34vw,30vh)] portrait:sm:text-[min(37vw,26vh)] lg:landscape:text-[min(31vh,19vw)]">
+        <div data-testid="display-number" className="text-[min(33vw,30vh)] portrait:sm:text-[min(35.5vw,26vh)] lg:landscape:text-[min(33vh,18vw)]">
           <Flaps items={glyphs(cur, 3)} face="amber" flipKey={flipKey} />
           {!on && <span className="sr-only">—</span>}
         </div>
@@ -242,8 +249,23 @@ function NowRow({ lang, cur, flipKey }: { lang: Lang; cur: number | null; flipKe
 /** جدول القادمين: الرقم | الحالة | الانتظار المتوقّع (= الترتيب × مدّة الكشف). */
 function NextTable({ lang, next, avg }: { lang: Lang; next: number[]; avg: number }) {
   const unit = t(lang, "dp_min", { n: "" }).trim();
+  const wrap = "border-t-2 border-black/70 text-[min(9.5vw,4.2rem)] lg:landscape:text-[min(6.3vh,3.5vw)]";
+  // طابور فارغ: صفّ واحد بلا ألواح فارغة ولا عناوين أعمدة فوق لا شيء
+  if (next.length === 0) {
+    return (
+      <div className={wrap}>
+        <div className={`${COLS} py-[0.3em]`}>
+          <span className="col-span-3 flex min-w-0">
+            <Status tone="wait" className="text-[0.36em]">
+              {t(lang, "emptyQueue").replace(/[.。]\s*$/, "")}
+            </Status>
+          </span>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="border-t-2 border-black/70 text-[min(9.5vw,4.2rem)] lg:landscape:text-[min(6.3vh,3.5vw)]">
+    <div className={wrap}>
       <div className={`${COLS} py-[0.16em] text-white/50`}>
         {[t(lang, "dp_number"), tb(lang, "status"), tb(lang, "eta")].map((h, i) => (
           <span
@@ -256,24 +278,22 @@ function NextTable({ lang, next, avg }: { lang: Lang; next: number[]; avg: numbe
       </div>
       {ROWS.map((r, i) => {
         const n = next[i];
-        const empty = i === 0 && next.length === 0;
+        // الصفوف بلا رقم تبقى بارتفاعها (فلا تقفز اللوحة) لكنّها فواصل صامتة
+        const hide = n === undefined ? "invisible" : "";
+        const noEta = n === undefined || avg <= 0 ? "invisible" : "";
         return (
           <div key={r.key} className={`${COLS} border-t border-white/[0.06] py-[0.12em] even:bg-white/[0.015]`}>
-            <Flaps items={glyphs(n ?? null, 3)} face="white" />
+            <Flaps items={glyphs(n ?? null, 3)} face="white" className={hide} />
             <span className="flex min-w-0">
-              {n !== undefined ? (
+              {n !== undefined && (
                 <Status tone={r.tone} className="text-[0.36em]">
                   {tb(lang, r.key)}
                 </Status>
-              ) : empty ? (
-                <Status tone="wait" className="text-[0.36em]">
-                  {t(lang, "emptyQueue")}
-                </Status>
-              ) : null}
+              )}
             </span>
-            <span className="flex items-center justify-end gap-[0.1em]">
+            <span aria-hidden={noEta ? true : undefined} className={`flex items-center justify-end gap-[0.1em] ${noEta}`}>
               <Flaps items={glyphs(n !== undefined && avg > 0 ? (i + 1) * avg : null, 2)} face="white" className="text-[0.5em] sm:text-[0.6em]" />
-              <span className={`text-[0.3em] leading-normal font-semibold text-white/55 ${n === undefined || avg <= 0 ? "invisible" : ""}`}>{unit}</span>
+              <span className="text-[0.3em] leading-normal font-semibold text-white/55">{unit}</span>
             </span>
           </div>
         );
@@ -290,7 +310,7 @@ function Stats({ lang, waiting, avg }: { lang: Lang; waiting: number; avg: numbe
     "flex items-center gap-2 text-[clamp(0.8rem,2vw,1.2rem)] leading-normal font-semibold text-white/55 lg:landscape:text-[clamp(0.8rem,1.9vh,1.2rem)]";
   const value = "flex items-end gap-[0.12em] text-[clamp(2.2rem,6.5vw,4.25rem)] lg:landscape:text-[5.4vh]";
   return (
-    <div className={`grid grid-cols-2 overflow-hidden rounded-2xl portrait:sm:grid-cols-1 lg:landscape:rounded-[1.6vh] ${PANEL}`}>
+    <div className={`grid grid-cols-2 overflow-hidden rounded-2xl lg:landscape:rounded-[1.6vh] ${PANEL}`}>
       <div className={cell}>
         <span className={label}>
           <Users className="size-[1.1em] shrink-0" /> {t(lang, "waitingCount")}
@@ -299,7 +319,7 @@ function Stats({ lang, waiting, avg }: { lang: Lang; waiting: number; avg: numbe
           <Flaps items={glyphs(waiting, 2)} face="white" />
         </span>
       </div>
-      <div className={`border-s border-white/[0.06] portrait:sm:border-s-0 portrait:sm:border-t ${cell}`}>
+      <div className={`border-s border-white/[0.06] ${cell}`}>
         <span className={label}>
           <Hourglass className="size-[1.1em] shrink-0" /> {t(lang, "dp_avg")}
         </span>
@@ -314,14 +334,22 @@ function Stats({ lang, waiting, avg }: { lang: Lang; waiting: number; avg: numbe
 
 /** بطاقة صعود بيضاء: «خذ رقمك» + QR، وتخريم بين الجزأين. */
 function Pass({ lang, qr, blocker }: { lang: Lang; qr: string; blocker: string | null }) {
+  const title = t(lang, "posterTitle").split(/\s+—\s+/);
   return (
-    <div className="relative flex flex-col overflow-hidden rounded-2xl bg-white text-ink shadow-[0_24px_48px_-24px_rgb(0_0_0/0.8)] lg:landscape:min-h-0 lg:landscape:flex-1 lg:landscape:rounded-[1.6vh]">
+    <div className="relative flex flex-col overflow-hidden rounded-2xl portrait:sm:flex-1 bg-white text-ink shadow-[0_24px_48px_-24px_rgb(0_0_0/0.8)] lg:landscape:min-h-0 lg:landscape:flex-1 lg:landscape:rounded-[1.6vh]">
       <div className="px-5 pt-5 pb-4 sm:px-6 lg:landscape:px-[1.4vw] lg:landscape:pt-[2.2vh] lg:landscape:pb-[1.6vh]">
         <div className="flex items-center gap-2 text-[clamp(0.75rem,1.8vw,1.1rem)] leading-normal font-bold text-brand-700 ltr:tracking-[0.12em] ltr:uppercase lg:landscape:text-[clamp(0.75rem,1.7vh,1.1rem)]">
           <Ticket className="size-[1.25em] shrink-0" /> {tb(lang, "pass")}
         </div>
-        <p className="mt-1.5 text-[clamp(1.05rem,2.8vw,1.75rem)] leading-normal font-bold lg:landscape:text-[clamp(1rem,2.6vh,1.7rem)]">
-          {t(lang, "posterTitle")}
+        <p className="mt-1.5 text-[clamp(1.05rem,2.8vw,1.75rem)] leading-normal font-bold text-balance lg:landscape:text-[clamp(1rem,2.6vh,1.7rem)]">
+          {/* يُكسر السطر عند الشرطة لا وسط العبارة */}
+          {title.length > 1 ? (
+            <>
+              {title[0]} —<span className="block">{title.slice(1).join(" — ")}</span>
+            </>
+          ) : (
+            title[0]
+          )}
         </p>
       </div>
       {/* التخريم: خطّ متقطّع وثلمتان بلون اللوحة */}
@@ -332,10 +360,10 @@ function Pass({ lang, qr, blocker }: { lang: Lang; qr: string; blocker: string |
       </div>
       <div className="flex flex-1 items-center gap-4 px-5 pt-3 pb-5 sm:px-6 lg:landscape:min-h-0 lg:landscape:flex-col lg:landscape:justify-center lg:landscape:gap-[1.6vh] lg:landscape:px-[1.4vw] lg:landscape:pt-[1vh] lg:landscape:pb-[2vh] lg:landscape:text-center">
         <div
-          className="w-[clamp(7.5rem,24vw,13rem)] shrink-0 rounded-xl bg-white p-2 ring-1 ring-slate-200 lg:landscape:w-[min(26vh,17rem)] [&>svg]:block [&>svg]:h-auto [&>svg]:w-full"
+          className="w-[clamp(7.5rem,24vw,13rem)] shrink-0 rounded-xl bg-white p-2 ring-1 ring-slate-200 portrait:sm:w-[min(30vw,20rem)] lg:landscape:w-[min(32vh,100%)] [&>svg]:block [&>svg]:h-auto [&>svg]:w-full"
           dangerouslySetInnerHTML={{ __html: qr }}
         />
-        <p className="text-[clamp(0.85rem,2vw,1.2rem)] leading-relaxed text-slate-600 lg:landscape:text-[clamp(0.8rem,1.8vh,1.15rem)]">{t(lang, "dp_scan")}</p>
+        <p className="text-[clamp(0.85rem,2vw,1.2rem)] leading-relaxed text-balance text-slate-600 portrait:sm:text-[clamp(1rem,2.6vw,1.5rem)] lg:landscape:text-[clamp(0.8rem,1.8vh,1.15rem)]">{t(lang, "dp_scan")}</p>
       </div>
       {blocker && (
         <div className="flex items-center gap-2 border-t border-rose-100 bg-rose-50 px-5 py-2.5 text-[clamp(0.8rem,1.8vw,1.05rem)] leading-normal font-semibold text-rose-700 sm:px-6 lg:landscape:px-[1.4vw] lg:landscape:py-[1.1vh] lg:landscape:text-[clamp(0.8rem,1.8vh,1.05rem)]">
@@ -357,7 +385,7 @@ function Callout({ lang, n, title, onClose }: { lang: Lang; n: number; title: st
       </div>
       <div className="flex flex-1 flex-col items-center justify-center gap-[3vh] bg-[radial-gradient(55%_50%_at_50%_52%,color-mix(in_srgb,var(--color-brand-600)_24%,transparent),transparent_75%)] px-5 text-center">
         <Eyebrow className="text-[clamp(1.3rem,4.4vh,3rem)]">{t(lang, "dp_number")}</Eyebrow>
-        <div className="text-[min(44vh,30vw)]">
+        <div className="text-[min(48vh,33vw)]">
           <Flaps items={glyphs(n, 3)} face="amber" flipKey={String(n)} />
         </div>
         <p className="flex items-center gap-[0.45em] text-[clamp(1.6rem,min(6.4vh,9vw),4.6rem)] leading-[1.4] font-bold">
@@ -381,12 +409,12 @@ function Layout({ lang, v, doctor, time, date, qr, callout, dismissCallout, voic
 
       <div className="flex flex-1 flex-col gap-4 p-4 sm:gap-6 sm:p-6 lg:landscape:grid lg:landscape:min-h-0 lg:landscape:grid-cols-[minmax(0,1fr)_min(22vw,24rem)] lg:landscape:gap-[1.6vw] lg:landscape:px-[2.5vw] lg:landscape:py-[2vh]">
         {/* اللوحة */}
-        <section className={`relative flex flex-1 flex-col overflow-hidden rounded-2xl lg:landscape:min-h-0 lg:landscape:rounded-[1.6vh] ${PANEL}`}>
+        <section className={`relative flex flex-1 flex-col overflow-hidden rounded-2xl portrait:sm:flex-none lg:landscape:min-h-0 lg:landscape:rounded-[1.6vh] ${PANEL}`}>
           <NowRow lang={lang} cur={cur} flipKey={flipKey} />
           <NextTable lang={lang} next={v.nextNumbers} avg={v.avgServiceMin} />
         </section>
 
-        <aside className="grid content-start gap-4 sm:gap-6 portrait:sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] portrait:sm:content-stretch lg:landscape:flex lg:landscape:min-h-0 lg:landscape:flex-col lg:landscape:gap-[1.6vh]">
+        <aside className="grid content-start gap-4 sm:gap-6 portrait:sm:flex-1 portrait:sm:grid-rows-[auto_minmax(0,1fr)] portrait:sm:content-stretch lg:landscape:flex lg:landscape:min-h-0 lg:landscape:flex-col lg:landscape:gap-[1.6vh]">
           <Stats lang={lang} waiting={v.waiting} avg={v.avgServiceMin} />
           <Pass lang={lang} qr={qr} blocker={v.blocker} />
         </aside>

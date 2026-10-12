@@ -29,24 +29,27 @@ const WIPE = "motion-safe:animate-[dw-focus-wipe_0.8s_cubic-bezier(0.65,0,0.35,1
 // أرقام عملاقة متقاربة؛ في rtl يُضاف التباعد السالب بعد آخر رقم فيدفعه خارج الهامش، فنعوّضه
 const GIANT = "num leading-[0.8] tracking-[-0.03em] rtl:pr-[0.03em]";
 
-/** مقاس الرقم العملاق حسب عدد خاناته — يملأ الشاشة دون أن يفيض (7، 42، 128). */
+/** مقاس الرقم العملاق حسب عدد خاناته — يملأ الشاشة دون أن يفيض (7، 42، 128، 1024). */
 const SIZES = {
+  // بالطول: الرقم يأخذ الارتفاع الذي كان فراغاً فوقه وتحته
   hero: [
-    "text-[min(63vh,56vw)] portrait:text-[min(42vh,78vw)]",
+    "text-[min(63vh,56vw)] portrait:text-[min(48vh,88vw)]",
+    "text-[min(63vh,56vw)] portrait:text-[min(48vh,80vw)]",
     "text-[min(63vh,38vw)] portrait:text-[min(34vh,54vw)]",
     "text-[min(52vh,28vw)] portrait:text-[min(26vh,40vw)]",
   ],
   // النداء: والحدّ الثالث يترك مكاناً للشريط الداكن في الشاشات القصيرة (هاتف بالعرض)
   call: [
     "text-[min(72vh,62vw,125vh_-_24em)] portrait:text-[min(46vh,80vw)]",
+    "text-[min(72vh,62vw,125vh_-_24em)] portrait:text-[min(46vh,80vw)]",
     "text-[min(72vh,50vw,125vh_-_24em)] portrait:text-[min(38vh,56vw)]",
     "text-[min(60vh,38vw,125vh_-_24em)] portrait:text-[min(30vh,42vw)]",
   ],
 } as const;
 
-function sized(kind: keyof typeof SIZES, n: number | null) {
-  const d = n === null ? 1 : String(n).length;
-  return SIZES[kind][d <= 2 ? 0 : d === 3 ? 1 : 2];
+function sized(kind: keyof typeof SIZES, n: number) {
+  const d = String(n).length;
+  return SIZES[kind][Math.min(d, 4) - 1];
 }
 
 /** مربّع صغير بلون العيادة + تسمية: علامة الأقسام في الشبكة. */
@@ -104,17 +107,22 @@ function Masthead({ v, doctor, time, date }: Pick<LayoutProps, "v" | "doctor" | 
 function Now({ lang, v }: { lang: Lang; v: LayoutProps["v"] }) {
   const n = v.currentNumber;
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-[1.4em] py-[1.4em] portrait:justify-center landscape:flex-row landscape:gap-[2.5em]">
+    <section className="flex min-h-0 flex-1 flex-col gap-[1.4em] py-[1.4em] portrait:justify-between landscape:flex-row landscape:gap-[2.5em]">
       <div className="flex min-w-0 flex-col justify-between gap-[0.8em] landscape:flex-1">
         <Label>{t(lang, "displayNow")}</Label>
-        <div
-          key={n ?? "none"}
-          data-testid="display-number"
-          className={`${GIANT} ${n === null ? "font-thin text-white/25" : "font-bold text-white"} ${RISE} ${sized("hero", n)}`}
-        >
-          {/* قبل بدء الاستقبال: شرطة رفيعة أصغر — علامة انتظار لا كتلة رمادية */}
-          {n ?? <span className="relative -top-[0.3em] text-[0.6em]">—</span>}
-        </div>
+        {n !== null ? (
+          <div key={n} data-testid="display-number" className={`${GIANT} font-bold text-white ${RISE} ${sized("hero", n)}`}>
+            {n}
+          </div>
+        ) : (
+          // قبل بدء الاستقبال: الرسالة نفسها تأخذ مكان الرقم، تعلوها شَرطة قصيرة بلون العيادة
+          <div className="pt-[1em]">
+            <span aria-hidden className="block h-[0.5em] w-[12em] bg-brand-500" />
+            <p className="mt-[0.4em] text-[4.5em] leading-tight font-bold text-balance text-white/85 portrait:text-[3.4em]">
+              {t(lang, "dp_soon")}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* بالعرض: عمود على الهامش الأخير (كالساعة فوقه). بالطول يذوب (contents) فيصعد زرّ الصوت وتنزل الحالة تحت الرقم */}
@@ -122,12 +130,10 @@ function Now({ lang, v }: { lang: Lang; v: LayoutProps["v"] }) {
         <div className="empty:hidden portrait:order-first">
           <SoundGate lang={lang} tone="dark" />
         </div>
-        <div className="landscape:mt-auto">
-          <p className={`leading-normal font-bold text-balance ${n !== null ? "text-[2.6em]" : "text-[2em] text-white/80"}`}>
-            {n !== null ? t(lang, "dp_enter") : t(lang, "dp_soon")}
-          </p>
+        <div className="empty:hidden portrait:mt-auto landscape:mt-auto">
+          {n !== null && <p className="text-[2.6em] leading-normal font-bold text-balance">{t(lang, "dp_enter")}</p>}
           {v.blocker && (
-            <p className="mt-[0.8em] flex items-start gap-[0.5em] text-[1em] leading-normal text-white/65 landscape:justify-end">
+            <p className="flex not-first:mt-[0.8em] items-start gap-[0.5em] text-[1em] leading-normal text-white/65 landscape:justify-end">
               <CircleAlert aria-hidden className="mt-[0.25em] size-[1.05em] shrink-0 text-brand-300" />
               {errorText(lang, v.blocker)}
             </p>
@@ -155,7 +161,7 @@ function Band({ lang, v, qr }: { lang: Lang; v: LayoutProps["v"]; qr: string }) 
   // «{n} د» / «{n} min» → الوحدة وحدها، تُكتب صغيرة بجانب الرقم
   const unit = t(lang, "dp_min", { n: "" }).trim();
   return (
-    <section className="grid grid-cols-2 gap-x-[2em] gap-y-[1.4em] py-[1.3em] landscape:grid-cols-[minmax(max-content,1fr)_auto_auto_auto] landscape:gap-0">
+    <section className="grid grid-cols-2 gap-x-[2em] gap-y-[1.4em] portrait:gap-x-0 py-[1.3em] landscape:grid-cols-[minmax(max-content,1fr)_auto_auto_auto] landscape:gap-0">
       <Cell label={t(lang, "dp_upcoming")} className="col-span-2 landscape:col-span-1 landscape:pe-[2.5em]">
         {v.nextNumbers.length > 0 ? (
           <div className="flex flex-wrap gap-[0.7em]">
@@ -175,11 +181,14 @@ function Band({ lang, v, qr }: { lang: Lang; v: LayoutProps["v"]; qr: string }) 
         )}
       </Cell>
 
-      <Cell label={t(lang, "waitingCount")} className="portrait:border-t portrait:pt-[1.4em] landscape:border-s landscape:px-[2.5em]">
+      {/* بالطول: فاصل واحد متّصل فوق الخانتين (لا خطّان منفصلان بفجوة) */}
+      <div aria-hidden className={`col-span-2 border-t landscape:hidden ${RULE}`} />
+
+      <Cell label={t(lang, "waitingCount")} className="portrait:pe-[2em] landscape:border-s landscape:px-[2.5em]">
         <span className="num text-[3.4em] leading-none font-semibold">{v.waiting}</span>
       </Cell>
 
-      <Cell label={t(lang, "dp_avg")} className="portrait:border-t portrait:pt-[1.4em] landscape:border-s landscape:px-[2.5em]">
+      <Cell label={t(lang, "dp_avg")} className="landscape:border-s landscape:px-[2.5em]">
         <span className="whitespace-nowrap">
           <span className="num text-[3.4em] leading-none font-semibold">{v.avgServiceMin}</span>
           <span className="ms-[0.35em] text-[1.3em] text-white/55">{unit}</span>
@@ -191,10 +200,10 @@ function Band({ lang, v, qr }: { lang: Lang; v: LayoutProps["v"]; qr: string }) 
           className="w-[6.6em] shrink-0 rounded-[0.35em] bg-white p-[0.45em] [&>svg]:block [&>svg]:h-auto [&>svg]:w-full"
           dangerouslySetInnerHTML={{ __html: qr }}
         />
-        <div className="min-w-0 landscape:max-w-[16em]">
+        <div className="min-w-0 landscape:max-w-[19em]">
           {/* مسافة غير منكسرة قبل الشرطة كي لا تبدأ بها السطر الثاني */}
           <p className="text-[1.15em] leading-normal font-bold text-balance">{t(lang, "posterTitle").replace(" —", "\u00a0—")}</p>
-          <p className="mt-[0.3em] text-[0.9em] leading-normal text-pretty text-white/55">{t(lang, "dp_scan")}</p>
+          <p className="mt-[0.3em] text-[0.9em] leading-normal text-balance text-white/55">{t(lang, "dp_scan")}</p>
         </div>
       </div>
     </section>
@@ -239,7 +248,7 @@ function FocusLayout({ lang, v, doctor, time, date, qr, callout, dismissCallout,
         <div aria-hidden key={`rule-${n ?? "none"}`} className={`h-[0.5em] shrink-0 bg-brand-500 ltr:origin-left rtl:origin-right ${WIPE}`} />
         <Band lang={lang} v={v} qr={qr} />
         <footer className={`flex flex-wrap items-center justify-between gap-x-[2em] gap-y-[0.6em] border-t py-[0.75em] ${RULE}`}>
-          <p className="flex items-center gap-[0.6em] text-[max(0.8em,12px)] leading-normal text-white/40">
+          <p className="flex items-center gap-[0.6em] text-[max(0.8em,12px)] leading-normal text-balance text-white/40 max-sm:items-start">
             <LogoMark size={18} className="shrink-0" />
             {t(lang, "dp_footer")}
           </p>

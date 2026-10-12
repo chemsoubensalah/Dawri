@@ -27,19 +27,27 @@ const LABEL_SIZE = "text-[clamp(0.8rem,2.6vw,1.5rem)] lg:landscape:text-[max(11p
 // حركة واحدة عند تغيّر الرقم: صعود هادئ (transform/opacity فقط)
 const RISE = "motion-safe:animate-[dw-elegant-rise_0.9s_cubic-bezier(0.2,0.7,0.2,1)_both]";
 
-/** مقاس الرقم حسب عدد خاناته (7، 42، 128، 1024) — أكبر ما يمكن دون أن يفيض. */
+/**
+ * مقاس الرقم حسب عدد خاناته (7، 42، 128، 1024) — أكبر ما يمكن دون أن يفيض.
+ * «منقسم» محدود بالارتفاع: الرقم يملأ الوسط. تلفاز بالطول (≥1400px ارتفاعاً) له درجة أكبر تملأ العمود.
+ * heroTight: حين يظهر سطر العائق تحت الرقم، نعود درجة كي لا يُدفع التذييل خارج الشاشة.
+ */
 const SIZES = {
   hero: [
-    "text-[min(70vw,28vh)] lg:landscape:text-[min(46vh,34vw)]",
-    "text-[min(58vw,26vh)] lg:landscape:text-[min(42vh,30vw)]",
-    "text-[min(44vw,19vh)] lg:landscape:text-[min(34vh,22vw)]",
+    "text-[min(70vw,28vh)] [@media(orientation:portrait)_and_(min-height:1400px)]:text-[min(70vw,38vh)] lg:landscape:text-[min(52vh,34vw)]",
+    "text-[min(58vw,26vh)] [@media(orientation:portrait)_and_(min-height:1400px)]:text-[min(58vw,34vh)] lg:landscape:text-[min(48vh,30vw)]",
+    "text-[min(44vw,19vh)] [@media(orientation:portrait)_and_(min-height:1400px)]:text-[min(44vw,26vh)] lg:landscape:text-[min(38vh,22vw)]",
+  ],
+  heroTight: [
+    "text-[min(70vw,28vh)] [@media(orientation:portrait)_and_(min-height:1400px)]:text-[min(70vw,34vh)] lg:landscape:text-[min(44vh,34vw)]",
+    "text-[min(58vw,26vh)] [@media(orientation:portrait)_and_(min-height:1400px)]:text-[min(58vw,31vh)] lg:landscape:text-[min(41vh,30vw)]",
+    "text-[min(44vw,19vh)] [@media(orientation:portrait)_and_(min-height:1400px)]:text-[min(44vw,24vh)] lg:landscape:text-[min(34vh,22vw)]",
   ],
   call: ["text-[min(54vh,70vw)]", "text-[min(46vh,52vw)]", "text-[min(36vh,40vw)]"],
 } as const;
 
-function sizeOf(n: number | null, sizes: readonly string[]) {
-  // بلا رقم: أصغر مقاس كي لا يبقى فراغ كبير حول الخطّ
-  const d = n === null ? 4 : String(n).length;
+function sizeOf(n: number, sizes: readonly string[]) {
+  const d = String(n).length;
   return sizes[d <= 2 ? 0 : d === 3 ? 1 : 2];
 }
 
@@ -137,11 +145,11 @@ function Plaque({ lang, v, doctor, qr }: Pick<LayoutProps, "lang" | "v" | "docto
       <div className="relative mx-auto flex w-full max-w-[36rem] flex-1 flex-col md:max-w-none md:flex-row md:gap-[5vw] lg:landscape:flex-col lg:landscape:gap-0">
         {/* القوس يضمّ الكلّ (هاتف، منقسم) أو الطبيب وحده (عريض بالطول) */}
         <Arch className="md:hidden lg:landscape:block" />
-        <div className="relative flex flex-col items-center justify-center px-[7%] pt-[clamp(1.75rem,7vw,4rem)] pb-[max(1rem,2.4vw)] text-center md:flex-1 md:pt-[4.5vw] md:pb-[3vw] lg:landscape:pt-[5vh] lg:landscape:pb-[3vh]">
+        <div className="relative flex flex-col items-center justify-center px-[7%] lg:landscape:px-[5%] pt-[clamp(1.75rem,7vw,4rem)] pb-[max(1rem,2.4vw)] text-center md:flex-1 md:pt-[4.5vw] md:pb-[3vw] lg:landscape:pt-[5vh] lg:landscape:pb-[3vh]">
           <Arch className="hidden md:block lg:landscape:hidden" />
           <div className="relative flex flex-col items-center">
             <Medallion name={title} />
-            <h1 className="mt-[max(0.9rem,2.4vw)] text-[clamp(1.4rem,5.4vw,3.4rem)] leading-[1.5] font-normal text-balance text-white ltr:font-light md:text-[min(3rem,4.6vw)] lg:landscape:mt-[2.6vh] lg:landscape:text-[min(5.2vh,3vw)]">
+            <h1 className="mt-[max(0.9rem,2.4vw)] text-[clamp(1.4rem,5.4vw,3.4rem)] leading-[1.5] font-normal text-balance text-white ltr:font-light md:text-[min(3rem,4.6vw)] lg:landscape:mt-[2.6vh] lg:landscape:text-[min(4.8vh,2.8vw)]">
               {title}
             </h1>
             {v.profile.specialty && (
@@ -163,8 +171,8 @@ function Plaque({ lang, v, doctor, qr }: Pick<LayoutProps, "lang" | "v" | "docto
             dangerouslySetInnerHTML={{ __html: qr }}
           />
           <div className="min-w-0">
-            <p className="text-[clamp(0.95rem,3vw,1.6rem)] leading-[1.6] text-white lg:landscape:text-[min(2.3vh,1.35vw)]">{t(lang, "posterTitle")}</p>
-            <p className="mt-[0.4em] text-[clamp(0.8rem,2.4vw,1.25rem)] leading-[1.7] text-brand-200/85 lg:landscape:text-[min(1.75vh,1.05vw)]">
+            <p className="text-[clamp(0.95rem,3vw,1.6rem)] leading-[1.6] text-pretty text-white lg:landscape:text-[min(2.3vh,1.35vw)]">{t(lang, "posterTitle")}</p>
+            <p className="mt-[0.4em] text-[clamp(0.8rem,2.4vw,1.25rem)] leading-[1.7] text-pretty text-brand-200/85 lg:landscape:text-[min(1.75vh,1.05vw)]">
               {t(lang, "dp_scan")}
             </p>
           </div>
@@ -178,8 +186,11 @@ function Plaque({ lang, v, doctor, qr }: Pick<LayoutProps, "lang" | "v" | "docto
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className={`border-s ${RULE} ps-[max(0.9rem,1.4vw)] max-md:first:border-s-0 max-md:first:ps-0`}>
-      <dt className="text-[clamp(0.8rem,2.6vw,1.4rem)] leading-normal text-brand-700 lg:landscape:text-[max(11px,min(1.8vh,1.05vw))]">{label}</dt>
-      <dd className="num mt-[0.1em] text-[clamp(1.4rem,5.5vw,3.2rem)] leading-tight font-light lg:landscape:text-[min(3.6vh,2.1vw)]">{value}</dd>
+      {/* بالمنقسم: التسمية بمقاس «الأرقام القادمة» وعلى سطرها، والقيمة في صندوق بارتفاع الأرقام القادمة ومحاذاة لأسفله كي تتشارك الخطّ الأساس */}
+      <dt className="text-[clamp(0.8rem,2.6vw,1.4rem)] leading-normal text-brand-700 lg:landscape:text-[max(11px,min(1.9vh,1.1vw))]">{label}</dt>
+      <dd className="num mt-[0.1em] text-[clamp(1.4rem,5.5vw,3.2rem)] leading-tight font-light lg:landscape:mt-[0.9vh] lg:landscape:flex lg:landscape:h-[min(7.4vh,4.3vw)] lg:landscape:items-end lg:landscape:pb-[0.6vh] lg:landscape:text-[min(3.6vh,2.1vw)] lg:landscape:leading-none">
+        {value}
+      </dd>
     </div>
   );
 }
@@ -187,13 +198,13 @@ function Stat({ label, value }: { label: string; value: string }) {
 /** الأرقام القادمة: صفّ تفصله خطوط شعرية، والأوّل بلون العيادة مع «التالي». */
 function Upcoming({ lang, v }: Pick<LayoutProps, "lang" | "v">) {
   return (
-    <div className={`flex flex-wrap items-end justify-between gap-x-[3vw] gap-y-5 border-t ${RULE} py-[max(1rem,2.4vw)] lg:landscape:py-[1.8vh]`}>
+    <div className={`flex flex-wrap items-end justify-between gap-x-[3vw] gap-y-5 lg:landscape:items-start border-t ${RULE} py-[max(1rem,2.4vw)] lg:landscape:py-[1.8vh]`}>
       <div className="min-w-0">
         <p className={`text-brand-700 ${LABEL_SIZE} ${LABEL}`}>{t(lang, "dp_upcoming")}</p>
         {v.nextNumbers.length > 0 ? (
           <ol className="mt-[max(0.4rem,1vw)] flex items-start lg:landscape:mt-[0.9vh]">
             {v.nextNumbers.map((x, i) => (
-              <li key={x} className={`flex flex-col items-center px-[max(0.9rem,1.6vw)] first:ps-0 ${i > 0 ? `border-s ${RULE}` : ""}`}>
+              <li key={x} className={`flex flex-col items-center px-[max(0.9rem,2.6vw)] first:ps-0 md:px-[3vw] lg:landscape:px-[2vw] ${i > 0 ? `border-s ${RULE}` : ""}`}>
                 <span
                   className={`num text-[clamp(2.2rem,10vw,5.5rem)] leading-none font-light lg:landscape:text-[min(7.4vh,4.3vw)] ${
                     i === 0 ? "text-brand-700" : "opacity-60"
@@ -238,19 +249,40 @@ function Stage({ lang, v, time, date, voice, toggleVoice }: Pick<LayoutProps, "l
       </header>
 
       <div className="flex flex-1 flex-col items-center justify-center py-[max(1.25rem,2.5vw)] text-center lg:landscape:py-[1.6vh]">
-        <Caption className={LABEL_SIZE}>{t(lang, "displayNow")}</Caption>
-        <p
-          key={n ?? "none"}
-          data-testid="display-number"
-          className={`num mt-[max(0.5rem,1.2vw)] leading-[0.92] lg:landscape:mt-[1.2vh] font-light tracking-[-0.03em] ${sizeOf(n, SIZES.hero)} ${RISE}`}
-        >
-          {/* قبل بدء الاستقبال: خطّ شعري بدل شرطة سميكة */}
-          {n ?? <span role="img" aria-label="—" className="mx-auto my-[0.45em] block h-[max(3px,0.012em)] w-[0.55em] bg-current opacity-25" />}
-        </p>
-        <Ornament className="mt-[max(1rem,3vw)] text-[clamp(10px,1.8vw,18px)] text-brand-600 lg:landscape:mt-[2.2vh] lg:landscape:text-[min(1.7vh,1vw)]" />
-        <p className="mt-[max(0.75rem,2vw)] text-[clamp(1.3rem,5vw,2.8rem)] lg:landscape:mt-[1.6vh] leading-normal font-light text-brand-800 lg:landscape:text-[min(3.6vh,2.1vw)]">
-          {n !== null ? t(lang, "dp_enter") : t(lang, "dp_soon")}
-        </p>
+        {n !== null ? (
+          <>
+            <Caption className={LABEL_SIZE}>{t(lang, "displayNow")}</Caption>
+            <p
+              key={n}
+              data-testid="display-number"
+              className={`num mt-[max(0.5rem,1.2vw)] leading-[0.92] font-light tracking-[-0.03em] lg:landscape:mt-[0.6vh] ${sizeOf(n, v.blocker ? SIZES.heroTight : SIZES.hero)} ${RISE}`}
+            >
+              {n}
+            </p>
+            <Ornament className="mt-[max(1rem,3vw)] text-[clamp(10px,1.8vw,18px)] text-brand-600 lg:landscape:mt-[1.6vh] lg:landscape:text-[min(1.7vh,1vw)]" />
+            <p className="mt-[max(0.75rem,2vw)] text-[clamp(1.3rem,5vw,2.8rem)] leading-normal font-light text-brand-800 [@media(orientation:portrait)_and_(min-height:1400px)]:text-[min(4.5vh,6vw)] lg:landscape:mt-[1vh] lg:landscape:text-[min(3.6vh,2.1vw)]">
+              {t(lang, "dp_enter")}
+            </p>
+          </>
+        ) : (
+          // قبل بدء الاستقبال: الرسالة هي البطل — ميدالية رفيعة وماسة ثمّ «يبدأ الاستقبال قريباً»، متوسّطة بلا فراغ ميّت
+          <div key="none" className={`flex flex-col items-center ${RISE}`}>
+            <span
+              aria-hidden
+              className="relative flex size-[clamp(4.5rem,16vw,8rem)] items-center justify-center rounded-full border border-brand-600/40 text-brand-600 lg:landscape:size-[min(14vh,8vw)]"
+            >
+              <span className="absolute inset-[7%] rounded-full border border-brand-600/20" />
+              <Stethoscope className="size-[38%]" strokeWidth={1} />
+            </span>
+            <Ornament className="mt-[max(1.25rem,3.4vw)] text-[clamp(12px,2.4vw,22px)] text-brand-600 lg:landscape:mt-[3vh] lg:landscape:text-[min(2.4vh,1.4vw)]" />
+            <p
+              data-testid="display-number"
+              className="mt-[max(1rem,2.6vw)] text-[clamp(1.8rem,7vw,4rem)] leading-normal font-light text-balance text-brand-800 [@media(orientation:portrait)_and_(min-height:1400px)]:text-[min(5vh,7vw)] lg:landscape:mt-[2.4vh] lg:landscape:text-[min(7vh,4.2vw)]"
+            >
+              {t(lang, "dp_soon")}
+            </p>
+          </div>
+        )}
         {v.blocker && (
           <p className="mt-[max(0.6rem,1.5vw)] inline-flex lg:landscape:mt-[1.2vh] items-center gap-[0.6em] rounded-full border border-slate-300 px-[1em] py-[0.15em] text-[clamp(0.8rem,2.6vw,1.4rem)] leading-normal text-slate-600 lg:landscape:text-[max(11px,min(1.8vh,1.05vw))]">
             <span aria-hidden className="size-[0.45em] shrink-0 rounded-full bg-slate-400" />
@@ -264,7 +296,7 @@ function Stage({ lang, v, time, date, voice, toggleVoice }: Pick<LayoutProps, "l
       <footer
         className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t ${RULE} py-[max(0.6rem,1.6vw)] text-xs text-slate-500 lg:landscape:py-[1.2vh] lg:landscape:flex-nowrap lg:landscape:text-[max(11px,1.25vh)]`}
       >
-        <span className="flex min-w-0 items-center gap-2 leading-normal">
+        <span className="flex min-w-0 items-center gap-2 leading-normal text-pretty">
           <LogoMark size={16} className="shrink-0 opacity-80" /> {t(lang, "dp_footer")}
         </span>
         {/* أزرار هادئة صغيرة: تظهر كاملة عند المرور أو التركيز */}

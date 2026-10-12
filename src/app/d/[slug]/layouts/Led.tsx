@@ -1,5 +1,5 @@
 "use client";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { ArrowRight, Clock3, Stethoscope, Users } from "lucide-react";
 import SoundGate from "@/components/SoundGate";
 import { LogoMark } from "@/components/ui";
@@ -74,20 +74,13 @@ const GLYPHS: Record<string, string> = {
   "-": "0000001",
 };
 
-// طبقات التوهّج [العرض، الشفافية]: من الأعرض الأخفت إلى الأضيق الأقوى (تقريب لتوهّج ضبابي)؛
-// الشاشات الصغيرة تكفيها طبقتان (عُقد أقلّ على أجهزة التلفاز الضعيفة)
-const HALO = {
-  full: [
-    [20, 0.03],
-    [13, 0.05],
-    [8, 0.08],
-    [4, 0.12],
-  ],
-  soft: [
-    [12, 0.06],
-    [5, 0.14],
-  ],
-} as const;
+// توهّج الشاشات الصغيرة: طبقتا حدود [العرض، الشفافية] دون فلاتر (عُقد قليلة على أجهزة التلفاز الضعيفة)؛
+// الشاشتان الكبيرتان (العدّاد والنداء) تأخذان «full»: ضبابية حقيقية واحدة (فلتر SVG) بدل الحلقات المتراكبة
+const SOFT_HALO = [
+  [12, 0.06],
+  [5, 0.14],
+] as const;
+type Halo = "soft" | "full";
 
 type Shape = { key: string; at: number; pts: string };
 
@@ -101,8 +94,10 @@ function SevenSeg({
   text: string;
   className?: string;
   litClass?: string;
-  halo?: keyof typeof HALO;
+  halo?: Halo;
 }) {
+  // معرّف فريد للفلتر كي لا يتصادم العدّاد والنداء (useId قد يحوي رموزاً لا تصلح داخل url(#…))
+  const bloomId = `dw-led-bloom-${useId().replace(/[^\w-]/g, "")}`;
   const ghost: Shape[] = [];
   const lit: Shape[] = [];
   const dots: Shape[] = [];
@@ -124,20 +119,45 @@ function SevenSeg({
   const width = x - GAP + SL * H + PAD;
   const draw = (list: Shape[]) =>
     list.map((s) => <polygon key={s.key} points={s.pts} transform={`translate(${s.at} ${PAD})`} />);
-  // التوهّج دون فلاتر (أخفّ على أجهزة التلفاز): حدود متدرّجة خلف القطعة المضيئة؛
-  // الشفافية على المجموعة لا على كلّ قطعة كي لا تتراكم عند الوصلات
+  // «soft»: حدود متدرّجة خلف القطعة المضيئة (الشفافية على المجموعة كي لا تتراكم عند الوصلات)؛
+  // «full»: نسخة مضبّبة واحدة تحت القطع = توهّج LED ناعم بلا حلقات ولا مستطيلات داخل الحلقات
   const glow = (list: Shape[]) => (
     <>
-      {HALO[halo].map(([w, o]) => (
-        <g key={w} fill="none" className="stroke-brand-400" opacity={o} strokeWidth={w} strokeLinejoin="round">
+      {halo === "full" ? (
+        <g filter={`url(#${bloomId})`} className="fill-brand-400" opacity={0.6}>
           {draw(list)}
         </g>
-      ))}
+      ) : (
+        SOFT_HALO.map(([w, o]) => (
+          <g key={w} fill="none" className="stroke-brand-400" opacity={o} strokeWidth={w} strokeLinejoin="round">
+            {draw(list)}
+          </g>
+        ))
+      )}
       <g className="fill-brand-300">{draw(list)}</g>
     </>
   );
+  const vh = H + 2 * PAD;
   return (
-    <svg viewBox={`0 0 ${width} ${H + 2 * PAD}`} className={className} aria-hidden="true" focusable="false">
+    <svg
+      viewBox={`0 0 ${width} ${vh}`}
+      className={`${halo === "full" ? "overflow-visible" : ""} ${className}`}
+      aria-hidden="true"
+      focusable="false"
+    >
+      {halo === "full" && (
+        <defs>
+          {/* هالتان: قريبة مركّزة وبعيدة واسعة، تمتدّان خارج حدود الرسم (overflow-visible) */}
+          <filter id={bloomId} filterUnits="userSpaceOnUse" x={-40} y={-40} width={width + 80} height={vh + 80}>
+            <feGaussianBlur in="SourceGraphic" stdDeviation={3} result="near" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation={10} result="far" />
+            <feMerge>
+              <feMergeNode in="far" />
+              <feMergeNode in="near" />
+            </feMerge>
+          </filter>
+        </defs>
+      )}
       <g className="fill-brand-300" fillOpacity={0.075}>
         {draw(ghost)}
       </g>
@@ -149,6 +169,14 @@ function SevenSeg({
 
 /** خانات ثابتة كجهاز حقيقي: ما لا يُستعمل يبقى «8» خافتة، وبلا رقم: «---». */
 const cells = (n: number | null, width = 3) => (n === null ? "-".repeat(width) : String(n).padStart(width, " "));
+
+/** للشاشتين الكبيرتين: خانات بقدر الرقم (خانتان على الأقلّ) كي يتوسّط الرقم فوق السطر ويكبر. */
+const heroDigits = (n: number | null) =>
+  Math.min(4, Math.max(2, n === null ? 2 : String(n).length)) as 2 | 3 | 4;
+// عرض العدّاد بحسب عدد الخانات: نفس الارتفاع (≈24em) أيّاً كان العدد، ولا يتجاوز النافذة
+const COUNTER_W = { 2: "w-[min(31.4em,100%)]", 3: "w-[min(46.3em,100%)]", 4: "w-[min(61.2em,100%)]" } as const;
+// ارتفاع رقم النداء بحسب عدد الخانات: محدود بالطول وبعرض الشاشة معاً
+const CALLOUT_H = { 2: "h-[min(64vh,60vw)]", 3: "h-[min(58vh,42vw)]", 4: "h-[min(50vh,31vw)]" } as const;
 
 function clockText(time: string) {
   const m = /^(\d{1,2})\D+(\d{2})/.exec(time);
@@ -263,7 +291,7 @@ function Header({ lang, v, doctor, time, date }: Pick<LayoutProps, "lang" | "v" 
       </div>
 
       <div className="flex items-center gap-[1em] justify-self-end max-sm:justify-self-start portrait:sm:flex-col-reverse portrait:sm:items-end portrait:sm:gap-[0.4em] landscape:col-start-3 landscape:row-start-1">
-        {date && <span className="max-w-[10em] text-end text-[1em] leading-normal text-white/60 max-sm:order-last max-sm:text-start">{date}</span>}
+        {date && <span className="max-w-[10em] text-end text-[1.15em] leading-normal text-white/70 max-sm:order-last max-sm:text-start">{date}</span>}
         <Module inner="px-[0.85em] py-[0.55em]">
           <SevenSeg text={clockText(time)} className="block h-[2.6em] w-auto" />
           <span className="sr-only">{time}</span>
@@ -281,6 +309,7 @@ function Header({ lang, v, doctor, time, date }: Pick<LayoutProps, "lang" | "v" 
 /** العدّاد الرئيسي: ثلاث خانات ضخمة + مصباح «تفضّل بالدخول». */
 function Counter({ lang, v }: { lang: Lang; v: PublicShopView }) {
   const n = v.currentNumber;
+  const d = heroDigits(n);
   return (
     <section className="flex min-h-0 flex-col gap-[0.6em]">
       <div className="flex flex-wrap items-center justify-between gap-x-[1.2em] gap-y-[0.4em]">
@@ -297,7 +326,12 @@ function Counter({ lang, v }: { lang: Lang; v: PublicShopView }) {
         inner="flex flex-col items-center justify-center gap-[1.1em] px-[1.6em] py-[1.4em] max-sm:px-[1em]"
       >
         <div data-testid="display-number" className="flex w-full justify-center">
-          <SevenSeg text={cells(n)} halo="full" className="block h-auto w-full max-w-[46em] landscape:w-[min(46em,100%)]" />
+          <SevenSeg
+            text={cells(n, d)}
+            halo={n === null ? "soft" : "full"}
+            litClass={n === null ? "opacity-45" : ""}
+            className={`block h-auto ${COUNTER_W[d]}`}
+          />
           <span className="sr-only">{n ?? "—"}</span>
         </div>
         {/* المصباح والسهم داخل السطر: إن التفّ النصّ (الفرنسية بالطول) بقيا ملتصقين به */}
@@ -326,7 +360,7 @@ function Upcoming({ lang, v }: { lang: Lang; v: PublicShopView }) {
         <div className="flex items-center justify-between gap-[1em]">
           <span className={`flex min-w-0 items-center gap-[0.6em] text-[1.15em] leading-normal font-semibold ${empty ? "text-white/55" : "text-white/85"}`}>
             <Lamp state={empty ? "off" : "on"} className="size-[0.7em]" />
-            {empty ? t(lang, "emptyQueue") : t(lang, "db_upNext")}
+            {empty ? t(lang, "emptyQueue").replace(/[.。]\s*$/, "") : t(lang, "db_upNext")}
           </span>
           <SevenSeg text={empty ? "   " : cells(first)} className="block h-[4.6em] w-auto shrink-0" />
         </div>
@@ -346,7 +380,7 @@ function Upcoming({ lang, v }: { lang: Lang; v: PublicShopView }) {
 /** عدد المنتظرين ومدّة الكشف على شاشتين صغيرتين. */
 function Stats({ lang, v }: { lang: Lang; v: PublicShopView }) {
   const unit = t(lang, "dp_min", { n: "" }).trim();
-  const label = "flex items-center gap-[0.45em] text-[0.95em] font-medium leading-normal text-white/60";
+  const label = "flex items-center gap-[0.45em] text-[1.05em] font-medium leading-normal text-white/70";
   return (
     // بالطول (عمودان): ينزل بقدر لوحة «الأرقام القادمة» كي تتحاذى الإطارات
     <Module className="portrait:sm:mt-[2.15em]" inner="grid grid-cols-2">
@@ -385,7 +419,7 @@ function QrPlate({ lang, qr }: { lang: Lang; qr: string }) {
       />
       <div className="min-w-0">
         <div className="text-[1.12em] leading-snug font-bold text-balance">{t(lang, "posterTitle")}</div>
-        <p className="mt-[0.35em] text-[0.88em] leading-normal text-slate-600">{t(lang, "dp_scan")}</p>
+        <p className="mt-[0.35em] text-[0.95em] leading-normal text-slate-700">{t(lang, "dp_scan")}</p>
       </div>
     </div>
   );
@@ -415,9 +449,12 @@ function Ticker({ lang, v, doctor }: { lang: Lang; v: PublicShopView; doctor: st
   return (
     <div className={`relative ${GUTTER}`}>
       <Module inner="flex h-[3.2em] items-center bg-[radial-gradient(circle,rgba(255,255,255,0.07)_1.1px,transparent_1.6px)] [background-size:4px_4px]">
-        <div className={`flex w-max text-[1.6em] leading-normal font-bold text-brand-200 ${run}`} style={{ animationDuration: `${secs}s` }}>
-          {copy(false)}
-          {copy(true)}
+        {/* تلاشٍ عند الحافّتين بدل القطع الحادّ؛ على الشريط وحده كي تبقى شبكة النقاط كاملة */}
+        <div className="flex h-full w-full items-center overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_2.5em,#000_calc(100%-2.5em),transparent)]">
+          <div className={`flex w-max text-[1.6em] leading-normal font-bold text-brand-200 ${run}`} style={{ animationDuration: `${secs}s` }}>
+            {copy(false)}
+            {copy(true)}
+          </div>
         </div>
         {/* شبكة البكسلات فوق النصّ: تجعله نقاطاً مضيئة كلافتة LED */}
         <span
@@ -440,9 +477,9 @@ function Callout({ lang, n, doctor, onClose }: { lang: Lang; n: number; doctor: 
       >
         <Plate className="text-[clamp(1.1rem,3.4vmin,2.6rem)]">{t(lang, "dp_number")}</Plate>
         <SevenSeg
-          text={cells(n)}
+          text={cells(n, heroDigits(n))}
           halo="full"
-          className="block h-auto w-[min(82vw,112vh)] max-w-full portrait:w-[min(80vw,58vh)]"
+          className={`block w-auto max-w-full ${CALLOUT_H[heroDigits(n)]}`}
           litClass="motion-safe:animate-[dw-led-blink3_2.1s_linear_both]"
         />
         <span className="sr-only">{n}</span>
