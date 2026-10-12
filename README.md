@@ -127,6 +127,13 @@ TEST_DATABASE_URL=postgres://… npx vitest run tests/service.test.ts   # على
 ### 5) تنبيهات الهاتف (Web Push) — اختياري
 `npx web-push generate-vapid-keys` ← `NEXT_PUBLIC_VAPID_PUBLIC_KEY` و`VAPID_PRIVATE_KEY`. تعمل على أندرويد/كروم بلا تثبيت، وعلى آيفون بعد «إضافة إلى الشاشة الرئيسية».
 
+### 6) SMS مجّانية من هاتف العيادة (لا إعداد على الخادم)
+كلّ عيادة تربط هاتف أندرويد فيه شريحة من **الإعدادات ← رسائل SMS**: تطبيق «SMS Gateway for Android» المفتوح المصدر
+(sms-gate.app) في وضع **Cloud server**، ثمّ تلصق اسم المستخدم وكلمة السرّ. ترسل «دوري» عبره «دورك الآن» و«اقترب دورك»
+ورموز التحقّق (رسالة قصيرة واحدة لكلّ تنبيه، تنتهي صلاحيتها إن كان الهاتف مطفأً). كلمة السرّ مشفّرة (AES-256-GCM من
+`SESSION_SECRET`)، وعند أيّ فشل نعود إلى `SMS_PROVIDER` إن وُجد. `SMSGATE_ALLOW_PRIVATE=1` (اختياري) فقط إن استُضيفت
+«دوري» داخل شبكة العيادة نفسها، للسماح بالخادم المحلّي للهاتف (`http://IP:8080`).
+
 ---
 
 ### استعادة الرمز السرّي بالبريد
@@ -151,6 +158,7 @@ src/lib/server/
   whatsapp.ts                 Cloud API: روابط wa.me، التوقيع، الإرسال، فهم الرسائل
   billing.ts                  Chargily + التفعيل اليدوي
   notify.ts                   التنبيهات: واتساب ← Web Push ← SMS
+  smsgate.ts                  SMS من هاتف العيادة (SMS Gateway for Android): تشفير، إرسال، حدود
 src/components/               نظام التصميم (ui.tsx، الحوارات، الإطارات، المخطّطات)
 src/app/                      الصفحات وواجهات API
 ```

@@ -8,6 +8,7 @@ import { LAYOUTS } from "@/app/d/[slug]/layouts";
 import { errorText, t, type DictKey } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
 import type { ChannelStatus } from "@/lib/server/channels";
+import SmsSection from "./SmsSection";
 
 // نبدأ الأسبوع بالسبت كما في الجزائر
 const DAYS = ["6", "0", "1", "2", "3", "4", "5"];
@@ -140,6 +141,7 @@ export default function SettingsForm({
               ["hours", "hours"],
               ["rules", "se_rules"],
               ["alerts", "se_alerts"],
+              ["sms", "sg_nav"],
               ["security", "se_security"],
             ] as [string, DictKey][]
           ).map(([id, k]) => (
@@ -373,6 +375,7 @@ export default function SettingsForm({
             <MessageCircle size={14} /> {t(lang, "se_chNote")}
           </p>
         </Section>
+        <SmsSection lang={lang} slug={slug} />
 
         <Section id="security" icon={<KeyRound size={20} />} title={t(lang, "se_security")}>
           <div className="mb-4">

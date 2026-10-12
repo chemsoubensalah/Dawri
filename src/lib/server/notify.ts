@@ -6,6 +6,7 @@
  *   called    ← «دورك الآن» فقط (الأوفر)
  *   soon      ← «تعال الآن» فقط
  * تصل أيضاً لمن أضافته السكرتيرة برقم هاتفه (الكبار بلا هاتف ذكي).
+ * وإن ربطت العيادة هاتفها (SMS Gateway — smsgate.ts) يُرسَل «دورك الآن»/«اقترب دورك» منه مجّاناً أوّلاً.
  * وفي كلّ الأحوال: صفحة التذكرة المفتوحة تُصدر صوتاً واهتزازاً بنفسها.
  */
 import { t, type DictKey } from "../i18n";
@@ -14,6 +15,7 @@ import { now as clockNow } from "./clock";
 import { getDb } from "./db";
 import * as repo from "./repo";
 import { getSms } from "./sms";
+import { sendClinicNotification } from "./smsgate";
 import { waConfig, waSendButtons, waSendTemplate, waSendText } from "./whatsapp";
 
 export interface Notification {
@@ -129,7 +131,9 @@ export const defaultNotifier: Notifier = {
     }
     // SMS فقط لمن لم يصله واتساب (توفير الكلفة)
     // من أوقف التنبيهات (STOP) لا تصله رسائل SMS أيضاً
-    if (!waSent && !n.ticket.waOptOut && n.ticket.phone && smsTypes().has(n.type)) {
+    // هاتف العيادة نفسه أوّلاً (SMS Gateway — مجّاني للعيادة)، وإن تعذّر فالمزوّد العامّ
+    const clinicSent = !waSent && !n.ticket.waOptOut && n.ticket.phone ? await sendClinicNotification(n) : false;
+    if (!clinicSent && !waSent && !n.ticket.waOptOut && n.ticket.phone && smsTypes().has(n.type)) {
       const sms = getSms();
       await sms?.send(n.ticket.phone, `${msg.title} ${msg.body}`).catch((e) => console.error("[sms]", e));
     }

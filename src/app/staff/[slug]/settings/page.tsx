@@ -3,6 +3,7 @@ import StaffFrame from "@/components/StaffFrame";
 import { drTitle } from "@/lib/i18n";
 import { getLang, ownerShop } from "@/lib/server/http";
 import { channelStatus } from "@/lib/server/channels";
+import { withClinicSms } from "@/lib/server/smsgate";
 import SettingsForm from "./SettingsForm";
 
 export const metadata = { title: "الإعدادات", robots: { index: false } };
@@ -17,7 +18,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
       <SettingsForm
         lang={lang}
         slug={shop.slug}
-        channels={channelStatus()}
+        channels={await withClinicSms(channelStatus(), shop.id)}
         initial={{
           name: shop.name,
           hours: shop.hours,
