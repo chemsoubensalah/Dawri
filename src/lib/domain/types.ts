@@ -175,6 +175,8 @@ export interface Shop {
   profile: ShopProfile;
   /** لون التطبيق وتصميم شاشة القاعة */
   look: ShopLook;
+  /** بريد صاحب العيادة: لاستعادة الرمز السرّي */
+  ownerEmail: string | null;
 }
 
 export interface ShopProfile {

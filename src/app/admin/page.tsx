@@ -5,7 +5,7 @@ import { now as clockNow } from "@/lib/server/clock";
 import { getDb } from "@/lib/server/db";
 import * as repo from "@/lib/server/repo";
 import { priceNumber } from "@/lib/pricing";
-import AdminLogin, { ExtendForm } from "./AdminClient";
+import AdminLogin, { ExtendForm, ResetPinButton } from "./AdminClient";
 
 export const metadata = { title: "Admin", robots: { index: false } };
 
@@ -64,6 +64,8 @@ export default async function AdminPage() {
                         /s/{s.slug}
                       </a>
                       {s.profile.phone && <div className="num text-xs text-slate-500" dir="ltr">{s.profile.phone}</div>}
+                      {s.ownerEmail && <div className="text-xs text-slate-500" dir="ltr">{s.ownerEmail}</div>}
+                      <ResetPinButton shopId={s.id} />
                     </td>
                     <td className="num p-3 text-slate-600">{fmt.format(s.createdAt)}</td>
                     <td className="p-3">

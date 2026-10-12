@@ -59,3 +59,28 @@ export function ExtendForm({ shopId, price }: { shopId: string; price: number })
     </form>
   );
 }
+
+/** رمز مؤقّت جديد لعيادة نسيت رمزها (يُعرض مرّة واحدة: أرسله للطبيب). */
+export function ResetPinButton({ shopId }: { shopId: string }) {
+  const [pin, setPin] = useState("");
+  return pin ? (
+    <div className="mt-1 text-xs font-semibold text-brand-800">
+      الرمز الجديد: <b className="num select-all text-base" dir="ltr">{pin}</b>
+    </div>
+  ) : (
+    <button
+      type="button"
+      className="mt-1 text-xs text-slate-500 underline hover:text-rose-700"
+      onClick={async () => {
+        if (!confirm("إنشاء رمز سرّي جديد لهذه العيادة؟ سيُخرَج كلّ من هو مسجّل الدخول.")) return;
+        try {
+          setPin((await api<{ pin: string }>("/api/admin/reset-pin", { shopId })).pin);
+        } catch {
+          alert("✗");
+        }
+      }}
+    >
+      رمز سرّي جديد
+    </button>
+  );
+}

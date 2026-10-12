@@ -135,3 +135,21 @@ test("الأصوات: زبون جديد، أخذ الرقم، التالي، د�
   await staff.getByTestId("mute-toggle").click();
   expect(await staff.evaluate(() => localStorage.getItem("dawri:muted"))).toBe("1");
 });
+
+test("نسيت الرمز السرّي: الرابط يُطلب من صفحة الدخول", async ({ browser }) => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto("/staff/demo");
+  await page.getByTestId("forgot").click();
+  await page.getByRole("textbox").fill("docteur@example.com");
+  await page.getByRole("button", { name: "أرسل الرابط" }).click();
+  await expect(page.getByTestId("forgot-sent")).toBeVisible();
+  await page.screenshot({ path: "test-results/forgot.png" });
+  // رابط غير صالح ← رسالة واضحة
+  await page.goto("/staff/demo/reset?t=" + "x".repeat(32));
+  await page.locator("#pin").fill("5678");
+  await page.locator("#again").fill("5678");
+  await page.getByTestId("reset-save").click();
+  await expect(page.locator("form [role=alert]")).toContainText("منتهي الصلاحية");
+  await page.screenshot({ path: "test-results/reset.png" });
+});

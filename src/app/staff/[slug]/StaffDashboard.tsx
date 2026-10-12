@@ -1,27 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Bell,
-  CheckCheck,
-  Clock3,
-  Copy,
-  Hourglass,
-  Keyboard,
-  Link2,
-  Phone,
-  Plus,
-  ShieldAlert,
-  Smartphone,
-  Timer,
-  UserCheck,
-  UserPlus,
-  UserRoundX,
-  Users,
-  WifiOff,
-  X,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, Mail, Phone, Plus, ShieldAlert, Smartphone, Timer, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
 import Dialog, { ConfirmDialog } from "@/components/Dialog";
 import SoundGate from "@/components/SoundGate";
 import { Avatar, Chip, Empty, LiveDot, Stat } from "@/components/ui";
@@ -189,6 +168,17 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
       {!s.shop.active && (
         <a href={`/staff/${slug}/billing`} className="flex items-center gap-3 rounded-2xl bg-rose-50 p-4 font-semibold text-rose-800 ring-1 ring-rose-200">
           <ShieldAlert size={20} /> {t(lang, "subscriptionExpired")}
+        </a>
+      )}
+      {!s.shop.hasEmail && (
+        <a
+          href={`/staff/${slug}/settings#security`}
+          className="flex items-center gap-3 rounded-2xl bg-amber-50 p-3.5 text-sm font-semibold text-amber-900 ring-1 ring-amber-200"
+          data-testid="no-email"
+        >
+          <Mail size={18} className="shrink-0" />
+          <span className="flex-1">{t(lang, "db_noEmail")}</span>
+          <span className="shrink-0 underline">{t(lang, "db_addEmail")}</span>
         </a>
       )}
       <div className="max-w-xl">

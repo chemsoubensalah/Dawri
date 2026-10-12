@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { Delete, Lock } from "lucide-react";
+import { ArrowRight, Delete, Lock, Mail, MailCheck, MessageCircle } from "lucide-react";
 import LangSwitch from "@/components/LangSwitch";
 import { Logo } from "@/components/ui";
 import { DEFAULT_LOOK, type Lang, type ShopLook } from "@/lib/domain/types";
@@ -10,7 +10,21 @@ import { dirOf, errorText, t } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
 
 /** دخول السكرتيرة: لوحة أرقام كبيرة تناسب اللمس، وتعمل بلوحة المفاتيح أيضاً. */
-export default function LoginForm({ lang, slug, name, look = DEFAULT_LOOK }: { lang: Lang; slug: string; name: string; look?: ShopLook }) {
+export default function LoginForm({
+  lang,
+  slug,
+  name,
+  look = DEFAULT_LOOK,
+  support = null,
+}: {
+  lang: Lang;
+  slug: string;
+  name: string;
+  look?: ShopLook;
+  /** رقم واتساب الدعم (لمن لا بريد له) */
+  support?: string | null;
+}) {
+  const [mode, setMode] = useState<"pin" | "forgot">("pin");
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -46,6 +60,7 @@ export default function LoginForm({ lang, slug, name, look = DEFAULT_LOOK }: { l
         <LangSwitch lang={lang} />
       </header>
       <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-4 pb-12">
+        {mode === "pin" ? (
         <form
           className="card p-6"
           onSubmit={(e) => {
@@ -94,8 +109,87 @@ export default function LoginForm({ lang, slug, name, look = DEFAULT_LOOK }: { l
           </div>
 
           {error && <p className="mt-4 rounded-xl bg-rose-50 p-3 text-center text-sm font-semibold text-rose-700" role="alert">{error}</p>}
+          <button type="button" className="mt-4 w-full text-center text-sm font-semibold text-brand-700 hover:underline" onClick={() => setMode("forgot")} data-testid="forgot">
+            {t(lang, "lg_forgot")}
+          </button>
         </form>
+        ) : (
+          <ForgotForm lang={lang} slug={slug} support={support} onBack={() => setMode("pin")} />
+        )}
       </main>
     </div>
+  );
+}
+
+/** «نسيت الرمز»: يرسل رابطاً إلى بريد العيادة. الجواب واحد دائماً (لا نكشف البريد الصحيح). */
+function ForgotForm({ lang, slug, support, onBack }: { lang: Lang; slug: string; support: string | null; onBack: () => void }) {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <form
+      className="card p-6"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError("");
+        try {
+          await api(`/api/staff/${slug}/forgot`, { email });
+          setSent(true);
+        } catch (err) {
+          setError(errorText(lang, (err as ApiError).code));
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <div className="text-center">
+        <span className="mx-auto inline-flex size-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
+          {sent ? <MailCheck size={26} /> : <Mail size={26} />}
+        </span>
+        <h1 className="mt-3 text-xl font-bold">{t(lang, "lg_forgotTitle")}</h1>
+      </div>
+      {sent ? (
+        <p className="mt-4 rounded-xl bg-brand-50 p-4 text-sm leading-relaxed text-brand-900" role="status" data-testid="forgot-sent">
+          {t(lang, "lg_sent")}
+        </p>
+      ) : (
+        <>
+          <p className="mt-2 text-center text-sm text-slate-500">{t(lang, "lg_forgotHint")}</p>
+          <label className="sr-only" htmlFor="email">{t(lang, "nw_email")}</label>
+          <input
+            id="email"
+            className="input mt-5 text-start"
+            dir="ltr"
+            type="email"
+            autoComplete="email"
+            required
+            maxLength={254}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="docteur@gmail.com"
+            autoFocus
+          />
+          <button className="btn-primary mt-3 w-full" disabled={busy}>
+            {t(lang, "lg_send")}
+          </button>
+          {error && <p className="mt-3 rounded-xl bg-rose-50 p-3 text-center text-sm font-semibold text-rose-700" role="alert">{error}</p>}
+        </>
+      )}
+      {support && (
+        <a
+          href={`https://wa.me/${support}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 flex items-center justify-center gap-2 text-center text-xs text-slate-500 hover:text-brand-700"
+        >
+          <MessageCircle size={14} /> {t(lang, "lg_noEmail")}
+        </a>
+      )}
+      <button type="button" className="mt-3 flex w-full items-center justify-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-ink" onClick={onBack}>
+        <ArrowRight size={15} className="ltr:rotate-180" /> {t(lang, "lg_back")}
+      </button>
+    </form>
   );
 }

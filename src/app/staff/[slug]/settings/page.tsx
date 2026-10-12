@@ -25,6 +25,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ slug:
           defaultLang: shop.defaultLang,
           profile: shop.profile,
           look: shop.look,
+          email: shop.ownerEmail,
         }}
       />
     </StaffFrame>

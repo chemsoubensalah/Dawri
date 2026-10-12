@@ -43,6 +43,7 @@ export function rowToShop(r: Row): Shop {
       mapsUrl: (r.maps_url as string | null) ?? null,
     },
     look: readLook(r.look == null ? {} : json(r.look)),
+    ownerEmail: (r.owner_email as string | null) ?? null,
   };
 }
 
@@ -102,12 +103,14 @@ export async function getShopById(q: Q, id: string): Promise<Shop | null> {
 
 export async function insertShop(
   q: Q,
-  s: Pick<Shop, "slug" | "name" | "kind" | "pinHash" | "doorCode" | "hours" | "settings" | "defaultLang" | "trialEndsAt">,
+  s: Pick<Shop, "slug" | "name" | "kind" | "pinHash" | "doorCode" | "hours" | "settings" | "defaultLang" | "trialEndsAt"> & {
+    ownerEmail?: string | null;
+  },
 ): Promise<Shop> {
   const rows = await q.query(
-    `insert into shops (slug, name, kind, pin_hash, door_code, hours, settings, default_lang, trial_ends_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,
-    [s.slug, s.name, s.kind, s.pinHash, s.doorCode, JSON.stringify(s.hours), JSON.stringify(s.settings), s.defaultLang, s.trialEndsAt],
+    `insert into shops (slug, name, kind, pin_hash, door_code, hours, settings, default_lang, trial_ends_at, owner_email)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,
+    [s.slug, s.name, s.kind, s.pinHash, s.doorCode, JSON.stringify(s.hours), JSON.stringify(s.settings), s.defaultLang, s.trialEndsAt, s.ownerEmail ?? null],
   );
   return rowToShop(rows[0]);
 }
@@ -115,7 +118,7 @@ export async function insertShop(
 export async function updateShop(
   q: Q,
   id: string,
-  patch: Partial<Pick<Shop, "name" | "hours" | "settings" | "defaultLang" | "pinHash" | "doorCode" | "profile" | "look">> & {
+  patch: Partial<Pick<Shop, "name" | "hours" | "settings" | "defaultLang" | "pinHash" | "doorCode" | "profile" | "look" | "ownerEmail">> & {
     bumpSession?: boolean;
   },
 ) {
@@ -139,6 +142,7 @@ export async function updateShop(
     set("maps_url", patch.profile.mapsUrl);
   }
   if (patch.look !== undefined) set("look", JSON.stringify(patch.look));
+  if (patch.ownerEmail !== undefined) set("owner_email", patch.ownerEmail);
   if (patch.bumpSession) sets.push("session_version = session_version + 1");
   if (!sets.length) return;
   params.push(id);
@@ -653,4 +657,31 @@ export async function listShopsAdmin(q: Q, since: Date) {
     [since],
   );
   return rows.map((r) => ({ ...rowToShop(r), tickets30d: Number(r.tickets_30d) }));
+}
+
+// ————————————————————————— استعادة الرمز السرّي —————————————————————————
+
+export async function countRecentPinResets(q: Q, shopId: string, since: Date): Promise<number> {
+  const rows = await q.query<{ n: string }>("select count(*) as n from pin_resets where shop_id = $1 and created_at > $2", [shopId, since]);
+  return Number(rows[0]?.n ?? 0);
+}
+
+export async function insertPinReset(q: Q, shopId: string, tokenHash: string, now: Date, expires: Date) {
+  await q.query("insert into pin_resets (shop_id, token_hash, created_at, expires_at) values ($1,$2,$3,$4)", [shopId, tokenHash, now, expires]);
+}
+
+/** يستهلك الرابط ذرّياً: ينجح مرّة واحدة فقط، قبل انتهاء صلاحيته. */
+export async function consumePinReset(q: Q, shopId: string, tokenHash: string, now: Date): Promise<boolean> {
+  const rows = await q.query(
+    `update pin_resets set used_at = $3
+     where shop_id = $1 and token_hash = $2 and used_at is null and expires_at > $3
+     returning id`,
+    [shopId, tokenHash, now],
+  );
+  return rows.length > 0;
+}
+
+/** يُبطل كلّ الروابط الأخرى غير المستعملة (بعد تغيير الرمز). */
+export async function voidPinResets(q: Q, shopId: string, now: Date) {
+  await q.query("update pin_resets set used_at = $2 where shop_id = $1 and used_at is null", [shopId, now]);
 }

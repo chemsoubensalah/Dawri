@@ -2,6 +2,7 @@
  * حالات الاستخدام: كلّ ما تفعله الصفحات وواجهات API يمرّ من هنا.
  * كلّ تغيير في طابور يوم ما يجري داخل معاملة تقفل صفّ ذلك اليوم.
  */
+import crypto from "node:crypto";
 import { dayKey, isValidHours, isWithinHours, localTime, minutesBetween, DEFAULT_HOURS } from "../domain/time";
 import { formatPhone, normalizePhone } from "../domain/phone";
 import {
@@ -44,6 +45,7 @@ import { now as clockNow } from "./clock";
 import { getDb, type Q } from "./db";
 import { getNotifier, type Notification } from "./notify";
 import * as repo from "./repo";
+import { getMailer } from "./email";
 import { getSms } from "./sms";
 import {
   alertsMessage,
@@ -219,6 +221,7 @@ export async function createShop(input: {
   lang?: unknown;
   signupCode?: unknown;
   doctorName?: unknown;
+  email?: unknown;
 }) {
   const required = process.env.SIGNUP_CODE;
   if (required && !(typeof input.signupCode === "string" && safeEqual(input.signupCode, required))) {
@@ -231,6 +234,7 @@ export async function createShop(input: {
     throw new DomainError("invalid_slug");
   }
   if (!isValidPin(input.pin)) throw new DomainError("invalid_pin");
+  const ownerEmail = cleanEmail(input.email);
   const kind = KINDS.includes(input.kind as ShopKind) ? (input.kind as ShopKind) : "doctor";
   const db = await getDb();
   if (await repo.getShopBySlug(db, slug)) throw new DomainError("slug_taken", 409);
@@ -246,6 +250,7 @@ export async function createShop(input: {
       settings: DEFAULT_SETTINGS,
       defaultLang: langOf(input.lang, "ar"),
       trialEndsAt: new Date(now.getTime() + 60 * DAY_MS), // مجّاني أوّل شهرين
+      ownerEmail,
     });
     if (typeof input.doctorName === "string" && input.doctorName.trim()) {
       const profile = cleanProfile({ ...shop.profile, doctorName: input.doctorName });
@@ -731,6 +736,7 @@ export async function staffState(shop: Shop) {
       noShowLimit: shop.settings.noShowLimit,
       callGraceMin: shop.settings.callGraceMin,
       profileComplete: Boolean(shop.profile.address || shop.profile.phone || shop.profile.doctorName),
+      hasEmail: Boolean(shop.ownerEmail),
     },
     closed,
     blocker: ticketBlocker(shop, closed, now),
@@ -865,6 +871,7 @@ export async function updateSettings(
     rotateDoor?: unknown;
     profile?: unknown;
     look?: unknown;
+    email?: unknown;
   },
 ) {
   const db = await getDb();
@@ -898,6 +905,7 @@ export async function updateSettings(
   }
   if (body.rotateDoor === true) patch.doorCode = randomToken(6);
   if (body.profile !== undefined) patch.profile = cleanProfile(body.profile);
+  if (body.email !== undefined) patch.ownerEmail = cleanEmail(body.email);
   if (body.look !== undefined) {
     const o = (body.look && typeof body.look === "object" ? body.look : null) as Record<string, unknown> | null;
     if (!o) throw new DomainError("invalid_settings");
@@ -919,6 +927,84 @@ export async function updateSettings(
   }
   await repo.updateShop(db, shop.id, patch);
   return (await repo.getShopById(db, shop.id))!;
+}
+
+// ————————————————————————— استعادة الرمز السرّي —————————————————————————
+
+/** بريد صاحب العيادة: إلزامي وصالح (هو طريق استعادة الرمز). */
+function cleanEmail(v: unknown): string {
+  const e = typeof v === "string" ? v.trim().toLowerCase() : "";
+  if (e.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new DomainError("invalid_email");
+  return e;
+}
+
+const resetHash = (token: string) => crypto.createHash("sha256").update(token).digest("hex");
+const RESET_TTL_MIN = 30;
+
+/**
+ * «نسيت الرمز»: يرسل رابط إعادة التعيين إلى بريد العيادة إن طابق البريد المكتوب.
+ * الجواب واحد دائماً (لا نكشف هل البريد صحيح أم لا).
+ */
+export async function requestPinReset(slug: string, email: unknown, baseUrl: string) {
+  const db = await getDb();
+  const shop = await shopOr404(db, slug);
+  const mailer = getMailer();
+  if (!mailer) throw new DomainError("email_unavailable", 503);
+  const typed = typeof email === "string" ? email.trim().toLowerCase() : "";
+  if (!shop.ownerEmail || !typed || !safeEqual(typed, shop.ownerEmail)) return { ok: true };
+  const now = clockNow();
+  // حدّ: 3 روابط في الساعة لكلّ عيادة (منع إغراق البريد)
+  if ((await repo.countRecentPinResets(db, shop.id, new Date(now.getTime() - 3600_000))) >= 3) return { ok: true };
+  const token = randomToken(24);
+  await repo.insertPinReset(db, shop.id, resetHash(token), now, new Date(now.getTime() + RESET_TTL_MIN * 60_000));
+  const lang = shop.defaultLang;
+  const link = `${baseUrl}/staff/${shop.slug}/reset?t=${encodeURIComponent(token)}`;
+  const subject = t(lang, "rs_mailSubject", { name: shop.name });
+  const body = t(lang, "rs_mailBody", { name: shop.name, min: RESET_TTL_MIN });
+  const ignore = t(lang, "rs_mailIgnore");
+  const esc = (x: string) => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  const html = `<div dir="${lang === "ar" ? "rtl" : "ltr"}" style="font-family:Tahoma,Arial,sans-serif;max-width:480px;margin:auto;padding:24px;color:#0b1b2b">
+<h2 style="margin:0 0 12px">دوري · Dawri</h2>
+<p style="line-height:1.7">${esc(body)}</p>
+<p style="margin:24px 0"><a href="${esc(link)}" style="background:#059669;color:#fff;text-decoration:none;padding:12px 22px;border-radius:12px;font-weight:bold;display:inline-block">${esc(t(lang, "rs_mailButton"))}</a></p>
+<p style="color:#64748b;font-size:13px;line-height:1.6">${esc(ignore)}</p>
+</div>`;
+  try {
+    await mailer.send({ to: shop.ownerEmail, subject, html, text: `${body}\n\n${link}\n\n${ignore}` });
+  } catch (e) {
+    console.error("[email]", e);
+    throw new DomainError("email_unavailable", 503);
+  }
+  return { ok: true };
+}
+
+/** يضبط رمزاً جديداً من رابط البريد، ويُبطل كلّ الجلسات القديمة ويفكّ القفل. */
+export async function resetPinWithToken(slug: string, token: unknown, pin: unknown) {
+  const db = await getDb();
+  const shop = await shopOr404(db, slug);
+  if (!isValidPin(pin)) throw new DomainError("invalid_pin");
+  if (typeof token !== "string" || token.length < 16 || token.length > 100) throw new DomainError("reset_invalid", 400);
+  const now = clockNow();
+  const updated = await db.tx(async (q) => {
+    if (!(await repo.consumePinReset(q, shop.id, resetHash(token), now))) throw new DomainError("reset_invalid", 400);
+    await repo.voidPinResets(q, shop.id, now);
+    await repo.updateShop(q, shop.id, { pinHash: hashPin(pin), bumpSession: true });
+    await repo.resetLoginAttempts(q, shop.id);
+    return (await repo.getShopById(q, shop.id))!;
+  });
+  return { shop: updated, token: sessionFor(updated, now) };
+}
+
+/** لوحة المؤسّس: رمز مؤقّت جديد لعيادة (حين لا يوجد بريد). */
+export async function adminResetPin(shopId: string) {
+  const db = await getDb();
+  const shop = await repo.getShopById(db, shopId);
+  if (!shop) throw new DomainError("shop_not_found", 404);
+  const pin = randomDigits(6);
+  await repo.updateShop(db, shop.id, { pinHash: hashPin(pin), bumpSession: true });
+  await repo.resetLoginAttempts(db, shop.id);
+  await repo.voidPinResets(db, shop.id, clockNow());
+  return { pin };
 }
 
 // ————————————————————————— المهامّ الدورية —————————————————————————

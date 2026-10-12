@@ -27,6 +27,7 @@ function suggestSlug(name: string) {
 export default function NewShopForm({ lang, needsCode }: { lang: Lang; needsCode: boolean }) {
   const [name, setName] = useState("");
   const [doctorName, setDoctorName] = useState("");
+  const [email, setEmail] = useState("");
   const [slug, setSlug] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
   const [kind, setKind] = useState<(typeof KINDS)[number]["k"]>("doctor");
@@ -40,7 +41,7 @@ export default function NewShopForm({ lang, needsCode }: { lang: Lang; needsCode
     setBusy(true);
     setError("");
     try {
-      const r = await api<{ slug: string }>("/api/shops", { name, slug, kind, pin, lang, signupCode, doctorName });
+      const r = await api<{ slug: string }>("/api/shops", { name, slug, kind, pin, lang, signupCode, doctorName, email });
       try {
         const list = JSON.parse(localStorage.getItem("dawri:staffShops") ?? "[]") as string[];
         localStorage.setItem("dawri:staffShops", JSON.stringify([r.slug, ...list.filter((x) => x !== r.slug)].slice(0, 5)));
@@ -73,6 +74,11 @@ export default function NewShopForm({ lang, needsCode }: { lang: Lang; needsCode
       <div>
         <label className="label" htmlFor="doctor">{t(lang, "st_doctorName")} <span className="font-normal text-slate-400">({t(lang, "optional")})</span></label>
         <input id="doctor" className="input" value={doctorName} onChange={(e) => setDoctorName(e.target.value)} placeholder={t(lang, "nw_doctorPh")} maxLength={80} />
+      </div>
+      <div>
+        <label className="label" htmlFor="email">{t(lang, "nw_email")}</label>
+        <input id="email" className="input text-start" dir="ltr" type="email" autoComplete="email" required maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="docteur@gmail.com" />
+        <p className="mt-1.5 text-xs text-slate-500">{t(lang, "nw_emailHint")}</p>
       </div>
       <div>
         <label className="label">{t(lang, "shopKind")}</label>

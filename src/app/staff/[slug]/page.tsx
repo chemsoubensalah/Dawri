@@ -5,6 +5,7 @@ import { getDb } from "@/lib/server/db";
 import { getLang, staffShop } from "@/lib/server/http";
 import * as repo from "@/lib/server/repo";
 import { staffState } from "@/lib/server/service";
+import { manualPayment } from "@/lib/server/billing";
 import LoginForm from "./LoginForm";
 import StaffDashboard from "./StaffDashboard";
 
@@ -17,7 +18,7 @@ export default async function StaffPage({ params }: { params: Promise<{ slug: st
     const exists = await repo.getShopBySlug(await getDb(), slug.toLowerCase());
     if (!exists) notFound();
     const lang = await getLang(exists.defaultLang);
-    return <LoginForm lang={lang} slug={exists.slug} name={exists.name} look={exists.look} />;
+    return <LoginForm lang={lang} slug={exists.slug} name={exists.name} look={exists.look} support={manualPayment().whatsapp} />;
   }
   const lang = await getLang(shop.defaultLang);
   return (

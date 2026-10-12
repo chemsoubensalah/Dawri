@@ -42,7 +42,7 @@ let shop: Shop;
 let n = 0;
 beforeEach(async () => {
   requests.length = 0;
-  shop = await svc.createShop({ name: "عيادة الأمل", slug: `bill-${++n}`, kind: "doctor", pin: "4321" });
+  shop = await svc.createShop({ name: "عيادة الأمل", slug: `bill-${++n}`, kind: "doctor", pin: "4321", email: "dr@example.com" });
 });
 
 const sign = (raw: string) => crypto.createHmac("sha256", "test_sk_secret123").update(raw).digest("hex");

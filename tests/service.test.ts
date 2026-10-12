@@ -8,6 +8,7 @@ import { setNotifier, type Notification } from "@/lib/server/notify";
 import * as svc from "@/lib/server/service";
 import * as repo from "@/lib/server/repo";
 import { readSession } from "@/lib/server/auth";
+import { sentMail, setMailer } from "@/lib/server/email";
 import type { Shop } from "@/lib/domain/types";
 
 let db: Db;
@@ -46,7 +47,7 @@ let n = 0;
 beforeEach(async () => {
   clock = new Date("2026-10-11T07:00:00Z");
   sent.length = 0;
-  shop = await svc.createShop({ name: "عيادة الاختبار", slug: `clinic-${++n}`, kind: "doctor", pin: "4321" });
+  shop = await svc.createShop({ name: "عيادة الاختبار", slug: `clinic-${++n}`, kind: "doctor", pin: "4321", email: "dr@example.com" });
 });
 
 let phoneSeq = 10;
@@ -78,10 +79,10 @@ describe("إنشاء المحلّ والدخول", () => {
     const days = (shop.trialEndsAt.getTime() - clock.getTime()) / 86_400_000;
     expect(days).toBe(60);
     expect(shop.pinHash).not.toContain("4321");
-    await expect(svc.createShop({ name: "x y", slug: shop.slug, kind: "doctor", pin: "1234" })).rejects.toThrow(
+    await expect(svc.createShop({ name: "x y", slug: shop.slug, kind: "doctor", pin: "1234", email: "x@example.com" })).rejects.toThrow(
       "slug_taken",
     );
-    await expect(svc.createShop({ name: "x y", slug: "AB", kind: "doctor", pin: "1234" })).rejects.toThrow(
+    await expect(svc.createShop({ name: "x y", slug: "AB", kind: "doctor", pin: "1234", email: "x@example.com" })).rejects.toThrow(
       "invalid_slug",
     );
   });
@@ -104,6 +105,82 @@ describe("إنشاء المحلّ والدخول", () => {
   it("تغيير الرمز يُبطل الجلسات القديمة (session_version)", async () => {
     const updated = await svc.updateSettings(shop, { newPin: "9999" });
     expect(updated.sessionVersion).toBe(shop.sessionVersion + 1);
+  });});
+
+describe("نسيت الرمز السرّي", () => {
+  const BASE = "https://dawri.test";
+  const lastLink = () => sentMail.at(-1)!.text.match(/https:\/\/\S+/)![0];
+  const tokenOf = (link: string) => new URL(link).searchParams.get("t")!;
+
+  it("التسجيل يتطلّب بريداً صالحاً، ويُحفظ بأحرف صغيرة", async () => {
+    await expect(svc.createShop({ name: "عيادة", slug: `mail-${n}-a`, kind: "doctor", pin: "1234" })).rejects.toThrow("invalid_email");
+    await expect(svc.createShop({ name: "عيادة", slug: `mail-${n}-b`, kind: "doctor", pin: "1234", email: "pas-un-email" })).rejects.toThrow("invalid_email");
+    const s2 = await svc.createShop({ name: "عيادة", slug: `mail-${n}-c`, kind: "doctor", pin: "1234", email: "  Dr.Ali@Gmail.COM " });
+    expect(s2.ownerEmail).toBe("dr.ali@gmail.com");
+    expect((await svc.updateSettings(s2, { email: "new@mail.dz" })).ownerEmail).toBe("new@mail.dz");
+    await expect(svc.updateSettings(s2, { email: "" })).rejects.toThrow("invalid_email");
+  });
+
+  it("بريد خاطئ: نفس الجواب ولا رسالة (لا نكشف البريد الصحيح)", async () => {
+    const before = sentMail.length;
+    await expect(svc.requestPinReset(shop.slug, "autre@example.com", BASE)).resolves.toEqual({ ok: true });
+    expect(sentMail.length).toBe(before);
+  });
+
+  it("الرابط يضبط رمزاً جديداً، يفكّ القفل، يُبطل الجلسات، ولا يُستعمل مرّتين", async () => {
+    // مقفل بعد محاولات خاطئة
+    for (let i = 0; i < 6; i++) await svc.staffLogin(shop.slug, "0000").catch(() => {});
+    await expect(svc.staffLogin(shop.slug, "4321")).rejects.toThrow("locked");
+
+    await svc.requestPinReset(shop.slug, " DR@example.com ", BASE);
+    const mail = sentMail.at(-1)!;
+    expect(mail.to).toBe("dr@example.com");
+    const link = lastLink();
+    expect(link.startsWith(`${BASE}/staff/${shop.slug}/reset?t=`)).toBe(true);
+
+    await expect(svc.resetPinWithToken(shop.slug, tokenOf(link), "12")).rejects.toThrow("invalid_pin");
+    await expect(svc.resetPinWithToken(shop.slug, "x".repeat(32), "5678")).rejects.toThrow("reset_invalid");
+    // رابط عيادة لا يصلح لعيادة أخرى
+    const other = await svc.createShop({ name: "أخرى", slug: `other-${n}`, kind: "doctor", pin: "1111", email: "o@example.com" });
+    await expect(svc.resetPinWithToken(other.slug, tokenOf(link), "5678")).rejects.toThrow("reset_invalid");
+
+    const r = await svc.resetPinWithToken(shop.slug, tokenOf(link), "5678");
+    expect(r.shop.sessionVersion).toBe(shop.sessionVersion + 1);
+    expect(readSession(r.token, clock)?.shopId).toBe(shop.id);
+    await expect(svc.staffLogin(shop.slug, "5678")).resolves.toBeTruthy();
+    await expect(svc.resetPinWithToken(shop.slug, tokenOf(link), "9999")).rejects.toThrow("reset_invalid");
+  });
+
+  it("الرابط ينتهي بعد 30 دقيقة، والرابط الجديد يُبطل القديم بعد الاستعمال", async () => {
+    await svc.requestPinReset(shop.slug, "dr@example.com", BASE);
+    const old = tokenOf(lastLink());
+    advance(31);
+    await expect(svc.resetPinWithToken(shop.slug, old, "5678")).rejects.toThrow("reset_invalid");
+
+    await svc.requestPinReset(shop.slug, "dr@example.com", BASE);
+    const a = tokenOf(lastLink());
+    await svc.requestPinReset(shop.slug, "dr@example.com", BASE);
+    const b = tokenOf(lastLink());
+    await svc.resetPinWithToken(shop.slug, b, "5678");
+    await expect(svc.resetPinWithToken(shop.slug, a, "4444")).rejects.toThrow("reset_invalid");
+  });
+
+  it("3 روابط في الساعة كحدّ أقصى، وبلا مزوّد بريد ← خطأ واضح", async () => {
+    const before = sentMail.length;
+    for (let i = 0; i < 5; i++) await svc.requestPinReset(shop.slug, "dr@example.com", BASE);
+    expect(sentMail.length - before).toBe(3);
+    setMailer(null);
+    try {
+      await expect(svc.requestPinReset(shop.slug, "dr@example.com", BASE)).rejects.toThrow("email_unavailable");
+    } finally {
+      setMailer(undefined);
+    }
+  });
+
+  it("المؤسّس يستطيع إنشاء رمز مؤقّت", async () => {
+    const { pin } = await svc.adminResetPin(shop.id);
+    expect(pin).toMatch(/^\d{6}$/);
+    await expect(svc.staffLogin(shop.slug, pin)).resolves.toBeTruthy();
   });
 });
 

@@ -45,7 +45,7 @@ export default function SettingsForm({
   lang: Lang;
   slug: string;
   channels: ChannelStatus;
-  initial: { name: string; hours: WeeklyHours; settings: ShopSettings; defaultLang: Lang; profile: ShopProfile; look: ShopLook };
+  initial: { name: string; hours: WeeklyHours; settings: ShopSettings; defaultLang: Lang; profile: ShopProfile; look: ShopLook; email: string | null };
 }) {
   const [name, setName] = useState(initial.name);
   const [profile, setProfile] = useState<ShopProfile>(initial.profile);
@@ -55,6 +55,7 @@ export default function SettingsForm({
   const [look, setLook] = useState<ShopLook>(initial.look);
   // آخر لون محفوظ: نعيده إن غادر الطبيب الصفحة دون حفظ
   const savedLook = useRef<ShopLook>(initial.look);
+  const [email, setEmail] = useState(initial.email ?? "");
   const [newPin, setNewPin] = useState("");
   const [rotateDoor, setRotateDoor] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -93,6 +94,7 @@ export default function SettingsForm({
         settings,
         lang: defaultLang,
         look,
+        email: email.trim() ? email : initial.email ? email : undefined,
         newPin: newPin || undefined,
         rotateDoor,
       });
@@ -372,6 +374,11 @@ export default function SettingsForm({
         </Section>
 
         <Section id="security" icon={<KeyRound size={20} />} title={t(lang, "se_security")}>
+          <div className="mb-4">
+            <label className="label" htmlFor="email">{t(lang, "se_email")}</label>
+            <input id="email" className="input text-start" dir="ltr" type="email" autoComplete="email" maxLength={254} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="docteur@gmail.com" required={Boolean(initial.email)} />
+            <p className="mt-1.5 text-xs text-slate-500">{t(lang, "se_emailHint")}</p>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="label" htmlFor="pin">{t(lang, "newPin")}</label>

@@ -122,3 +122,13 @@ export async function baseUrl(): Promise<string> {
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   return `${proto}://${host}`;
 }
+
+/**
+ * عنوان موثوق للروابط المرسلة بالبريد: لا نثق بترويسة Host (يمكن تزويرها لسرقة رابط إعادة التعيين).
+ */
+export async function trustedBaseUrl(): Promise<string> {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  if (!process.env.DATABASE_URL) return baseUrl(); // تطوير محلّي فقط
+  throw new DomainError("email_unavailable", 503);
+}

@@ -50,7 +50,7 @@ let n = 0;
 beforeEach(async () => {
   clock = new Date("2026-10-11T08:00:00Z");
   sent.length = 0;
-  shop = await svc.createShop({ name: "عيادة الشفاء", slug: `wa-clinic-${++n}`, kind: "doctor", pin: "4321" });
+  shop = await svc.createShop({ name: "عيادة الشفاء", slug: `wa-clinic-${++n}`, kind: "doctor", pin: "4321", email: "dr@example.com" });
 });
 
 let msgSeq = 0;
