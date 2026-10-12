@@ -5,6 +5,8 @@
 import crypto from "node:crypto";
 import { dayKey, isValidHours, isWithinHours, localTime, minutesBetween, nextOpeningToday, DEFAULT_HOURS } from "../domain/time";
 import { formatPhone, normalizePhone } from "../domain/phone";
+import { isWilaya } from "../domain/wilayas";
+import { publicRating } from "./reviews";
 import {
   averageServiceMinutes,
   currentTicket,
@@ -308,6 +310,8 @@ export async function publicShop(slug: string) {
         .filter((t) => !t.held)
         .slice(0, 3)
         .map((t) => t.number),
+      /** ★ المعدّل العامّ (null إن أخفاه الطبيب أو أقلّ من 3 تقييمات) */
+      rating: await publicRating(shop.id),
     },
   };
 }
@@ -839,6 +843,13 @@ export async function staffAction(
   return { ok: true };
 }
 
+function cleanWilaya(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = typeof v === "string" ? Number(v) : v;
+  if (!isWilaya(n)) throw new DomainError("invalid_settings");
+  return n;
+}
+
 function cleanProfile(v: unknown): ShopProfile {
   const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
   const str = (x: unknown, max: number) => {
@@ -856,6 +867,7 @@ function cleanProfile(v: unknown): ShopProfile {
     address: str(o.address, 160),
     phone,
     mapsUrl,
+    wilaya: cleanWilaya(o.wilaya),
   };
 }
 
