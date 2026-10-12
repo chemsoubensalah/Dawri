@@ -10,6 +10,7 @@
  */
 import { t, type DictKey } from "../i18n";
 import type { NotifyType, Shop, Ticket } from "../domain/types";
+import { now as clockNow } from "./clock";
 import { getDb } from "./db";
 import * as repo from "./repo";
 import { getSms } from "./sms";
@@ -61,7 +62,7 @@ async function sendWhatsapp(n: Notification, msg: ReturnType<typeof renderNotifi
   const r = { phone: n.ticket.waPhone, userId: n.ticket.waUserId };
   const base = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
   const text = [`*${msg.title}*`, msg.body, base ? `${base}${msg.url}` : null].filter(Boolean).join("\n");
-  const windowOpen = n.ticket.waWindowUntil && n.ticket.waWindowUntil > new Date();
+  const windowOpen = n.ticket.waWindowUntil && n.ticket.waWindowUntil > clockNow();
   if (windowOpen) {
     const askConfirm = n.type === "confirm" || n.type === "held" || (n.type === "soon" && n.ticket.confirmAskedAt && !n.ticket.confirmedAt);
     if (askConfirm) {
