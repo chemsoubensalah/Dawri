@@ -33,9 +33,24 @@ export function isEligible(t: Ticket): boolean {
   return t.status === "waiting" && !t.held;
 }
 
-/** الطابور مرتّباً بالأرقام. المؤجَّل الذي عاد يحتفظ برقمه الصغير فيدخل بعد الحالي مباشرة. */
+/**
+ * ترتيب الطابور: أصحاب المواعيد الذين وصلوا (priority) أوّلاً بترتيب وصولهم،
+ * ثمّ البقيّة بالأرقام.
+ */
+export function queueOrder(a: Ticket, b: Ticket): number {
+  const pa = a.priority ? 1 : 0;
+  const pb = b.priority ? 1 : 0;
+  if (pa !== pb) return pb - pa;
+  if (pa) {
+    const d = a.createdAt.getTime() - b.createdAt.getTime();
+    if (d) return d;
+  }
+  return byNumber(a, b);
+}
+
+/** الطابور مرتّباً (queueOrder). المؤجَّل الذي عاد يحتفظ برقمه الصغير فيدخل بعد الحالي مباشرة. */
 export function lineup(tickets: Ticket[]): Ticket[] {
-  return tickets.filter((t) => t.status === "waiting").sort(byNumber);
+  return tickets.filter((t) => t.status === "waiting").sort(queueOrder);
 }
 
 export function nextEligible(tickets: Ticket[]): Ticket | null {
@@ -47,7 +62,7 @@ export function peopleAhead(tickets: Ticket[], ticket: Ticket): number | null {
   if (ticket.status !== "waiting") return null;
   let n = currentTicket(tickets) ? 1 : 0;
   for (const t of tickets) {
-    if (t.id !== ticket.id && isEligible(t) && t.number < ticket.number) n++;
+    if (t.id !== ticket.id && isEligible(t) && queueOrder(t, ticket) < 0) n++;
   }
   return n;
 }
@@ -222,10 +237,11 @@ export function initialFlags(
   tickets: Ticket[],
   s: ShopSettings,
   now: Date,
-  opts: { arrived: boolean; source: "online" | "desk" },
+  opts: { arrived: boolean; source: "online" | "desk"; priority?: boolean },
 ): TicketPatch {
   const cur = currentTicket(tickets);
-  const ahead = (cur ? 1 : 0) + tickets.filter(isEligible).length;
+  // صاحب الموعد لا يتقدّمه إلّا أصحاب المواعيد الذين وصلوا قبله
+  const ahead = (cur ? 1 : 0) + tickets.filter((t) => isEligible(t) && (!opts.priority || t.priority)).length;
   const started = queueStarted(tickets);
   const patch: TicketPatch = {};
   if (opts.arrived) patch.arrivedAt = now;

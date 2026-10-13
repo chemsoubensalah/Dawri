@@ -11,6 +11,7 @@ import type { ChannelStatus } from "@/lib/server/channels";
 import SmsSection from "./SmsSection";
 import { WILAYAS } from "@/lib/domain/wilayas";
 import ReviewsSection from "./ReviewsSection";
+import BookingSection from "./BookingSection";
 
 // نبدأ الأسبوع بالسبت كما في الجزائر
 const DAYS = ["6", "0", "1", "2", "3", "4", "5"];
@@ -142,6 +143,7 @@ export default function SettingsForm({
               ["look", "se_look"],
               ["reviews", "rv_se"],
               ["hours", "hours"],
+              ["booking", "ap_se_title"],
               ["rules", "se_rules"],
               ["alerts", "se_alerts"],
               ["sms", "sg_nav"],
@@ -361,6 +363,7 @@ export default function SettingsForm({
             })}
           </div>
         </Section>
+        <BookingSection lang={lang} slug={slug} />
 
         <Section id="rules" icon={<ListChecks size={20} />} title={t(lang, "se_rules")} sub={t(lang, "se_rulesSub")}>
           <div className="space-y-3">

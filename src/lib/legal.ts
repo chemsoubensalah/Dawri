@@ -29,6 +29,7 @@ export function privacyContent(lang: Lang) {
             [
               "Votre nom (ou prénom) et votre numéro de téléphone — pour vous appeler et vous prévenir.",
               "Les horaires de votre ticket (prise, appel, arrivée) — pour estimer l'attente.",
+              "Si vous prenez rendez-vous : le jour et l'heure choisis (jamais le motif de la consultation).",
               "Si vous l'activez : l'abonnement aux notifications de votre navigateur, ou votre numéro WhatsApp si vous liez votre ticket.",
               "Si vous notez votre visite : la note (1 à 5 étoiles) et un commentaire facultatif, liés au ticket et non à votre nom ou téléphone. Ils restent anonymes après l'effacement du ticket ; le cabinet peut masquer un commentaire et décide seul d'afficher la moyenne publiquement.",
             ],
@@ -42,6 +43,7 @@ export function privacyContent(lang: Lang) {
               "Codes de vérification SMS : supprimés après 24 heures.",
               "Données WhatsApp de liaison : supprimées après 2 jours.",
               "Nom et téléphone sur les tickets : effacés après 30 jours (seuls des compteurs anonymes restent pour les statistiques du cabinet).",
+              "Nom et téléphone des rendez-vous : effacés 30 jours après la date du rendez-vous.",
               "Historique des absences (pour la règle « absences répétées ») : supprimé après 60 jours.",
             ],
           ],
@@ -67,6 +69,7 @@ export function privacyContent(lang: Lang) {
           [
             "اسمك ورقم هاتفك — لمناداتك وتنبيهك.",
             "أوقات تذكرتك (الأخذ، النداء، الوصول) — لتقدير مدّة الانتظار.",
+            "إن حجزت موعداً: اليوم والساعة اللذان اخترتهما (لا سبب الزيارة أبداً).",
             "إن فعّلتها: اشتراك إشعارات المتصفّح، أو رقم واتساب إن ربطت تذكرتك به.",
             "إن قيّمت زيارتك: عدد النجوم (1 إلى 5) وتعليق اختياري، مرتبطان بالتذكرة لا باسمك أو هاتفك. يبقيان مجهولين بعد محو التذكرة، ويستطيع الطبيب إخفاء تعليق، وهو وحده من يقرّر إظهار المعدّل للعموم.",
           ],
@@ -80,6 +83,7 @@ export function privacyContent(lang: Lang) {
             "رموز التحقّق بالرسائل: تُحذف بعد 24 ساعة.",
             "معطيات ربط واتساب: تُحذف بعد يومين.",
             "الاسم والهاتف في التذاكر: يُمحيان بعد 30 يوماً (تبقى أعداد مجهولة فقط لإحصاءات العيادة).",
+            "الاسم والهاتف في المواعيد: يُمحيان بعد 30 يوماً من تاريخ الموعد.",
             "سجلّ الغياب (لقاعدة «الغياب المتكرّر»): يُحذف بعد 60 يوماً.",
           ],
         ],

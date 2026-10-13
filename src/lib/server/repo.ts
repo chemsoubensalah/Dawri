@@ -60,6 +60,7 @@ export function rowToTicket(r: Row): Ticket {
     source: r.source as Ticket["source"],
     status: r.status as TicketStatus,
     held: Boolean(r.held),
+    priority: Boolean(r.priority),
     createdAt: d(r.created_at)!,
     calledAt: d(r.called_at),
     doneAt: d(r.done_at),

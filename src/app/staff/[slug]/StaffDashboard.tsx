@@ -8,6 +8,7 @@ import type { Lang } from "@/lib/domain/types";
 import { errorText, t, tn } from "@/lib/i18n";
 import { api, ApiError, playSound, usePoll } from "@/lib/client";
 import type { StaffState } from "@/lib/server/service";
+import TodayAppointments, { ApptBadge } from "./appointments/TodayAppointments";
 
 type Row = StaffState["waiting"][number];
 type Confirm = { kind: "noshow"; id: string; number: number } | { kind: "cancel"; id: string; number: number } | null;
@@ -110,6 +111,7 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
 
   const badges = (r: Row | NonNullable<StaffState["current"]>) => (
     <span className="flex flex-wrap gap-1">
+      {r.priority && <ApptBadge lang={lang} />}
       {r.arrived && (
         <Chip tone="green">
           <UserCheck size={12} /> {t(lang, "badgeArrived")}
@@ -352,6 +354,7 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
 
         {/* ——— العمود الجانبي ——— */}
         <div className="space-y-4">
+          <TodayAppointments lang={lang} slug={slug} onQueueChange={() => api<StaffState>(`/api/staff/${slug}/state`).then(setS).catch(() => {})} />
           <section className="grid grid-cols-2 gap-2.5">
             <Stat icon={<Users size={13} />} label={t(lang, "waitingCount")} value={s.waiting.filter((w) => !w.held).length} />
             <Stat icon={<CheckCheck size={13} />} label={t(lang, "served")} value={s.stats.served} />

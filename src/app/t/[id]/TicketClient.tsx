@@ -183,6 +183,7 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
               {v.number}
             </div>
             <div className="mt-2 text-lg font-semibold opacity-95">{v.name}</div>
+            {v.priority && <div className="mt-2 inline-flex rounded-full bg-white/20 px-3 py-0.5 text-sm font-bold" data-testid="ticket-priority">★ {t(lang, "ap_badge")}</div>}
           </div>
         </div>
         {/* خطّ القطع */}

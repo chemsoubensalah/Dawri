@@ -27,6 +27,8 @@ export interface Ticket {
   status: TicketStatus;
   /** أُجِّل لأنّه لم يردّ على سؤال «هل ما زلت قادماً؟» — يُتخطّى حتى يؤكّد. */
   held: boolean;
+  /** صاحب موعد وصل: يتقدّم الطابور قبل بقيّة الأرقام (انظر queueOrder). */
+  priority?: boolean;
   createdAt: Date;
   calledAt: Date | null;
   doneAt: Date | null;

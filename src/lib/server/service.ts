@@ -142,8 +142,9 @@ async function applyActions(q: Q, actions: Action[], byId: Map<string, Ticket>, 
 /**
  * يُشغّل خطّة على طابور اليوم داخل معاملة مقفلة، ثمّ يطبّق ما يفرضه مرور الوقت (planTick)،
  * ثمّ يرسل التنبيهات بعد الحفظ.
+ * (مُصدَّرة: المواعيد تحوّل الموعد إلى تذكرة عبر نفس المسار — src/lib/server/appointments.ts)
  */
-async function mutate<R>(
+export async function mutate<R>(
   shop: Shop,
   plan: (ctx: Ctx) => Promise<{ actions: Action[]; result: R }> | { actions: Action[]; result: R },
 ): Promise<{ result: R; tickets: Ticket[] }> {
@@ -405,6 +406,12 @@ export async function issueTicket(
         o.atDoor && ["waiting", "called", "deferred"].includes(existing.status) ? safeCheckIn(existing, now, shop) : [];
       return { actions, result: { ticketId: existing.id, existing: true } };
     }
+    // صاحب موعد اليوم: رقمه ذو أولوية ومرتبط بموعده (src/lib/server/appointments.ts)
+    const fromAppt = await (await import("./appointments")).walkInFromAppointment(q, shop, { day, now, tickets, phone: o.phone, atDoor: o.atDoor });
+    if (fromAppt) {
+      if (o.wa) await repo.waLinkTicket(q, fromAppt, o.wa);
+      return { actions: [], result: { ticketId: fromAppt, existing: false } };
+    }
     const blocker = ticketBlocker(shop, closed, now, tickets.length);
     if (blocker) throw new DomainError(blocker, 409);
     const since = new Date(now.getTime() - NO_SHOW_RETENTION_DAYS * DAY_MS);
@@ -624,6 +631,7 @@ export async function ticketView(id: string) {
     name: ticket.name,
     status: found.day === today || !isOpen ? ticket.status : "expired",
     held: ticket.held,
+    priority: Boolean(ticket.priority),
     lang: ticket.lang,
     arrived: Boolean(ticket.arrivedAt),
     shop: { slug: shop.slug, name: shop.name, kind: shop.kind, profile: shop.profile, look: shop.look },
@@ -729,6 +737,7 @@ export async function staffState(shop: Shop) {
     confirmed: Boolean(t.confirmedAt),
     asked: Boolean(t.confirmAskedAt) && !t.confirmedAt,
     held: t.held,
+    priority: Boolean(t.priority), // صاحب موعد (شارة «موعد»)
   });
   const pending = await Promise.all(
     tickets
@@ -1045,5 +1054,6 @@ export async function runCron() {
   await repo.purgeWa(db, new Date(now.getTime() - 2 * DAY_MS));
   // صفحات دفع Chargily تنتهي بعد 30 دقيقة: ما بقي معلّقاً بعد ساعة = لم يكتمل
   await repo.expireStalePayments(db, new Date(now.getTime() - 3600_000));
+  await (await import("./appointments")).appointmentsCron(); // المواعيد: الغياب + محو الاسم والهاتف بعد 30 يوماً
   return { stale, ...purged };
 }
