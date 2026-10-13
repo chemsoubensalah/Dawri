@@ -699,14 +699,24 @@ export async function staffLogin(slug: string, pin: unknown) {
   const now = clockNow();
   // نحتسب المحاولة ذرّياً قبل التحقّق: لا يمكن تجاوز القفل بطلبات متزامنة
   if (!(await repo.claimLoginAttempt(db, shop.id, now))) throw new DomainError("locked", 429);
-  const ok = typeof pin === "string" && isValidPin(pin) && verifyPin(pin, shop.pinHash);
-  if (!ok) throw new DomainError("wrong_pin", 401);
+  const valid = typeof pin === "string" && isValidPin(pin);
+  // رمز الطبيب ← دور «صاحب العيادة»، وإلّا رمز السكرتيرة ← دور «سكرتيرة» (نفس عدّاد القفل)
+  const role: "owner" | "assistant" | null = !valid
+    ? null
+    : verifyPin(pin, shop.pinHash)
+      ? "owner"
+      : shop.assistantPinHash && verifyPin(pin, shop.assistantPinHash)
+        ? "assistant"
+        : null;
+  if (!role) throw new DomainError("wrong_pin", 401);
   await repo.resetLoginAttempts(db, shop.id);
-  return { shop, token: sessionFor(shop, now) };
+  return { shop, role, token: sessionFor(shop, now, role) };
 }
 
-export function sessionFor(shop: Shop, now: Date) {
-  return signSession({ shopId: shop.id, v: shop.sessionVersion, exp: now.getTime() + 30 * DAY_MS });
+export function sessionFor(shop: Shop, now: Date, role: "owner" | "assistant" = "owner") {
+  const exp = now.getTime() + 30 * DAY_MS;
+  if (role === "assistant") return signSession({ shopId: shop.id, v: shop.assistantVersion ?? 1, exp, r: "a" });
+  return signSession({ shopId: shop.id, v: shop.sessionVersion, exp, r: "o" });
 }
 
 export async function staffState(shop: Shop) {
@@ -910,6 +920,8 @@ export async function updateSettings(
   if (body.lang !== undefined) patch.defaultLang = langOf(body.lang, shop.defaultLang);
   if (body.newPin) {
     if (!isValidPin(body.newPin)) throw new DomainError("invalid_pin");
+    // رمز الطبيب يجب أن يختلف عن رمز السكرتيرة (وإلّا صارت السكرتيرة «طبيباً»)
+    if (shop.assistantPinHash && verifyPin(body.newPin, shop.assistantPinHash)) throw new DomainError("assistant_same_pin");
     patch.pinHash = hashPin(body.newPin);
     patch.bumpSession = true;
   }

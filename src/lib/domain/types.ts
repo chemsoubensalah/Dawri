@@ -180,6 +180,11 @@ export interface Shop {
   look: ShopLook;
   /** بريد صاحب العيادة: لاستعادة الرمز السرّي */
   ownerEmail: string | null;
+  /** أدوار + عيادات متعدّدة الأطبّاء (010_clinics_roles) */
+  assistantPinHash?: string | null;
+  assistantVersion?: number;
+  clinicId?: string | null;
+  room?: string | null;
 }
 
 export interface ShopProfile {
