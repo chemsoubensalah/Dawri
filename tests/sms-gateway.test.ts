@@ -1,8 +1,11 @@
 /**
  * رسائل SMS من هاتف العيادة (SMS Gateway for Android): التشفير، الإعداد، التنبيهات، الرموز، العدّاد، والحدود.
- * fetch مُستبدَل: لا اتّصال حقيقي بـ api.sms-gate.app.
+ * طبقة HTTP مُستبدَلة (gate.transport): لا اتّصال حقيقي بـ api.sms-gate.app.
+ * اختبارات «الشبكة الحقيقية» تستعمل خادماً محلّياً على 127.0.0.1 فقط.
  */
 import crypto from "node:crypto";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPgDb, createPgliteDb, migrate, setDb, type Db } from "@/lib/server/db";
 import { setClock } from "@/lib/server/clock";
@@ -12,6 +15,7 @@ import * as svc from "@/lib/server/service";
 import * as repo from "@/lib/server/repo";
 import * as gate from "@/lib/server/smsgate";
 import { getGateway } from "@/lib/server/smsgate-repo";
+import { claimRate, rateCount } from "@/lib/server/ratelimit";
 import { hashCode } from "@/lib/server/auth";
 import { DomainError, type NotifyType, type Shop, type Ticket } from "@/lib/domain/types";
 
@@ -20,30 +24,37 @@ let clock = new Date("2026-10-11T07:00:00Z"); // الأحد 08:00 بتوقيت �
 const advance = (m: number) => (clock = new Date(clock.getTime() + m * 60000));
 const SCHEMA = "smsgw_test";
 
-// ——— خادم SMS Gateway مزيّف ———
+// ——— خادم SMS Gateway مزيّف (طبقة HTTP) ———
 interface Call {
   url: string;
   method: string;
   auth: string | null;
   body: Record<string, unknown> | null;
+  /** العنوان المثبَّت الذي سيُتّصل به (null = النطاق الافتراضي أو IP مكتوب) */
+  address: string | null;
+  timeoutMs: number;
 }
 let calls: Call[] = [];
-type Reply = { status: number; body?: unknown } | "network";
+/** network = لم يصل شيء (رفض الاتّصال/DNS)، timeout = ربّما وصل (مهلة بعد الاتّصال) */
+type Reply = { status: number; body?: unknown } | "network" | "timeout";
 let replies: { devices: Reply; messages: Reply } = { devices: { status: 200 }, messages: { status: 202 } };
+/** إن وُجد: الرسائل تنتظره قبل الردّ (هاتف بطيء) */
+let hold: Promise<void> | null = null;
 const DEVICES = [{ id: "dev1", name: "Galaxy A10", lastSeen: "2026-10-11T06:59:00Z" }];
 
-const fakeFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-  const url = String(input);
-  const method = init?.method ?? "GET";
-  const headers = new Headers(init?.headers);
-  const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
-  calls.push({ url, method, auth: headers.get("authorization"), body });
-  const r = /\/devices$/.test(url) ? replies.devices : replies.messages;
-  if (r === "network") throw new TypeError("fetch failed");
-  const payload =
-    r.body !== undefined ? r.body : /\/devices$/.test(url) ? DEVICES : { id: `m${calls.length}`, state: "Pending", recipients: [] };
-  return new Response(JSON.stringify(payload), { status: r.status, headers: { "Content-Type": "application/json" } });
+const realRequest = gate.transport.request;
+const fakeRequest = vi.fn(async (r: gate.HttpRequest): Promise<gate.HttpResponse> => {
+  const body = r.body ? JSON.parse(r.body) : null;
+  calls.push({ url: r.url, method: r.method, auth: r.headers.Authorization ?? null, body, address: r.address, timeoutMs: r.timeoutMs });
+  const devices = /\/devices$/.test(r.url);
+  if (!devices && hold) await hold;
+  const rep = devices ? replies.devices : replies.messages;
+  if (rep === "network") return { ok: false, sent: "no" };
+  if (rep === "timeout") return { ok: false, sent: "unknown" };
+  const payload = rep.body !== undefined ? rep.body : devices ? DEVICES : { id: `m${calls.length}`, state: "Pending", recipients: [] };
+  return { ok: true, status: rep.status, text: JSON.stringify(payload) };
 });
+const defaultTimeouts = { ...gate.timeouts };
 
 const basic = (u: string, p: string) => `Basic ${Buffer.from(`${u}:${p}`).toString("base64")}`;
 const sends = () => calls.filter((c) => c.method === "POST");
@@ -72,12 +83,12 @@ beforeAll(async () => {
   setDb(db);
   setClock(() => clock);
   setNotifier(undefined); // المُرسل الحقيقي (notify.ts) — نختبر الربط معه
-  vi.stubGlobal("fetch", fakeFetch);
+  gate.transport.request = fakeRequest;
   gate.resolver.lookup = async () => ["93.184.216.34"]; // لا DNS حقيقي
 });
 
 afterAll(async () => {
-  vi.unstubAllGlobals();
+  gate.transport.request = realRequest;
   setDb(undefined);
   setClock(undefined);
   delete process.env.SMS_NOTIFICATIONS;
@@ -93,6 +104,7 @@ beforeEach(async () => {
   clock = new Date("2026-10-11T07:00:00Z");
   calls = [];
   replies = { devices: { status: 200 }, messages: { status: 202 } };
+  hold = null;
   sentSms.length = 0;
   delete process.env.SMS_NOTIFICATIONS;
   delete process.env.SMS_PROVIDER;
@@ -100,8 +112,12 @@ beforeEach(async () => {
   shop = await svc.createShop({ name: "عيادة الشفاء", slug: `sms-${++n}`, kind: "doctor", pin: "4321", email: "dr@example.com" });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  hold = null;
+  await gate.settled();
   gate.resolver.lookup = async () => ["93.184.216.34"];
+  gate.transport.request = fakeRequest;
+  Object.assign(gate.timeouts, defaultTimeouts);
 });
 
 const connect = (extra: Record<string, unknown> = {}) =>
@@ -120,7 +136,11 @@ const ticket = (o: Partial<Ticket> = {}): Ticket =>
     ...o,
   }) as unknown as Ticket;
 
-const notify = (type: NotifyType, t: Ticket = ticket()) => defaultNotifier.send({ type, ticket: t, shop, ahead: 2 });
+/** التنبيه + انتظار ما يجري في الخلفية (هاتف العيادة لا يُنتظر في مسار الطابور) */
+const notify = async (type: NotifyType, t: Ticket = ticket()) => {
+  await defaultNotifier.send({ type, ticket: t, shop, ahead: 2 });
+  await gate.settled();
+};
 
 let phoneSeq = 10;
 const newPhone = () => `05510000${String(phoneSeq++).padStart(2, "0")}`;
@@ -138,6 +158,20 @@ describe("تشفير كلمة سرّ التطبيق", () => {
     flipped[0] ^= 1;
     expect(gate.decryptSecret([v, iv, flipped.toString("base64url"), tag].join("."), "shop-a")).toBeNull();
     expect(gate.decryptSecret("garbage", "shop-a")).toBeNull();
+  });
+
+  it("وسم المصادقة 16 بايت دائماً: وسم مقصور (أسهل للتزوير) مرفوض", () => {
+    const blob = gate.encryptSecret("secret", "shop-a");
+    const [v, iv, enc, tag] = blob.split(".");
+    expect(Buffer.from(tag, "base64url")).toHaveLength(16);
+    for (const n of [4, 8, 12, 15]) {
+      const short = Buffer.from(tag, "base64url").subarray(0, n).toString("base64url");
+      expect(gate.decryptSecret([v, iv, enc, short].join("."), "shop-a"), `tag ${n}`).toBeNull();
+    }
+    const longer = Buffer.concat([Buffer.from(tag, "base64url"), Buffer.from([0])]).toString("base64url");
+    expect(gate.decryptSecret([v, iv, enc, longer].join("."), "shop-a")).toBeNull();
+    expect(gate.decryptSecret(`${blob}.x`, "shop-a")).toBeNull();
+    expect(gate.decryptSecret(blob, "shop-a")).toBe("secret");
   });
 
   it("المفتاح مشتقّ من SESSION_SECRET: تغييره يُبطل القيم القديمة", () => {
@@ -160,6 +194,7 @@ describe("الربط والإعدادات", () => {
     expect(calls[0].url).toBe("https://api.sms-gate.app/3rdparty/v1/devices");
     expect(calls[0].method).toBe("GET");
     expect(calls[0].auth).toBe(basic("K7QX2M", "s3cr3t-pa55word"));
+    expect(calls[0].address).toBeNull(); // api.sms-gate.app: النطاق الافتراضي الموثوق
     expect(view).toMatchObject({ configured: true, enabled: true, status: "ok", deviceName: "Galaxy A10", username: "K7QX2M", hasPassword: true });
     const json = JSON.stringify(view);
     expect(json).not.toContain("s3cr3t");
@@ -206,7 +241,17 @@ describe("الربط والإعدادات", () => {
     await expect(gate.saveSmsSettings(shop, { username: "a:b", password: "x" })).rejects.toThrow("sg_invalid_credentials");
     await expect(gate.saveSmsSettings(shop, { username: "abc", password: "x".repeat(200) })).rejects.toThrow("sg_invalid_credentials");
     await expect(connect({ enabled: "yes" })).rejects.toThrow("invalid_settings");
+    // مسافات وحدها = لا كلمة سرّ؛ أسطر جديدة/رموز تحكّم مرفوضة
+    await expect(gate.saveSmsSettings(shop, { username: "abc", password: "   " })).rejects.toThrow("sg_missing_password");
+    await expect(gate.saveSmsSettings(shop, { username: "abc", password: "pass\n" })).rejects.toThrow("sg_invalid_credentials");
     expect(calls).toHaveLength(0);
+  });
+
+  it("كلمة السرّ تُحفظ وتُرسل كما هي (لا قصّ للمسافات)", async () => {
+    await connect({ password: "  pass word  " });
+    expect(calls[0].auth).toBe(basic("K7QX2M", "  pass word  "));
+    const gw = await getGateway(db, shop.id);
+    expect(gate.decryptSecret(gw!.passwordEnc, shop.id)).toBe("  pass word  ");
   });
 
   it("عنوان الخادم: https فقط، لا عناوين داخلية (SSRF)، ويقبل لصق الرابط الكامل", async () => {
@@ -244,6 +289,7 @@ describe("الربط والإعدادات", () => {
     gate.resolver.lookup = async () => ["93.184.216.34"];
     await connect({ baseUrl: "https://sms.example.org/api/3rdparty/v1", password: "other-pass" });
     expect(calls[0].url).toBe("https://sms.example.org/api/3rdparty/v1/devices");
+    expect(calls[0].address).toBe("93.184.216.34"); // الاتّصال بالعنوان الذي فُحص نفسه
   });
 
   it("الخادم المحلّي (نسخة داخل شبكة العيادة فقط): المسار /message وبلا فحص مسبق", async () => {
@@ -345,15 +391,28 @@ describe("التنبيهات عبر هاتف العيادة", () => {
     expect(v).toMatchObject({ status: "ok", lastError: null, sentThisMonth: 1 });
   });
 
-  it("الرموز لا تتخطّى هاتف العيادة بعد خطأ عابر (المريض ينتظر رمزه)", async () => {
+  it("قاطع الدائرة يشمل الرموز: بعد خطأ بطيء ← المزوّد العامّ مباشرة؛ وبلا مزوّد عامّ ← نحاول هاتف العيادة", async () => {
     await connect();
     replies.messages = "network";
     await notify("called");
     replies.messages = { status: 202 };
     calls = [];
     await svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() });
+    expect(sends()).toHaveLength(0); // لا ننتظر مهلة هاتف معطّل والمريض ينتظر رمزه
+    expect(sentSms).toHaveLength(1);
+    process.env.SMS_PROVIDER = "off";
+    await expect(svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() })).resolves.toMatchObject({ sent: true });
+    expect(sends()).toHaveLength(1); // الوسيلة الوحيدة: نحاول
+    // بعد دقيقتين: هاتف العيادة من جديد
+    delete process.env.SMS_PROVIDER;
+    replies.messages = "network";
+    await notify("called");
+    advance(3);
+    replies.messages = { status: 202 };
+    calls = [];
+    await svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() });
     expect(sends()).toHaveLength(1);
-    expect(sentSms).toHaveLength(0);
+    expect(sentSms).toHaveLength(1);
   });
 
   it("كلمة سرّ لا يمكن فكّها (تغيّر SESSION_SECRET) ← لا إرسال، ورسالة واضحة", async () => {
@@ -379,6 +438,7 @@ describe("التنبيهات عبر هاتف العيادة", () => {
     const { ticketId } = await svc.takeTicket(shop.slug, { name: "أمينة", phone, code: c.devCode });
     const s = await svc.staffState((await repo.getShopBySlug(db, shop.slug))!);
     await svc.staffAction((await repo.getShopBySlug(db, shop.slug))!, { action: "next", current: s.current?.id ?? null });
+    await gate.settled();
     const called = sends().at(-1)!;
     expect(sentText(called)).toContain("دورك الآن");
     expect(sentText(called)).toContain(String((await svc.ticketView(ticketId)).number));
@@ -396,13 +456,40 @@ describe("رموز التحقّق", () => {
     expect(sentSms[0].text).toContain("دوري");
   });
 
-  it("فشل هاتف العيادة ← المزوّد العامّ؛ وبلا مزوّد عامّ ← sms_failed", async () => {
+  it("فشل مؤكَّد لهاتف العيادة ← المزوّد العامّ؛ وبلا مزوّد عامّ ← sms_failed", async () => {
     await connect();
-    replies.messages = { status: 500 };
-    await svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() });
-    expect(sentSms).toHaveLength(1);
+    for (const r of [{ status: 503 }, { status: 401 }, "network"] as Reply[]) {
+      replies.messages = r;
+      sentSms.length = 0;
+      await svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() });
+      expect(sentSms, JSON.stringify(r)).toHaveLength(1);
+      advance(3); // «network» يفتح القاطع: ننتظره كي يُجرَّب هاتف العيادة من جديد
+    }
+    replies.messages = { status: 503 };
     process.env.SMS_PROVIDER = "off";
     await expect(svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() })).rejects.toThrow("sms_failed");
+  });
+
+  it("نتيجة مجهولة (مهلة بعد الاتّصال، 5xx) ← لا رمز ثانٍ عبر المزوّد العامّ", async () => {
+    await connect();
+    for (const r of [{ status: 500 }, { status: 502 }, { status: 504 }, "timeout"] as Reply[]) {
+      replies.messages = r;
+      sentSms.length = 0;
+      calls = [];
+      const out = await svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() });
+      expect(out, JSON.stringify(r)).toMatchObject({ sent: true }); // ربّما وصل: لا خطأ ولا تكرار
+      expect(sends()).toHaveLength(1);
+      expect(sentSms, JSON.stringify(r)).toHaveLength(0);
+      advance(3);
+    }
+    // الطلب التالي بعد مهلة: القاطع مفتوح ← المزوّد العامّ (إن لم يصل الرمز الأوّل)
+    replies.messages = "timeout";
+    await svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() });
+    calls = [];
+    sentSms.length = 0;
+    await svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() });
+    expect(sends()).toHaveLength(0);
+    expect(sentSms).toHaveLength(1);
   });
 
   it("بلا مزوّد عامّ: هاتف العيادة وحده يكفي لتفعيل التحقّق بالرسائل", async () => {
@@ -415,13 +502,28 @@ describe("رموز التحقّق", () => {
     expect(sends()).toHaveLength(1);
   });
 
-  it("حماية الشريحة: بعد 60 رمزاً في الساعة ← المزوّد العامّ، أو «رموز كثيرة» إن لم يوجد", async () => {
+  it("حماية الشريحة: تُحسب الرموز المرسلة عبر هاتف العيادة فقط؛ بعد 60 في الساعة ← المزوّد العامّ، أو «رموز كثيرة»", async () => {
     await connect();
+    const key = gate.limitKey.codes(shop.id);
+    // رموز أُرسلت بوسائل أخرى (المزوّد العامّ، أو قبل الربط) لا تستهلك حصّة الشريحة
     for (let i = 0; i < gate.CLINIC_CODES_PER_HOUR; i++) {
       const p = `+2135520${String(i).padStart(5, "0")}`;
       await repo.insertCode(db, shop.id, p, hashCode(shop.id, p, "000000"), clock, new Date(clock.getTime() + 600_000));
     }
     calls = [];
+    await svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() });
+    expect(sends()).toHaveLength(1);
+    expect(await rateCount(db, key, 3600_000, clock)).toBe(1);
+    // رموز «مُطفأة» على هاتف العيادة ← المزوّد العامّ، ولا تُحسب
+    await gate.saveSmsSettings(shop, { sendCodes: false });
+    await svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() });
+    expect(sentSms).toHaveLength(1);
+    expect(await rateCount(db, key, 3600_000, clock)).toBe(1);
+    await gate.saveSmsSettings(shop, { sendCodes: true });
+    // الحصّة ممتلئة (عدّاد ذرّي لحظة الإرسال)
+    for (let i = 1; i < gate.CLINIC_CODES_PER_HOUR; i++) await claimRate(db, key, 3600_000, gate.CLINIC_CODES_PER_HOUR, clock);
+    calls = [];
+    sentSms.length = 0;
     await svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() });
     expect(sends()).toHaveLength(0);
     expect(sentSms).toHaveLength(1);
@@ -430,6 +532,10 @@ describe("رموز التحقّق", () => {
     expect(e).toBeInstanceOf(DomainError);
     expect(e.code).toBe("too_many_codes");
     expect(e.status).toBe(429);
+    // بعد ساعة تعود الحصّة
+    advance(61);
+    await expect(svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() })).resolves.toMatchObject({ sent: true });
+    expect(sends()).toHaveLength(1);
   });
 
   it("الاشتراك المنتهي يوقف الرموز كما يوقف التذاكر", async () => {
@@ -492,6 +598,180 @@ describe("العدّاد الشهري والرسائل التجريبية", () =
     // الربط الأوّل فحص، ثمّ 9 تغييرات
     for (let i = 0; i < 9; i++) await connect({ password: `pass-${i}` });
     await expect(connect({ password: "pass-x" })).rejects.toThrow("sg_too_many_checks");
+  });
+});
+
+describe("لا انتظار ولا تكرار في التنبيهات", () => {
+  it("زرّ «التالي» لا ينتظر هاتف العيادة: الإرسال في الخلفية (مهلة 3 ثوانٍ)", async () => {
+    await connect();
+    let release!: () => void;
+    hold = new Promise<void>((r) => (release = r));
+    calls = [];
+    // التنبيه يعود فوراً بينما الطلب إلى الهاتف ما زال معلّقاً
+    await defaultNotifier.send({ type: "called", ticket: ticket(), shop, ahead: 0 });
+    expect(sends()).toHaveLength(1);
+    expect(sends()[0].timeoutMs).toBe(3000);
+    expect((await gate.smsSettingsView(shop)).sentThisMonth).toBe(0);
+    // ومن مسار الطابور نفسه
+    process.env.PHONE_VERIFICATION = "off";
+    try {
+      await svc.takeTicket(shop.slug, { name: "أمينة", phone: newPhone() });
+      await svc.takeTicket(shop.slug, { name: "سعيد", phone: newPhone() });
+    } finally {
+      delete process.env.PHONE_VERIFICATION;
+    }
+    const fresh = (await repo.getShopBySlug(db, shop.slug))!;
+    await svc.staffAction(fresh, { action: "next", current: null });
+    expect(sends().length).toBeGreaterThanOrEqual(2); // «دورك الآن» (+ «اقترب دورك») معلّقة
+    release();
+    await gate.settled();
+    expect((await gate.smsSettingsView(shop)).sentThisMonth).toBe(sends().length);
+  });
+
+  it("نتيجة مجهولة (مهلة بعد الاتّصال أو 5xx) ← لا نسخة مدفوعة عبر المزوّد العامّ؛ فشل مؤكَّد ← المزوّد العامّ", async () => {
+    await connect();
+    process.env.SMS_NOTIFICATIONS = "1";
+    for (const r of ["timeout", { status: 500 }, { status: 504 }] as Reply[]) {
+      replies.messages = r;
+      sentSms.length = 0;
+      await notify("called");
+      expect(sentSms, JSON.stringify(r)).toHaveLength(0);
+      advance(3);
+    }
+    for (const r of ["network", { status: 503 }, { status: 401 }, { status: 400 }] as Reply[]) {
+      replies.messages = r;
+      sentSms.length = 0;
+      await notify("soon");
+      expect(sentSms, JSON.stringify(r)).toHaveLength(1);
+      advance(3);
+    }
+  });
+});
+
+/** خادم HTTP محلّي حقيقي (127.0.0.1) لاختبار طبقة الشبكة نفسها. */
+async function localServer(mode: "ok" | "hang") {
+  const seen: { host: string | undefined; url: string | undefined; auth: string | undefined; body: string }[] = [];
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      seen.push({ host: req.headers.host, url: req.url, auth: req.headers.authorization, body });
+      if (mode === "hang") return; // لا ردّ أبداً: وصل الطلب ولا نعرف النتيجة
+      res.writeHead(202, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ id: "local-1", state: "Pending" }));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as AddressInfo).port;
+  const close = () =>
+    new Promise<void>((r) => {
+      server.closeAllConnections();
+      server.close(() => r());
+    });
+  return { port, seen, close };
+}
+
+describe("الشبكة: عنوان مثبَّت ومهل قصيرة", () => {
+  it("DNS rebinding: الاتّصال يذهب إلى العنوان الذي فُحص، ولا ذاكرة لنتيجة DNS", async () => {
+    let n = 0;
+    const answers = [["93.184.216.34"], ["93.184.216.35"], ["10.0.0.7"]];
+    gate.resolver.lookup = async () => answers[Math.min(n++, answers.length - 1)];
+    await connect({ baseUrl: "https://sms.example.org" });
+    expect(calls[0].address).toBe("93.184.216.34");
+    calls = [];
+    await gate.sendTest(shop, "0550123456");
+    expect(calls[0].address).toBe("93.184.216.35"); // حلّ جديد لكلّ طلب، والعنوان نفسه يُستعمل
+    // النطاق صار يشير إلى عنوان داخلي ← مرفوض قبل أيّ اتّصال
+    calls = [];
+    await expect(gate.sendTest(shop, "0550123456")).rejects.toThrow("sg_blocked_host");
+    expect(calls).toHaveLength(0);
+    expect(n).toBe(3);
+  });
+
+  it("طلب حقيقي: يتّصل بالعنوان المثبَّت (لا يحلّ الاسم مرّة ثانية) ويُبقي اسم النطاق في Host", async () => {
+    const srv = await localServer("ok");
+    try {
+      process.env.SMSGATE_ALLOW_PRIVATE = "1";
+      gate.transport.request = realRequest;
+      const lookups: string[] = [];
+      // اسم لا يوجد في DNS الحقيقي: الاتّصال ينجح فقط إن استُعمل العنوان المثبَّت
+      gate.resolver.lookup = async (h) => (lookups.push(h), ["127.0.0.1"]);
+      await connect({ baseUrl: `http://gw.dawri-test.invalid:${srv.port}` });
+      await gate.sendTest(shop, "0550 12 34 56", "fr");
+      await gate.sendTest(shop, "0550123456");
+      expect(srv.seen).toHaveLength(2);
+      expect(srv.seen[0]).toMatchObject({ host: `gw.dawri-test.invalid:${srv.port}`, url: "/message", auth: basic("K7QX2M", "s3cr3t-pa55word") });
+      expect(JSON.parse(srv.seen[0].body)).toMatchObject({ phoneNumbers: ["+213550123456"] });
+      expect(lookups).toEqual(["gw.dawri-test.invalid", "gw.dawri-test.invalid"]); // مرّة لكلّ طلب
+      expect((await gate.smsSettingsView(shop)).sentThisMonth).toBe(2);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("طلب حقيقي: رفض الاتّصال = لم يُرسل (المزوّد العامّ)؛ لا ردّ بعد الاتّصال = مجهول (لا تكرار)", async () => {
+    process.env.SMSGATE_ALLOW_PRIVATE = "1";
+    process.env.SMS_NOTIFICATIONS = "1";
+    gate.transport.request = realRequest;
+    gate.timeouts.notify = 300;
+    // منفذ مغلق
+    const closed = await localServer("ok");
+    await closed.close();
+    await connect({ baseUrl: `http://127.0.0.1:${closed.port}` });
+    await notify("called");
+    expect(sentSms).toHaveLength(1);
+    expect((await gate.smsSettingsView(shop)).lastError).toBe("unreachable");
+    // خادم يستلم ولا يردّ
+    const srv = await localServer("hang");
+    try {
+      await gate.saveSmsSettings(shop, { baseUrl: `http://127.0.0.1:${srv.port}` });
+      advance(3);
+      sentSms.length = 0;
+      const t0 = Date.now();
+      await notify("called");
+      expect(Date.now() - t0).toBeLessThan(3000);
+      expect(srv.seen).toHaveLength(1);
+      expect(sentSms).toHaveLength(0); // ربّما وصلت: لا نسخة ثانية مدفوعة
+      expect((await gate.smsSettingsView(shop)).lastError).toBe("unreachable");
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("DNS بطيء: مهلة قصيرة ثمّ «تعذّر الاتّصال» دون أيّ طلب", async () => {
+    gate.timeouts.dns = 50;
+    gate.resolver.lookup = () => new Promise<string[]>(() => {});
+    const t0 = Date.now();
+    const v = await connect({ baseUrl: "https://sms.example.org" });
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(v).toMatchObject({ status: "error", lastError: "unreachable" });
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("الحدود لا تُصفَّر", () => {
+  it("إزالة الربط ثمّ إعادته لا تعيد الرسائل التجريبية", async () => {
+    await connect();
+    for (let i = 0; i < gate.TESTS_PER_HOUR; i++) await gate.sendTest(shop, "0550123456");
+    await gate.removeSmsGateway(shop);
+    await connect();
+    expect((await gate.smsSettingsView(shop)).testsLeft).toBe(0);
+    await expect(gate.sendTest(shop, "0550123456")).rejects.toThrow("sg_too_many_tests");
+  });
+
+  it("فحوص الربط محدودة من أوّل محاولة (حتى الفاشلة وقبل أيّ ربط)، والإزالة لا تصفّرها", async () => {
+    replies.devices = { status: 401 };
+    for (let i = 0; i < 10; i++) await expect(connect({ password: `guess-${i}` })).rejects.toThrow("sg_auth");
+    await expect(connect({ password: "guess-x" })).rejects.toThrow("sg_too_many_checks");
+    expect(calls).toHaveLength(10); // لا طلب بعد الحدّ
+    expect((await gate.smsSettingsView(shop)).configured).toBe(false);
+
+    advance(61);
+    replies.devices = { status: 200 };
+    await connect();
+    for (let i = 0; i < 9; i++) await connect({ password: `p-${i}` });
+    await gate.removeSmsGateway(shop);
+    await expect(connect()).rejects.toThrow("sg_too_many_checks");
   });
 });
 

@@ -6,7 +6,8 @@
  *   called    ← «دورك الآن» فقط (الأوفر)
  *   soon      ← «تعال الآن» فقط
  * تصل أيضاً لمن أضافته السكرتيرة برقم هاتفه (الكبار بلا هاتف ذكي).
- * وإن ربطت العيادة هاتفها (SMS Gateway — smsgate.ts) يُرسَل «دورك الآن»/«اقترب دورك» منه مجّاناً أوّلاً.
+ * وإن ربطت العيادة هاتفها (SMS Gateway — smsgate.ts) يُرسَل «دورك الآن»/«اقترب دورك» منه مجّاناً أوّلاً
+ * (في الخلفية: هاتف لا يردّ لا يُبطئ زرّ «التالي»).
  * وفي كلّ الأحوال: صفحة التذكرة المفتوحة تُصدر صوتاً واهتزازاً بنفسها.
  */
 import { t, type DictKey } from "../i18n";
@@ -131,11 +132,14 @@ export const defaultNotifier: Notifier = {
     }
     // SMS فقط لمن لم يصله واتساب (توفير الكلفة)
     // من أوقف التنبيهات (STOP) لا تصله رسائل SMS أيضاً
-    // هاتف العيادة نفسه أوّلاً (SMS Gateway — مجّاني للعيادة)، وإن تعذّر فالمزوّد العامّ
-    const clinicSent = !waSent && !n.ticket.waOptOut && n.ticket.phone ? await sendClinicNotification(n) : false;
-    if (!clinicSent && !waSent && !n.ticket.waOptOut && n.ticket.phone && smsTypes().has(n.type)) {
-      const sms = getSms();
-      await sms?.send(n.ticket.phone, `${msg.title} ${msg.body}`).catch((e) => console.error("[sms]", e));
+    // هاتف العيادة نفسه أوّلاً (SMS Gateway — مجّاني للعيادة): يُرسَل في الخلفية فلا ينتظره زرّ «التالي»،
+    // والمزوّد العامّ احتياطاً فقط إن فشل هاتف العيادة فشلاً مؤكَّداً (لا رسالة مكرّرة إن كانت النتيجة مجهولة)
+    if (!waSent && !n.ticket.waOptOut && n.ticket.phone) {
+      const phone = n.ticket.phone;
+      const sms = smsTypes().has(n.type) ? getSms() : null;
+      const fallback = sms ? () => sms.send(phone, `${msg.title} ${msg.body}`).catch((e) => console.error("[sms]", e)) : null;
+      const viaClinic = await sendClinicNotification(n, fallback);
+      if (!viaClinic && fallback) await fallback();
     }
   },
 };

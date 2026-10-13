@@ -49,7 +49,8 @@ import { getNotifier, type Notification } from "./notify";
 import * as repo from "./repo";
 import { getMailer } from "./email";
 import { applyReferral } from "./referral";
-import { sendDailyReports } from "./report";
+import { REPORT_BUDGET_MS, sendDailyReports } from "./report";
+import { guardClientIp } from "./ratelimit";
 import { getSms } from "./sms";
 import { clinicSendsCodes, codeSender } from "./smsgate";
 import {
@@ -266,8 +267,11 @@ export async function createShop(input: {
       trialEndsAt: new Date(now.getTime() + 60 * DAY_MS), // مجّاني أوّل شهرين
       ownerEmail,
     });
-    // «ادعُ زميلاً»: رمز صالح ← 30 يوماً إضافية للتجربة (الرمز السيّئ يُتجاهل بصمت)
-    const refUntil = await applyReferral(db, shop, input.ref).catch((e) => (console.error("[referral]", e), null));
+    // «ادعُ زميلاً»: رمز صالح ← 30 يوماً إضافية للتجربة (الرمز السيّئ يُتجاهل بصمت).
+    // الدعوة ومكافأتها في معاملة واحدة: إمّا الاثنتان أو لا شيء.
+    const refUntil = await db
+      .tx((q) => applyReferral(q, shop, input.ref))
+      .catch((e) => (console.error("[referral]", e), null));
     if (refUntil) shop = { ...shop, trialEndsAt: refUntil };
     if (typeof input.doctorName === "string" && input.doctorName.trim()) {
       const profile = cleanProfile({ ...shop.profile, doctorName: input.doctorName });
@@ -328,7 +332,12 @@ export type PublicShopView = Awaited<ReturnType<typeof publicShop>>["view"];
 
 // ————————————————————————— أخذ رقم —————————————————————————
 
-export async function requestCode(slug: string, body: { name?: unknown; phone?: unknown; lang?: unknown }) {
+/** client.ip: عنوان العميل (من المسار) — حدّ رموز لكلّ عميل ضدّ إغراق أرقام عشوائية برسائل مدفوعة. */
+export async function requestCode(
+  slug: string,
+  body: { name?: unknown; phone?: unknown; lang?: unknown },
+  client: { ip?: string | null } = {},
+) {
   const db = await getDb();
   const shop = await shopOr404(db, slug);
   cleanName(body.name);
@@ -350,11 +359,13 @@ export async function requestCode(slug: string, body: { name?: unknown; phone?: 
   if ((await repo.countRecentCodes(db, shop.id, null, new Date(now.getTime() - 60 * 60000))) >= 200) {
     throw new DomainError("too_many_codes", 429);
   }
+  await guardClientIp(db, client.ip, "code", now);
   const code = randomDigits(6);
   await repo.insertCode(db, shop.id, phone, hashCode(shop.id, phone, code), now, new Date(now.getTime() + 10 * 60000));
   try {
     await sms.send(phone, code, langOf(body.lang, shop.defaultLang));
   } catch (e) {
+    if (e instanceof DomainError) throw e; // حدّ هاتف العيادة بلا مزوّد عامّ (too_many_codes)
     console.error("[sms]", e);
     throw new DomainError("sms_failed", 502);
   }
@@ -1063,21 +1074,54 @@ export async function adminResetPin(shopId: string) {
 
 // ————————————————————————— المهامّ الدورية —————————————————————————
 
+export interface CronStepError {
+  step: string;
+  error: string;
+}
+
+/**
+ * المهامّ الدورية (يومياً). كلّ خطوة معزولة: فشل واحدة لا يُلغي ما بعدها، ويُعاد في errors.
+ * المسار /api/cron مهلته 60 ث (maxDuration): التقارير تتوقّف عند 45 ث من بداية التشغيل،
+ * وما بقي منها يُرسل في التشغيل التالي.
+ */
 export async function runCron() {
+  const started = performance.now();
+  const errors: CronStepError[] = [];
+  const step = async <T>(name: string, fn: () => Promise<T>): Promise<T | null> => {
+    try {
+      return await fn();
+    } catch (e) {
+      console.error(`[cron] ${name}`, e);
+      errors.push({ step: name, error: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
+  };
   const db = await getDb();
   const now = clockNow();
-  const stale = await closeStaleTickets(null);
-  const purged = await repo.purgeOld(
-    db,
-    new Date(now.getTime() - NO_SHOW_RETENTION_DAYS * DAY_MS), // سجلّ الغياب يُمحى بعد شهرين
-    new Date(now.getTime() - DAY_MS),
-    new Date(now.getTime() - TICKET_RETENTION_DAYS * DAY_MS), // الاسم والهاتف يُمحيان بعد 30 يوماً
+  const stale = await step("closeStaleTickets", () => closeStaleTickets(null));
+  const purged = await step("purgeOld", () =>
+    repo.purgeOld(
+      db,
+      new Date(now.getTime() - NO_SHOW_RETENTION_DAYS * DAY_MS), // سجلّ الغياب يُمحى بعد شهرين
+      new Date(now.getTime() - DAY_MS),
+      new Date(now.getTime() - TICKET_RETENTION_DAYS * DAY_MS), // الاسم والهاتف يُمحيان بعد 30 يوماً
+    ),
   );
-  await repo.purgeWa(db, new Date(now.getTime() - 2 * DAY_MS));
+  await step("purgeWa", () => repo.purgeWa(db, new Date(now.getTime() - 2 * DAY_MS)));
   // صفحات دفع Chargily تنتهي بعد 30 دقيقة: ما بقي معلّقاً بعد ساعة = لم يكتمل
-  await repo.expireStalePayments(db, new Date(now.getTime() - 3600_000));
-  await (await import("./appointments")).appointmentsCron(); // المواعيد: الغياب + محو الاسم والهاتف بعد 30 يوماً
-  // التقرير اليومي للأطبّاء: لا يُفشل المهامّ الدورية أبداً
-  const reports = await sendDailyReports().catch((e) => (console.error("[report]", e), null));
-  return { stale, ...purged, reports };
+  await step("expireStalePayments", () => repo.expireStalePayments(db, new Date(now.getTime() - 3600_000)));
+  // المواعيد: الغياب + محو الاسم والهاتف بعد 30 يوماً
+  await step("appointmentsCron", async () => (await import("./appointments")).appointmentsCron());
+  // التقرير اليومي للأطبّاء: ما يتبقّى من مهلة الـ 45 ث
+  const reports = await step("sendDailyReports", () =>
+    sendDailyReports({ budgetMs: Math.max(0, REPORT_BUDGET_MS - (performance.now() - started)) }),
+  );
+  return {
+    stale,
+    noShows: purged?.noShows ?? null,
+    codes: purged?.codes ?? null,
+    anonymized: purged?.anonymized ?? null,
+    reports,
+    errors,
+  };
 }

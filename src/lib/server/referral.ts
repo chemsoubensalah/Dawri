@@ -3,7 +3,10 @@
  *  - العيادة المدعوّة: 90 يوماً مجّاناً بدل 60 (عند التسجيل برمز صالح).
  *  - العيادة الداعية: +30 يوماً عند أوّل دفعة للمدعوّة فقط (لا عند التسجيل — ضدّ الحسابات الوهمية)،
  *    مرّة واحدة لكلّ مدعوّ (rewarded_at)، وبحدّ 12 مكافأة في السنة.
- *  - الدعوة الذاتية (نفس بريد صاحب العيادة) تُتجاهل بصمت، وكذلك الرمز غير الصالح.
+ *  - الدعوة الذاتية تُتجاهل بصمت، وكذلك الرمز غير الصالح. البريد إلزامي للطرفين ويُقارن بمفتاحه الموحَّد
+ *    (dawri_email_key: بلا «+وسم» وبلا نقاط Gmail)، ومع كلّ بريد استعمله الداعي يوماً (shop_email_keys).
+ *  - +30 يوماً للمدعوّ فقط إن لم يُستعمل بريده لأيّ عيادة أخرى من قبل (ضدّ العيادات الوهمية المتكرّرة).
+ *  - تسجيل الدعوة ومكافأة التجربة في معاملة واحدة (applyReferral تُستدعى داخل db.tx).
  */
 import crypto from "node:crypto";
 import type { Shop } from "../domain/types";
@@ -48,30 +51,44 @@ export async function ensureReferralCode(q: Q, shopId: string): Promise<string> 
 }
 
 /**
- * يُستدعى بعد إنشاء العيادة. يُرجع تاريخ نهاية التجربة الجديد إن قُبلت الدعوة، وإلّا null.
+ * يُستدعى بعد إنشاء العيادة، داخل معاملة (db.tx): الدعوة ومكافأتها تُحفظان معاً أو لا تُحفظان.
+ * يُرجع تاريخ نهاية التجربة الجديد إن مُنحت المكافأة، وإلّا null.
  * لا يرمي أبداً لرمز سيّئ: الرمز غير الصالح يُتجاهل بصمت.
  */
 export async function applyReferral(q: Q, shop: Shop, ref: unknown): Promise<Date | null> {
   const code = normalizeRefCode(ref);
   if (!code) return null;
-  const rows = await q.query<{ shop_id: string; owner_email: string | null }>(
-    `select c.shop_id, s.owner_email from referrals_codes c join shops s on s.id = c.shop_id where c.code = $1`,
-    [code],
+  const rows = await q.query<{ shop_id: string; referrer_key: string | null; key: string | null; referrer_used: boolean; used: boolean }>(
+    `select c.shop_id,
+            dawri_email_key(s.owner_email) as referrer_key,
+            dawri_email_key($2::text) as key,
+            exists (select 1 from shop_email_keys k
+                     where k.shop_id = c.shop_id and k.email_key = dawri_email_key($2::text)) as referrer_used,
+            exists (select 1 from shop_email_keys k
+                     where k.shop_id <> $3::uuid and k.email_key = dawri_email_key($2::text)) as used
+       from referrals_codes c join shops s on s.id = c.shop_id
+      where c.code = $1`,
+    [code, shop.ownerEmail, shop.id],
   );
   const referrer = rows[0];
   if (!referrer || referrer.shop_id === shop.id) return null;
-  const a = (referrer.owner_email ?? "").trim().toLowerCase();
-  const b = (shop.ownerEmail ?? "").trim().toLowerCase();
-  if (a && b && a === b) return null; // دعوة ذاتية
+  // البريد إلزامي للطرفين؛ نفس الصندوق (ولو بنقاط أو +وسم) أو بريد سبق للداعي استعماله = دعوة ذاتية
+  if (!referrer.referrer_key || !referrer.key) return null;
+  if (referrer.referrer_key === referrer.key || referrer.referrer_used) return null;
   const ins = await q.query<{ id: string }>(
     `insert into referrals (referrer_shop_id, referred_shop_id) values ($1, $2)
      on conflict (referred_shop_id) do nothing returning id`,
     [referrer.shop_id, shop.id],
   );
   if (!ins[0]) return null;
-  const until = new Date(shop.trialEndsAt.getTime() + REFERRAL_BONUS_DAYS * DAY_MS);
-  await q.query("update shops set trial_ends_at = $2 where id = $1", [shop.id, until]);
-  return until;
+  // بريد استُعمل لعيادة أخرى من قبل: تُسجَّل الدعوة (يُكافأ الداعي إن دفعت) لكن بلا تجربة إضافية
+  if (referrer.used) return null;
+  const up = await q.query<{ trial_ends_at: Date | string }>(
+    "update shops set trial_ends_at = trial_ends_at + make_interval(days => $2) where id = $1 returning trial_ends_at",
+    [shop.id, REFERRAL_BONUS_DAYS],
+  );
+  const v = up[0]?.trial_ends_at;
+  return v == null ? null : v instanceof Date ? v : new Date(String(v));
 }
 
 /**

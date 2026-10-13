@@ -11,10 +11,13 @@ import { setNotifier } from "@/lib/server/notify";
 import * as svc from "@/lib/server/service";
 import * as ap from "@/lib/server/appointments";
 import * as repo from "@/lib/server/repo";
+import * as gate from "@/lib/server/smsgate";
+import { sentSms } from "@/lib/server/sms";
+import { claimRate, clientIp, ipBucket, IP_LIMITS, rateCount } from "@/lib/server/ratelimit";
 import { estimateWaitMinutes, initialFlags, lineup, nextEligible, peopleAhead, planNext } from "@/lib/domain/queue";
 import { availability, checkinWindow, daySlots, DEFAULT_BOOKING, slotInstant } from "@/lib/domain/appointments";
 import { buildIcs, foldLine } from "@/lib/ics";
-import { DEFAULT_SETTINGS, type Shop, type Ticket } from "@/lib/domain/types";
+import { DEFAULT_SETTINGS, DomainError, type Shop, type Ticket } from "@/lib/domain/types";
 
 let db: Db;
 let clock = new Date("2026-10-11T07:00:00Z"); // الأحد 08:00 بتوقيت الجزائر
@@ -61,6 +64,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   delete process.env.PHONE_VERIFICATION;
+  delete process.env.SMS_PROVIDER;
 });
 
 const fresh = async () => (await repo.getShopBySlug(db, shop.slug))!;
@@ -140,6 +144,18 @@ describe("الطابور: أصحاب المواعيد أوّلاً", () => {
     expect(estimateWaitMinutes(ts, by(7), min(0), DEFAULT_SETTINGS)).toBe(20);
   });
 
+  it("بين أصحاب المواعيد: لحظة منح الأولوية (priorityAt) لا لحظة أخذ الرقم", () => {
+    const ts = [
+      mk(1, { priority: true, createdAt: min(0), priorityAt: min(40) }), // رقم عادي صباحاً، ثمّ وصل لموعده متأخّراً
+      mk(2, { priority: true, createdAt: min(30), priorityAt: min(30) }),
+      mk(3),
+    ];
+    expect(lineup(ts).map((t) => t.number)).toEqual([2, 1, 3]);
+    expect(peopleAhead(ts, ts[0])).toBe(1);
+    // تذاكر قديمة بلا priorityAt ← createdAt
+    expect(lineup([mk(4, { priority: true, createdAt: min(50) }), mk(5, { priority: true, createdAt: min(45), priorityAt: null })]).map((t) => t.number)).toEqual([5, 4]);
+  });
+
   it("«التالي» ينادي صاحب الموعد قبل الأرقام الأصغر", () => {
     const acts = planNext(tickets(), min(30), "done");
     const called = acts.find((a) => a.kind === "update" && a.patch.status === "called");
@@ -177,6 +193,28 @@ describe("شبكة الأوقات", () => {
     expect(days[0].slots[0].time).toBe("08:30"); // 08:00 + 30 دقيقة
     const desk = availability({ settings: { ...DEFAULT_BOOKING, daysAhead: 0 }, shopHours: { "4": [["08:00", "10:00"]] }, now, counts: [], mode: "desk" });
     expect(desk[0].slots[0].time).toBe("08:00");
+  });
+
+  it("المهلة الدنيا بالوقت المطلق في كلّ يوم (لا اليوم فقط)", () => {
+    // السبت 23:50 بتوقيت الجزائر، مهلة 30 دقيقة: مواعيد بعد منتصف الليل قبل 00:20 مستثناة
+    const now = new Date("2026-10-10T22:50:00Z");
+    const shopHours = { "0": [["00:00", "01:00"]] as [string, string][], "6": [["08:00", "09:00"]] as [string, string][] };
+    const days = availability({ settings: { ...DEFAULT_BOOKING, enabled: true, daysAhead: 1, minLeadMin: 30 }, shopHours, now, counts: [], mode: "online" });
+    expect(days[0].state).toBe("over");
+    expect(days[1].slots.map((x) => x.time)).toEqual(["00:30", "00:45"]);
+    // مهلة 24 ساعة: صباح الغد قبل نفس الساعة مستثنى
+    const d2 = availability({
+      settings: { ...DEFAULT_BOOKING, enabled: true, daysAhead: 2, minLeadMin: 1440 },
+      shopHours: { "1": [["07:00", "09:00"]], "2": [["07:00", "09:00"]] },
+      now: new Date("2026-10-11T07:00:00Z"), // الأحد 08:00
+      counts: [],
+      mode: "online",
+    });
+    expect(d2[1].slots.map((x) => x.time)).toEqual(["08:00", "08:15", "08:30", "08:45"]);
+    expect(d2[2].slots[0].time).toBe("07:00");
+    // السكرتيرة: ما مضى اليوم فقط
+    const desk = availability({ settings: { ...DEFAULT_BOOKING, daysAhead: 1, minLeadMin: 30 }, shopHours, now, counts: [], mode: "desk" });
+    expect(desk[1].slots.map((x) => x.time)).toEqual(["00:00", "00:15", "00:30", "00:45"]);
   });
 
   it("نافذة «وصلت»: من ساعة قبل الموعد حتى المهلة بعده", () => {
@@ -262,6 +300,32 @@ describe("الحجز عبر الإنترنت", () => {
     // بعد الإلغاء يستطيع الحجز من جديد في نفس اليوم
     await ap.appointmentAction(a.appointmentId, { action: "cancel" });
     expect((await book("2026-10-12", "12:00", phone)).appointmentId).not.toBe(a.appointmentId);
+  });
+
+  it("بلا تحقّق من الهاتف: حجز ثانٍ بنفس الرقم في نفس اليوم ← 409 دون كشف الموعد الموجود", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable();
+    const phone = newPhone();
+    const a = await ap.bookOnline(shop.slug, { name: "صاحب الرقم", phone, day: "2026-10-12", time: "09:00" });
+    const e = await ap.bookOnline(shop.slug, { name: "منتحل", phone, day: "2026-10-12", time: "10:00" }).catch((x) => x);
+    expect(e).toBeInstanceOf(DomainError);
+    expect(e).toMatchObject({ code: "ap_already_booked", status: 409 });
+    expect(JSON.stringify(e)).not.toContain(a.appointmentId);
+    await expect(ap.requestBookingCode(shop.slug, { name: "منتحل", phone, day: "2026-10-12", time: "10:00" })).rejects.toThrow("ap_already_booked");
+    // يوم آخر: مسموح
+    await expect(ap.bookOnline(shop.slug, { name: "صاحب الرقم", phone, day: "2026-10-13", time: "09:00" })).resolves.toMatchObject({ existing: false });
+  });
+
+  it("المهلة الدنيا تشمل الأيّام القادمة (مهلة 24 ساعة)", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable({ minLeadMin: 1440 });
+    const go = (time: string) => ap.bookOnline(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-12", time });
+    await expect(go("07:45")).rejects.toThrow("ap_slot_unavailable"); // بعد 23 ساعة و45 دقيقة
+    await expect(go("08:00")).resolves.toBeTruthy();
+    const av = await ap.publicAvailability(shop.slug);
+    expect(av.days[0].state).toBe("over");
+    expect(av.days[1].slots[0].time).toBe("08:00");
+    expect((await ap.bookingTeaser(await fresh()))!.next).toEqual({ day: "2026-10-12", time: "08:15" });
   });
 
   it("حجوزات متزامنة على نفس الوقت: لا يتجاوز عدد الأماكن أبداً", async () => {
@@ -405,6 +469,32 @@ describe("الوصول: موعد ← تذكرة ذات أولوية", () => {
     expect((await staffState()).current?.number).toBe(3);
   });
 
+  it("رقم عادي أُخذ صباحاً ثمّ صار ذا أولوية بموعده: لا يتقدّم صاحب موعد وصل قبله", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable();
+    const early = newPhone();
+    const tk = await svc.takeTicket(shop.slug, { name: "باكر", phone: early }); // رقم 1 على 08:00
+    const rEarly = await ap.bookOnline(shop.slug, { name: "باكر", phone: early, day: "2026-10-11", time: "10:00" });
+    const rOther = await ap.bookOnline(shop.slug, { name: "آخر", phone: newPhone(), day: "2026-10-11", time: "09:30" });
+    at("2026-10-11", "09:00");
+    const other = await ap.appointmentAction(rOther.appointmentId, { action: "checkin" }); // رقم 2، أولوية على 09:00
+    at("2026-10-11", "09:10");
+    const e = await ap.appointmentAction(rEarly.appointmentId, { action: "checkin" }); // رقم 1 يصير ذا أولوية الآن
+    expect(e.ticketId).toBe(tk.ticketId);
+    expect((await staffState()).waiting.map((w) => [w.number, w.priority])).toEqual([
+      [2, true],
+      [1, true],
+    ]);
+    const rows = await db.query<{ priority_at: Date | string }>("select priority_at from tickets where id = $1", [tk.ticketId]);
+    expect(new Date(rows[0].priority_at)).toEqual(clock);
+    expect((await svc.ticketView(other.ticketId!)).ahead).toBe(0);
+    // الضغطة الثانية لا تغيّر لحظة الأولوية
+    advance(5);
+    await ap.appointmentAction(rEarly.appointmentId, { action: "checkin" });
+    const again = await db.query<{ priority_at: Date | string }>("select priority_at from tickets where id = $1", [tk.ticketId]);
+    expect(new Date(again[0].priority_at)).toEqual(new Date(rows[0].priority_at));
+  });
+
   it("ضغطات متزامنة على «وصلت»: تذكرة واحدة فقط", async () => {
     await enable();
     const r = await book("2026-10-11", "08:45");
@@ -516,6 +606,19 @@ describe("السكرتيرة", () => {
     expect((await staffState()).waiting[0]).toMatchObject({ number: c.number, priority: true, arrived: true });
   });
 
+  it("اشتراك منتهٍ: لا موعد جديد ولا «حضر» من المكتب، والإلغاء يبقى ممكناً", async () => {
+    await enable({ daysAhead: 60 });
+    const a = await desk({ day: "2026-12-10", time: "09:00" });
+    const b = await desk({ day: "2026-12-10", time: "10:00" });
+    at("2026-12-10", "08:30"); // انتهت التجربة (شهران) على 08:00
+    const e = await desk({ day: "2026-12-10", time: "11:00" }).catch((x) => x);
+    expect(e).toMatchObject({ code: "subscription", status: 409 });
+    await expect(ap.staffAppointmentAction(await fresh(), { action: "checkin", id: a.id })).rejects.toThrow("subscription");
+    const rows = await db.query<{ n: number }>("select count(*)::int n from tickets where shop_id = $1", [shop.id]);
+    expect(rows[0].n).toBe(0);
+    await expect(ap.staffAppointmentAction(await fresh(), { action: "cancel", id: b.id })).resolves.toEqual({ ok: true });
+  });
+
   it("تقصير مدّة الحجز بعد الحجز: المواعيد البعيدة تبقى ظاهرة للسكرتيرة", async () => {
     await enable({ daysAhead: 30 });
     const r = await book("2026-11-05", "09:00");
@@ -532,6 +635,100 @@ describe("السكرتيرة", () => {
     await expect(ap.staffAppointmentAction(other, { action: "cancel", id: r.appointmentId })).rejects.toThrow("ap_not_found");
     await expect(ap.staffAppointmentAction(other, { action: "checkin", id: r.appointmentId })).rejects.toThrow("ap_not_found");
     expect((await ap.appointmentView(r.appointmentId)).status).toBe("booked");
+  });
+});
+
+// ————————————————————————— التحقّق: هاتف العيادة والحدود —————————————————————————
+
+describe("رموز الحجز: هاتف العيادة والحدود", () => {
+  it("بلا مزوّد عامّ: هاتف العيادة يرسل رموز الحجز، والحجز متاح", async () => {
+    const real = gate.transport.request;
+    const sent: { url: string; body: { phoneNumbers: string[]; textMessage: { text: string } } }[] = [];
+    gate.transport.request = async (r) => {
+      if (/\/devices$/.test(r.url)) return { ok: true, status: 200, text: JSON.stringify([{ id: "d1", name: "Galaxy A10" }]) };
+      sent.push({ url: r.url, body: JSON.parse(r.body!) });
+      return { ok: true, status: 202, text: JSON.stringify({ id: `m${sent.length}`, state: "Pending" }) };
+    };
+    process.env.SMS_PROVIDER = "off";
+    sentSms.length = 0;
+    try {
+      await enable();
+      expect((await ap.publicAvailability(shop.slug)).verify).toBe("unavailable");
+      expect(await ap.bookingTeaser(await fresh())).toBeNull();
+      await expect(ap.requestBookingCode(shop.slug, { name: "سميرة", phone: newPhone(), day: "2026-10-12", time: "09:00" })).rejects.toThrow("sms_unavailable");
+
+      await gate.saveSmsSettings(shop, { username: "K7QX2M", password: "pw-123456" });
+      expect((await ap.publicAvailability(shop.slug)).verify).toBe("sms");
+      expect((await ap.bookingSettingsView(await fresh())).verify).toBe("sms");
+      expect(await ap.bookingTeaser(await fresh())).not.toBeNull();
+      const phone = newPhone();
+      const c = await ap.requestBookingCode(shop.slug, { name: "سميرة", phone, day: "2026-10-12", time: "09:00" });
+      expect(c).toMatchObject({ sent: true, verify: true });
+      expect(sent).toHaveLength(1);
+      expect(sent[0].url).toBe("https://api.sms-gate.app/3rdparty/v1/messages");
+      expect(sent[0].body.phoneNumbers).toEqual([`+213${phone.slice(1)}`]);
+      expect(sent[0].body.textMessage.text).toContain(c.devCode!);
+      expect(sentSms).toHaveLength(0);
+      const r = await ap.bookOnline(shop.slug, { name: "سميرة", phone, day: "2026-10-12", time: "09:00", code: c.devCode });
+      expect(r.existing).toBe(false);
+      // رموز الحجز عبر الشريحة تُحسب في حصّتها
+      expect(await rateCount(db, gate.limitKey.codes(shop.id), 3600_000, clock)).toBe(1);
+    } finally {
+      gate.transport.request = real;
+      await gate.settled();
+    }
+  });
+
+  it("حدّ لكلّ عميل (عنوان IP): 5 رموز حجز و10 رموز أرقام كلّ 10 دقائق", async () => {
+    await enable();
+    const ask = (ip: string) => ap.requestBookingCode(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-12", time: "09:00" }, { ip });
+    for (let i = 0; i < IP_LIMITS.booking; i++) await ask("198.51.100.7");
+    const e = await ask("198.51.100.7").catch((x) => x);
+    expect(e).toMatchObject({ code: "too_many_codes", status: 429 });
+    await expect(ask("198.51.100.8")).resolves.toMatchObject({ sent: true }); // عميل آخر
+    // IPv6: نفس /64 = نفس العميل
+    for (let i = 0; i < IP_LIMITS.booking; i++) await ask(`2001:db8:5:7::${i + 1}`);
+    await expect(ask("2001:db8:5:7:ffff::9")).rejects.toThrow("too_many_codes");
+    await expect(ask("2001:db8:5:8::1")).resolves.toBeTruthy();
+    advance(11);
+    await expect(ask("198.51.100.7")).resolves.toBeTruthy();
+
+    // أخذ رقم: نفس الفكرة بحدّ أعلى
+    const take = (ip: string) => svc.requestCode(shop.slug, { name: "x x", phone: newPhone() }, { ip });
+    for (let i = 0; i < IP_LIMITS.code; i++) await take("203.0.113.9");
+    await expect(take("203.0.113.9")).rejects.toThrow("too_many_codes");
+    // بلا تحقّق (لا رسالة) لا يُستهلك شيء
+    process.env.PHONE_VERIFICATION = "off";
+    await expect(take("203.0.113.9")).resolves.toMatchObject({ sent: false });
+    await expect(ask("198.51.100.7")).resolves.toMatchObject({ sent: false });
+    // بلا عنوان معروف: لا حدّ للعميل (الحدود الأخرى باقية)
+    delete process.env.PHONE_VERIFICATION;
+    await expect(svc.requestCode(shop.slug, { name: "x x", phone: newPhone() })).resolves.toMatchObject({ sent: true });
+  });
+
+  it("عنوان العميل من الترويسات (لا يُخزَّن صريحاً)", () => {
+    expect(clientIp(new Headers({ "x-forwarded-for": "203.0.113.5, 10.0.0.1" }))).toBe("203.0.113.5");
+    expect(clientIp(new Headers({ "x-real-ip": "203.0.113.6" }))).toBe("203.0.113.6");
+    expect(clientIp(new Headers({ "x-real-ip": "203.0.113.6", "x-forwarded-for": "6.6.6.6, 203.0.113.6" }))).toBe("203.0.113.6");
+    expect(clientIp(new Headers({ "x-forwarded-for": "203.0.113.7:51234" }))).toBe("203.0.113.7");
+    expect(clientIp(new Headers({ "x-forwarded-for": "[2001:DB8::1]:443" }))).toBe("2001:db8::1");
+    expect(clientIp(new Headers({ "x-forwarded-for": "evil, 1.2.3.4" }))).toBeNull();
+    expect(clientIp(new Headers())).toBeNull();
+    expect(ipBucket("2001:db8:1:2::1")).toBe(ipBucket("2001:0db8:0001:0002:ffff::7"));
+    expect(ipBucket("2001:db8:1:2::1")).not.toBe(ipBucket("2001:db8:1:3::1"));
+    expect(ipBucket("::ffff:203.0.113.5")).toBe(ipBucket("203.0.113.5"));
+    expect(ipBucket("203.0.113.5")).not.toContain("203");
+  });
+
+  it("رموز الحجز لها عدّاد مستقلّ (أقلّ من حدّ الطابور): إغراق صفحة الحجز لا يمنع رموز المرضى عند الباب", async () => {
+    await enable();
+    const key = ap.bookingCodesKey(shop.id);
+    await ap.requestBookingCode(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-12", time: "09:00" });
+    expect(await rateCount(db, key, 3600_000, clock)).toBe(1);
+    for (let i = 1; i < ap.BOOKING_CODES_PER_HOUR; i++) await claimRate(db, key, 3600_000, ap.BOOKING_CODES_PER_HOUR, clock);
+    await expect(ap.requestBookingCode(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-12", time: "09:00" })).rejects.toThrow("too_many_codes");
+    await expect(svc.requestCode(shop.slug, { name: "x x", phone: newPhone() })).resolves.toMatchObject({ sent: true });
+    expect(ap.BOOKING_CODES_PER_HOUR).toBeLessThan(200);
   });
 });
 

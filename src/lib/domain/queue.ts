@@ -33,16 +33,21 @@ export function isEligible(t: Ticket): boolean {
   return t.status === "waiting" && !t.held;
 }
 
+/** متى صار ذا أولوية (وصول صاحب الموعد)؛ تذاكر قديمة بلا priorityAt ← createdAt. */
+function priorityTime(t: Ticket): number {
+  return (t.priorityAt ?? t.createdAt).getTime();
+}
+
 /**
- * ترتيب الطابور: أصحاب المواعيد الذين وصلوا (priority) أوّلاً بترتيب وصولهم،
- * ثمّ البقيّة بالأرقام.
+ * ترتيب الطابور: أصحاب المواعيد الذين وصلوا (priority) أوّلاً بترتيب وصولهم (priorityAt —
+ * لا وقت أخذ رقمه العادي قبل ذلك)، ثمّ البقيّة بالأرقام.
  */
 export function queueOrder(a: Ticket, b: Ticket): number {
   const pa = a.priority ? 1 : 0;
   const pb = b.priority ? 1 : 0;
   if (pa !== pb) return pb - pa;
   if (pa) {
-    const d = a.createdAt.getTime() - b.createdAt.getTime();
+    const d = priorityTime(a) - priorityTime(b);
     if (d) return d;
   }
   return byNumber(a, b);

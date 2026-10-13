@@ -33,12 +33,16 @@ export default function ReviewCard({ lang, ticketId }: { lang: Lang; ticketId: s
     setBusy(true);
     setErr(null);
     try {
-      await api(`/api/t/${ticketId}/review`, { rating, comment: comment.trim() || null });
-      setSt({ state: "sent", rating, mapsUrl: st.mapsUrl });
+      // إعادة الإرسال تُرجع التقييم المحفوظ
+      const r = await api<{ ok: boolean; rating?: number }>(`/api/t/${ticketId}/review`, { rating, comment: comment.trim() || null });
+      setSt({ state: "sent", rating: r.rating ?? rating, mapsUrl: st.mapsUrl });
     } catch (e) {
       const code = (e as ApiError).code;
-      if (code === "review_exists") setSt({ state: "sent", rating, mapsUrl: null });
-      else setErr(errorText(lang, code));
+      if (code === "review_exists") {
+        // أُرسل تقييم مختلف من قبل (جهاز آخر): نعرض المحفوظ مع رابط Google
+        const saved = await api<ReviewState>(`/api/t/${ticketId}/review`).catch(() => null);
+        setSt(saved?.state === "sent" ? saved : { state: "sent", rating, mapsUrl: st.mapsUrl });
+      } else setErr(errorText(lang, code));
     } finally {
       setBusy(false);
     }

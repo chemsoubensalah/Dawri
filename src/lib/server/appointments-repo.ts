@@ -186,9 +186,13 @@ export async function listRange(q: Q, shopId: string, fromDay: string, toDay: st
   return rows.map((r) => ({ ...rowToAppointment(r), ticketNumber: r.ticket_number == null ? null : Number(r.ticket_number) }));
 }
 
-/** تذكرة صاحب الموعد تتقدّم الطابور. */
-export async function setTicketPriority(q: Q, ticketId: string) {
-  await q.query("update tickets set priority = true where id = $1", [ticketId]);
+/** تذكرة صاحب الموعد تتقدّم الطابور، مرتّبةً بين أصحاب المواعيد بلحظة وصوله (priority_at). */
+export async function setTicketPriority(q: Q, ticketId: string, now: Date) {
+  // أولوية ممنوحة الآن (حتى لتذكرة عادية أُخذت صباحاً)؛ إن كانت ذات أولوية من قبل نُبقي لحظتها الأولى
+  await q.query(
+    "update tickets set priority_at = case when priority then coalesce(priority_at, $2) else $2 end, priority = true where id = $1",
+    [ticketId, now],
+  );
 }
 
 export async function insertApptNoShow(q: Q, shopId: string, phone: string, apptId: string, now: Date) {

@@ -16,13 +16,18 @@ let db: Db;
 let clock = new Date("2026-10-11T07:00:00Z"); // الأحد 08:00 بتوقيت الجزائر
 const advance = (m: number) => (clock = new Date(clock.getTime() + m * 60000));
 
+const SCHEMA = "reviews_tests";
+
 beforeAll(async () => {
   delete process.env.DATABASE_URL;
   delete process.env.SIGNUP_CODE;
   const url = process.env.TEST_DATABASE_URL;
   if (url) {
-    db = await createPgDb(url);
-    await db.exec("drop schema public cascade; create schema public;");
+    // مخطّط خاصّ بهذا الملفّ: لا يتصادم مع الملفّات الأخرى التي تعمل بالتوازي على نفس القاعدة
+    const u = new URL(url);
+    u.searchParams.set("options", `-c search_path=${SCHEMA}`);
+    db = await createPgDb(u.toString());
+    await db.exec(`drop schema if exists ${SCHEMA} cascade; create schema ${SCHEMA};`);
   } else {
     db = await createPgliteDb();
   }
@@ -36,6 +41,7 @@ afterAll(async () => {
   setDb(undefined);
   setClock(undefined);
   setNotifier(undefined);
+  if (process.env.TEST_DATABASE_URL) await db.exec(`drop schema if exists ${SCHEMA} cascade`);
   await db.close();
 });
 
@@ -91,6 +97,10 @@ describe("تقييم المريض", () => {
     const rows = await db.query<{ comment: string }>("select comment from reviews where ticket_id = $1", [id]);
     expect(rows[0].comment).toBe("ممتاز جدّاً");
     expect(await rv.submitReview(id, { rating: 5, comment: "ممتاز جدّاً" })).toEqual({ ok: true, rating: 5 });
+    // نفس النجوم بتعليق مختلف أو بلا تعليق = نجاح أيضاً (لا يُغيّر المحفوظ)
+    expect(await rv.submitReview(id, { rating: 5 })).toEqual({ ok: true, rating: 5 });
+    expect(await rv.submitReview(id, { rating: "5", comment: "آخر" })).toEqual({ ok: true, rating: 5 });
+    expect((await db.query<{ comment: string }>("select comment from reviews where ticket_id = $1", [id]))[0].comment).toBe("ممتاز جدّاً");
     await expect(rv.submitReview(id, { rating: 1 })).rejects.toMatchObject({ code: "review_exists", status: 409 });
     expect(await rv.reviewState(id)).toMatchObject({ state: "sent", rating: 5 });
   });
@@ -114,6 +124,34 @@ describe("تقييم المريض", () => {
     await expect(rv.submitReview("00000000-0000-4000-8000-000000000000", { rating: 4 })).rejects.toMatchObject({ status: 404 });
     // 300 حرف بالضبط مقبولة، والتعليق الفارغ = بلا تعليق
     expect(await rv.submitReview(id, { rating: 4, comment: "ب".repeat(300) })).toMatchObject({ ok: true });
+  });
+
+  it("من لم يُخدم فعلاً (نودي ثمّ أُغلقت تذكرته آلياً بلا done_at) لا يقيّم", async () => {
+    const tk = await take();
+    await next(); // ينادي ثمّ لا يُنهيه الطبيب
+    await db.query("update tickets set arrived_at = called_at where id = $1", [tk.ticketId]); // لا تخطٍّ تلقائي
+    advance(24 * 60);
+    await svc.closeStaleTickets(shop.id);
+    const t = await repo.getTicket(db, tk.ticketId);
+    expect(t!.status).toBe("done");
+    expect(t!.doneAt).toBeNull();
+    expect(await rv.reviewState(tk.ticketId)).toEqual({ state: "none" });
+    await expect(rv.submitReview(tk.ticketId, { rating: 1 })).rejects.toMatchObject({ code: "review_not_allowed" });
+  });
+
+  it("لا حدّ لعدد تقييمات العيادة في الساعة (تقييم واحد لكلّ تذكرة يكفي)", async () => {
+    const day = "2026-10-11";
+    const ids: string[] = [];
+    for (let i = 1; i <= 70; i++) {
+      const r = await db.query<{ id: string }>(
+        `insert into tickets (shop_id, day, number, name, phone, source, status, created_at, called_at, done_at)
+         values ($1, $2, $3, 'x', null, 'desk', 'done', $4, $4, $4) returning id`,
+        [shop.id, day, 1000 + i, clock],
+      );
+      ids.push(String(r[0].id));
+    }
+    for (const id of ids) expect(await rv.submitReview(id, { rating: 4 })).toEqual({ ok: true, rating: 4 });
+    expect((await rv.staffReviews(await fresh())).count).toBe(70);
   });
 
   it("المهلة 72 ساعة بعد الخدمة", async () => {
@@ -278,12 +316,53 @@ describe("دليل العيادات", () => {
   });
 });
 
+describe("دليل العيادات — الترتيب والانتظار الحيّ", () => {
+  it("الترتيب بالاسم (ثابت عبر الصفحات) مهما كانت الحالة", async () => {
+    const tag = `ord${n}`;
+    // «A» مغلقة اليوم (الأحد بلا ساعات)، و«B» تستقبل الآن
+    await svc.updateSettings(await fresh(), { name: `${tag} A`, hours: { "1": [["08:00", "16:00"]] } });
+    await rv.saveReviewSettings(shop, { public: false, listed: true });
+    const b = await svc.createShop({ name: `${tag} B`, slug: `rv-ord-${n}`, kind: "doctor", pin: "4321", email: "x@example.com" });
+    await rv.saveReviewSettings(b, { public: false, listed: true });
+    const all = await rv.directory({ q: tag });
+    expect(all.entries.map((e) => [e.name, e.status])).toEqual([
+      [`${tag} A`, "closed"],
+      [`${tag} B`, "open"],
+    ]);
+    expect((await rv.directory({ q: tag, pageSize: 1, page: 1 })).entries[0].name).toBe(`${tag} A`);
+    expect((await rv.directory({ q: tag, pageSize: 1, page: 2 })).entries[0].name).toBe(`${tag} B`);
+  });
+
+  it("الانتظار الحيّ = ما تعرضه صفحة العيادة (بعد التخطّي التلقائي وانتهاء مهلة المؤجَّل)", async () => {
+    const tag = `live${n}`;
+    await svc.updateSettings(await fresh(), { name: `عيادة ${tag}` });
+    await rv.saveReviewSettings(shop, { public: false, listed: true });
+    for (let i = 0; i < 5; i++) await take();
+    await next(); // ينادي 1 (عن بُعد، لم يؤكّد وصوله)
+    // بعد مهلة النداء (5 د) يُتخطّى 1 ويُنادى 2 — ولا أحد كتب ذلك في القاعدة بعد
+    advance(6);
+    const dir = (await rv.directory({ q: tag })).entries[0];
+    const page = (await svc.publicShop(shop.slug)).view; // يطبّق planTick فعلاً
+    expect(dir.waiting).toBe(page.waiting);
+    expect(dir.waitMin).toBe(page.waitNewMin);
+    expect(dir.waiting).toBe(3);
+    // المؤجَّل (1) يتجاوز lateWindowMin، ويُتخطّى 2 أيضاً
+    advance(16);
+    const dir2 = (await rv.directory({ q: tag })).entries[0];
+    const page2 = (await svc.publicShop(shop.slug)).view;
+    expect([dir2.waiting, dir2.waitMin]).toEqual([page2.waiting, page2.waitNewMin]);
+    // بعد التطبيق في القاعدة: نفس الأرقام
+    const dir3 = (await rv.directory({ q: tag })).entries[0];
+    expect([dir3.waiting, dir3.waitMin]).toEqual([page2.waiting, page2.waitNewMin]);
+  });
+});
+
 describe("النصوص", () => {
   it("كلّ مفاتيح rv_ وأخطاء التقييم موجودة باللغتين", () => {
     for (const k of Object.keys(dicts.ar).filter((k) => k.startsWith("rv_") || k.startsWith("err_review"))) {
       expect(dicts.fr[k as keyof typeof dicts.fr], k).toBeTruthy();
     }
-    for (const code of ["review_invalid", "review_too_long", "review_exists", "review_not_allowed", "review_expired", "review_rate", "review_not_found"]) {
+    for (const code of ["review_invalid", "review_too_long", "review_exists", "review_not_allowed", "review_expired", "review_not_found"]) {
       expect(`err_${code}` in dicts.ar, code).toBe(true);
     }
   });

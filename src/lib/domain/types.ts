@@ -29,6 +29,8 @@ export interface Ticket {
   held: boolean;
   /** صاحب موعد وصل: يتقدّم الطابور قبل بقيّة الأرقام (انظر queueOrder). */
   priority?: boolean;
+  /** لحظة منح الأولوية (وصول صاحب الموعد) — ترتيب أصحاب المواعيد بينهم؛ null = createdAt. */
+  priorityAt?: Date | null;
   createdAt: Date;
   calledAt: Date | null;
   doneAt: Date | null;

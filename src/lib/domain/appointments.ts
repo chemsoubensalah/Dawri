@@ -167,7 +167,9 @@ export interface SlotCount {
 
 /**
  * الأيّام والأوقات المتاحة من اليوم حتى اليوم + daysAhead.
- * online: يُستثنى ما قبل (الآن + minLeadMin)، وأوقات اليوم إن أُغلق طابور اليوم.
+ * online: يُستثنى كلّ وقت يبدأ قبل (الآن + minLeadMin) بالوقت المطلق — في أيّ يوم، لا اليوم فقط
+ * (مهلة 24 ساعة مساءً تستثني صباح الغد، و30 دقيقة قبل منتصف الليل تستثني أوّل الليل)،
+ * وأوقات اليوم إن أُغلق طابور اليوم.
  * desk (السكرتيرة): يُستثنى ما مضى فقط.
  */
 export function availability(o: {
@@ -182,6 +184,8 @@ export function availability(o: {
   const s = o.settings;
   const hours = bookingHours(s, o.shopHours);
   const lt = localTime(o.now);
+  // بداية الدقيقة الحالية (كما في lt.minutes) + المهلة
+  const leadUntil = Math.floor(o.now.getTime() / 60_000) * 60_000 + s.minLeadMin * 60_000;
   const byDay = new Map<string, SlotCount[]>();
   for (const c of o.counts) {
     const list = byDay.get(c.day) ?? [];
@@ -204,10 +208,12 @@ export function availability(o: {
     const gridCap = grid.length * s.perSlot;
     const capacity = s.dailyMax > 0 ? Math.min(gridCap, s.dailyMax) : gridCap;
     const dayFull = s.dailyMax > 0 && booked >= s.dailyMax;
-    let minStart = -1;
-    if (i === 0) minStart = o.mode === "online" ? (o.closedToday ? 24 * 60 : lt.minutes + s.minLeadMin) : lt.minutes;
+    const bookable = (t: string): boolean => {
+      if (o.mode === "online") return !(i === 0 && o.closedToday) && slotInstant(day, t).getTime() >= leadUntil;
+      return i > 0 || parseHHMM(t)! >= lt.minutes;
+    };
     const slots = grid
-      .filter((t) => parseHHMM(t)! >= minStart)
+      .filter(bookable)
       .map((t) => ({ time: t, left: dayFull ? 0 : Math.max(0, s.perSlot - (perBucket.get(t) ?? 0)) }));
     const state: DayState = !grid.length
       ? "closed"

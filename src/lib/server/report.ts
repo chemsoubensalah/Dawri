@@ -1,6 +1,8 @@
 /**
  * التقرير اليومي للطبيب (بريد إلكتروني) — يُرسل من runCron (03:00 بتوقيت الجزائر) عن يوم الأمس.
  * أعداد فقط: لا أسماء ولا هواتف. مرّة واحدة لكلّ عيادة ولكلّ يوم (report_log).
+ * قابل للاستئناف: sent_at يُثبَّت بعد نجاح الإرسال فقط، والحجز المعلّق يُستعاد بعد 10 دقائق،
+ * وكلّ تشغيل يغطّي آخر 3 أيّام لم يُرسل تقريرها (مهلة Vercel أو عطل البريد لا يُضيّعان يوماً).
  */
 import { DomainError, type Lang, type Shop } from "../domain/types";
 import { dayKey } from "../domain/time";
@@ -12,6 +14,14 @@ import * as repo from "./repo";
 
 const DAY_MS = 86_400_000;
 export const PREVIEW_PER_DAY = 3;
+/** إرسالات متزامنة كحدّ أقصى */
+export const REPORT_CONCURRENCY = 5;
+/** نتوقّف عن بدء إرسالات جديدة بعد هذه المدّة (maxDuration للمسار = 60 ث) */
+export const REPORT_BUDGET_MS = 45_000;
+/** حجز بلا إرسال ناجح أقدم من هذا = مهمّة انقطعت ← يُعاد حجزه */
+export const REPORT_CLAIM_STALE_MS = 10 * 60_000;
+/** أمس + اليومان السابقان (إن لم يُرسل تقريرهما بنجاح) */
+export const REPORT_BACKLOG_DAYS = 3;
 
 export function shiftDay(day: string, n: number): string {
   const d = new Date(`${day}T12:00:00Z`);
@@ -225,47 +235,93 @@ export function yesterday(now: Date): string {
   return shiftDay(dayKey(now), -1);
 }
 
-/** يُرسل تقارير الأمس لكلّ العيادات المعنية. لا يرمي بسبب عيادة واحدة. */
-export async function sendDailyReports() {
+export interface ReportRunOptions {
+  /** مدّة العمل القصوى بالملّي ثانية (تُقاس بساعة حقيقية رتيبة، لا بساعة النطاق) */
+  budgetMs?: number;
+  concurrency?: number;
+}
+
+/**
+ * يُرسل التقارير المستحقّة (الأمس + آخر يومين بلا إرسال ناجح) لكلّ العيادات المعنية.
+ * لا يرمي بسبب عيادة واحدة. 5 إرسالات متوازية، ويتوقّف عن البدء بجديد عند نفاد المهلة؛
+ * ما بقي (pending) يُرسل في التشغيل التالي.
+ */
+export async function sendDailyReports(opts: ReportRunOptions = {}) {
+  const started = performance.now();
+  const budgetMs = opts.budgetMs ?? REPORT_BUDGET_MS;
+  const concurrency = Math.max(1, Math.floor(opts.concurrency ?? REPORT_CONCURRENCY));
   const db = await getDb();
   const now = clockNow();
   const day = yesterday(now);
+  const days = Array.from({ length: REPORT_BACKLOG_DAYS }, (_, i) => shiftDay(day, -i));
   await db.query("delete from report_previews where created_at < $1", [new Date(now.getTime() - 2 * DAY_MS)]);
   const mailer = getMailer();
-  if (!mailer) return { day, sent: 0, failed: 0, skipped: "no_mailer" as const };
+  if (!mailer) return { day, days, sent: 0, failed: 0, pending: 0, skipped: "no_mailer" as const };
+  const staleBefore = new Date(now.getTime() - REPORT_CLAIM_STALE_MS);
   const rows = await db.query(
-    `select s.* from shops s
-     left join report_settings r on r.shop_id = s.id
-     where s.owner_email is not null
-       and coalesce(r.daily, true)
-       and greatest(s.trial_ends_at, coalesce(s.paid_until, s.trial_ends_at)) > $2
-       and exists (select 1 from tickets t where t.shop_id = s.id and t.day = $1)
-       and not exists (select 1 from report_log l where l.shop_id = s.id and l.day = $1)
-     order by s.created_at limit 2000`,
-    [day, now],
+    `select s.*, d.day as report_day
+       from shops s
+      cross join unnest($1::text[]) as d(day)
+       left join report_settings r on r.shop_id = s.id
+       left join report_log l on l.shop_id = s.id and l.day = d.day
+      where s.owner_email is not null
+        and coalesce(r.daily, true)
+        and greatest(s.trial_ends_at, coalesce(s.paid_until, s.trial_ends_at)) > $2
+        and exists (select 1 from tickets t where t.shop_id = s.id and t.day = d.day)
+        and (l.shop_id is null or (l.sent_at is null and l.claimed_at < $3))
+      order by d.day desc, s.created_at
+      limit 2000`,
+    [days, now, staleBefore],
   );
+
   let sent = 0;
   let failed = 0;
-  for (const row of rows) {
+  let next = 0;
+  const sendOne = async (row: (typeof rows)[number]) => {
     const shop = repo.rowToShop(row);
-    // نحجز اليوم أوّلاً (cron مكرّر أو متوازٍ لا يرسل مرّتين)، ونُلغي الحجز إن فشل الإرسال
-    const claim = await db.query("insert into report_log (shop_id, day, sent_at) values ($1, $2, $3) on conflict do nothing returning day", [
-      shop.id,
-      day,
-      now,
-    ]);
-    if (!claim[0]) continue;
+    const reportDay = String(row.report_day);
+    const claimedAt = clockNow();
+    // نحجز أوّلاً (cron مكرّر أو متوازٍ لا يرسل مرّتين). الحجز المعلّق القديم (مهمّة انقطعت) يُستعاد.
+    const claim = await db.query(
+      `insert into report_log (shop_id, day, claimed_at, sent_at) values ($1, $2, $3, null)
+       on conflict (shop_id, day) do update set claimed_at = excluded.claimed_at
+         where report_log.sent_at is null and report_log.claimed_at < $4
+       returning day`,
+      [shop.id, reportDay, claimedAt, new Date(claimedAt.getTime() - REPORT_CLAIM_STALE_MS)],
+    );
+    if (!claim[0]) return;
     try {
-      const report = await computeDayReport(db, shop.id, day);
+      const report = await computeDayReport(db, shop.id, reportDay);
       await mailer.send(renderReport(shop, report));
-      sent++;
     } catch (e) {
       failed++;
-      console.error("[report]", shop.slug, e);
-      await db.query("delete from report_log where shop_id = $1 and day = $2", [shop.id, day]).catch(() => {});
+      console.error("[report]", shop.slug, reportDay, e);
+      // نُلغي حجزنا (لا حجز غيرنا) فيُعاد المحاولة في التشغيل التالي
+      await db
+        .query("delete from report_log where shop_id = $1 and day = $2 and sent_at is null and claimed_at = $3", [shop.id, reportDay, claimedAt])
+        .catch(() => {});
+      return;
     }
-  }
-  return { day, sent, failed };
+    sent++;
+    await db
+      .query("update report_log set sent_at = $3 where shop_id = $1 and day = $2", [shop.id, reportDay, clockNow()])
+      .catch((e) => console.error("[report] mark sent", shop.slug, reportDay, e));
+  };
+  const worker = async () => {
+    while (next < rows.length && performance.now() - started < budgetMs) {
+      const row = rows[next++];
+      try {
+        await sendOne(row);
+      } catch (e) {
+        failed++;
+        console.error("[report]", e);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, rows.length) }, worker));
+  const pending = rows.length - next;
+  if (pending) console.warn(`[report] time budget reached: ${pending} report(s) left for the next run`);
+  return { day, days, sent, failed, pending };
 }
 
 // ————————————————————————— الإعدادات —————————————————————————
@@ -287,27 +343,36 @@ export async function saveReportSettings(shop: Shop, body: Record<string, unknow
   return getReportSettings(shop);
 }
 
-/** «أرسل لي تقرير الأمس الآن» — 3 مرّات في 24 ساعة. */
+/**
+ * «أرسل لي تقرير الأمس الآن» — 3 مرّات في 24 ساعة.
+ * نحجز خانة من الحدّ تحت قفل قصير (طلبات متوازية لا تتجاوز 3)، ثمّ نحسب ونرسل خارج المعاملة،
+ * ونُعيد الخانة إن فشل الإرسال: الفشل لا يستهلك من الحدّ.
+ */
 export async function sendReportPreview(shop: Shop) {
   if (!shop.ownerEmail) throw new DomainError("report_no_email");
   const mailer = getMailer();
   if (!mailer) throw new DomainError("email_unavailable", 503);
   const db = await getDb();
   const now = clockNow();
-  const report = await db.tx(async (q) => {
+  const slot = await db.tx(async (q) => {
     await q.query("select id from shops where id = $1 for update", [shop.id]);
     const c = await q.query<{ n: number }>("select count(*)::int as n from report_previews where shop_id = $1 and created_at > $2", [
       shop.id,
       new Date(now.getTime() - DAY_MS),
     ]);
     if (Number(c[0]?.n ?? 0) >= PREVIEW_PER_DAY) throw new DomainError("report_rate_limited", 429);
-    await q.query("insert into report_previews (shop_id, created_at) values ($1, $2)", [shop.id, now]);
-    return computeDayReport(q, shop.id, yesterday(now));
+    const ins = await q.query<{ id: string | number }>("insert into report_previews (shop_id, created_at) values ($1, $2) returning id", [
+      shop.id,
+      now,
+    ]);
+    return ins[0].id;
   });
   try {
+    const report = await computeDayReport(db, shop.id, yesterday(now));
     await mailer.send(renderReport(shop, report));
   } catch (e) {
     console.error("[report] preview", e);
+    await db.query("delete from report_previews where id = $1", [slot]).catch(() => {});
     throw new DomainError("email_unavailable", 503);
   }
   return { ok: true };

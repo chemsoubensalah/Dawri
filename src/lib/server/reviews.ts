@@ -1,11 +1,13 @@
 /**
  * التقييمات ودليل العيادات.
- *  - المريض يقيّم زيارته (تذكرة «done») خلال 72 ساعة — معرّف التذكرة هو صلاحيته.
+ *  - المريض يقيّم زيارته خلال 72 ساعة من إنهاء الطبيب لها (done_at) — معرّف التذكرة هو صلاحيته.
+ *    تذكرة أُغلقت آلياً (نودي ولم يُنهِها الطبيب) لا تُقيَّم.
  *  - التقييم لا يحمل اسماً ولا هاتفاً: يبقى بعد تجهيل التذكرة.
  *  - الطبيب يقرّر: إظهار المعدّل على صفحة العيادة، والظهور في الدليل العامّ.
  */
-import { DomainError, type Shop, type ShopKind, type ShopProfile, type Ticket } from "../domain/types";
-import { dayKey, isWithinHours, localTime, nextOpeningToday } from "../domain/time";
+import { averageServiceMinutes, currentTicket, lineup, planTick, project } from "../domain/queue";
+import { DomainError, type Shop, type ShopKind, type ShopProfile, type ShopSettings, type Ticket } from "../domain/types";
+import { dayKey, isWithinHours, localTime, minutesBetween, nextOpeningToday } from "../domain/time";
 import { isWilaya } from "../domain/wilayas";
 import { now as clockNow } from "./clock";
 import { getDb, type Q, type Row } from "./db";
@@ -17,8 +19,6 @@ export const REVIEW_WINDOW_H = 72;
 /** أقلّ عدد تقييمات لإظهار المعدّل للعموم (تفادياً لضجيج تقييم واحد) */
 export const MIN_PUBLIC_COUNT = 3;
 export const COMMENT_MAX = 300;
-/** حدّ أقصى لتقييمات عيادة واحدة في الساعة (حماية من الإغراق) */
-const SHOP_HOURLY_CAP = 60;
 
 export interface ReviewSettings {
   public: boolean;
@@ -102,11 +102,10 @@ export type ReviewState =
   | { state: "open"; mapsUrl: string | null; leftH: number }
   | { state: "sent"; rating: number; mapsUrl: string | null };
 
+/** ما بقي من نافذة التقييم. done_at وحده دليل الخدمة (يُثبَّت حين يضغط الطبيب «التالي/انتهى»). */
 function windowLeftMs(t: Ticket, now: Date): number {
-  if (t.status !== "done") return -1;
-  const at = t.doneAt ?? t.closedAt ?? t.calledAt;
-  if (!at) return -1;
-  return at.getTime() + REVIEW_WINDOW_H * HOUR - now.getTime();
+  if (t.status !== "done" || !t.doneAt) return -1;
+  return t.doneAt.getTime() + REVIEW_WINDOW_H * HOUR - now.getTime();
 }
 
 export async function reviewState(ticketId: string): Promise<ReviewState> {
@@ -134,21 +133,19 @@ export async function submitReview(ticketId: string, body: Record<string, unknow
     const rows = await q.query("select * from tickets where id = $1 for update", [ticketId]);
     if (!rows[0]) throw new DomainError("ticket_not_found", 404);
     const ticket = repo.rowToTicket(rows[0]);
-    const existing = await q.query<{ rating: number; comment: string | null }>("select rating, comment from reviews where ticket_id = $1", [ticketId]);
+    const existing = await q.query<{ rating: number }>("select rating from reviews where ticket_id = $1", [ticketId]);
     if (existing[0]) {
-      // إعادة إرسال نفس التقييم (شبكة ضعيفة) = نجاح؛ تقييم مختلف = مرفوض
-      if (Number(existing[0].rating) === rating && (existing[0].comment ?? null) === comment) return { ok: true, rating };
+      // إعادة الإرسال (شبكة ضعيفة، ولو بتعليق مختلف) = نجاح بالتقييم المحفوظ؛ نجوم مختلفة = 409
+      const stored = Number(existing[0].rating);
+      if (stored === rating) return { ok: true, rating: stored };
       throw new DomainError("review_exists", 409);
     }
     const shop = (await repo.getShopById(q, ticket.shopId))!;
     if (!isSubscriptionActive(shop, now)) throw new DomainError("subscription", 403);
-    if (ticket.status !== "done") throw new DomainError("review_not_allowed", 403);
+    // done بلا done_at = أُغلقت آلياً (نودي ولم يُنهِها الطبيب): لم يُخدم فعلاً
+    if (ticket.status !== "done" || !ticket.doneAt) throw new DomainError("review_not_allowed", 403);
     if (windowLeftMs(ticket, now) <= 0) throw new DomainError("review_expired", 403);
-    const recent = await q.query<{ n: number }>("select count(*)::int as n from reviews where shop_id = $1 and created_at > $2", [
-      shop.id,
-      new Date(now.getTime() - HOUR),
-    ]);
-    if (Number(recent[0].n) >= SHOP_HOURLY_CAP) throw new DomainError("review_rate", 429);
+    // لا حدّ لكلّ عيادة: تقييم واحد لكلّ تذكرة مخدومة يحدّ الحجم أصلاً
     await q.query("insert into reviews (shop_id, ticket_id, rating, comment, created_at) values ($1, $2, $3, $4, $5)", [
       shop.id,
       ticketId,
@@ -258,8 +255,9 @@ export function cleanDirectoryQuery(input: { q?: unknown; wilaya?: unknown; page
 }
 
 /**
- * العيادات المسجّلة في الدليل (اشتراك ساري فقط) مع حالتها الحيّة.
- * استعلامان فقط مهما كان عدد العيادات: العيادات + إحصاء تذاكر اليوم لها كلّها.
+ * العيادات المسجّلة في الدليل (اشتراك ساري فقط) مع حالتها الحيّة، مرتّبة بالاسم
+ * (ترتيب ثابت عبر الصفحات؛ الحالة الحيّة تُحسب في JS من ساعات العمل فلا تصلح للترتيب قبل limit/offset).
+ * عدد ثابت من الاستعلامات مهما كان عدد العيادات: العيادات + تذاكر اليوم لها كلّها + الأيّام المغلقة.
  */
 export async function directory(input: { q?: unknown; wilaya?: unknown; page?: unknown; pageSize?: number }) {
   const { q, wilaya, page } = cleanDirectoryQuery(input);
@@ -292,7 +290,10 @@ export async function directory(input: { q?: unknown; wilaya?: unknown; page?: u
   const shops = shopRows.map((r) => ({ shop: repo.rowToShop(r), ratingPublic: Boolean(r.rating_public) }));
   const ids = shops.map((s) => s.shop.id);
   const day = dayKey(now);
-  const [live, ratings] = await Promise.all([liveCounts(db, ids, day), summaries(db, ids.filter((_, i) => shops[i].ratingPublic))]);
+  const [live, ratings] = await Promise.all([
+    liveStates(db, shops.map((s) => s.shop), day, now),
+    summaries(db, ids.filter((_, i) => shops[i].ratingPublic)),
+  ]);
 
   const entries: DirectoryEntry[] = shops.map(({ shop, ratingPublic }) => {
     const l = live.get(shop.id);
@@ -306,15 +307,7 @@ export async function directory(input: { q?: unknown; wilaya?: unknown; page?: u
       opensAt = next?.at ?? null;
       status = next ? (next.afterBreak ? "break" : "later") : "closed";
     }
-    const waiting = l?.waiting ?? 0;
-    // نفس منطق publicShop: متوسّط اليوم ممزوجاً بالقيمة الافتراضية حتى 3 قياسات
-    const def = shop.settings.defaultServiceMin;
-    const n = l?.durN ?? 0;
-    const k = Math.max(0, 3 - n);
-    const avg = ((l?.durSum ?? 0) + def * k) / (n + k);
-    const sinceCall = l?.calledAt ? (now.getTime() - l.calledAt.getTime()) / 60000 : null;
-    const waitMin =
-      status === "closed" ? null : Math.ceil((sinceCall !== null ? Math.max(avg - sinceCall, 1) : 0) + waiting * avg);
+    const wait = l?.wait ?? { waiting: 0, waitNewMin: 0 };
     return {
       slug: shop.slug,
       name: shop.name,
@@ -323,62 +316,53 @@ export async function directory(input: { q?: unknown; wilaya?: unknown; page?: u
       rating: rating && rating.count >= MIN_PUBLIC_COUNT ? rating : null,
       status,
       opensAt,
-      waiting,
-      waitMin,
+      waiting: wait.waiting,
+      waitMin: status === "closed" ? null : wait.waitNewMin,
     };
   });
-  // داخل الصفحة: من يستقبل الآن أوّلاً
-  const rank: Record<LiveStatus, number> = { open: 0, break: 1, later: 2, closed: 3 };
-  entries.sort((a, b) => rank[a.status] - rank[b.status]);
   return { entries, total, page, pages: Math.max(1, Math.ceil(total / size)), q, wilaya, day: localTime(now).day };
 }
 
+/**
+ * الانتظار الحيّ كما تعرضه صفحة العيادة (publicShop في service.ts) بالضبط:
+ * طابور اليوم بعد ما يفرضه مرور الوقت (planTick: المؤجَّل بعد lateWindowMin يصير غائباً،
+ * من لم يؤكّد يُؤجَّل، من نودي ولم يحضر يُتخطّى) — في الذاكرة فقط، بلا كتابة.
+ */
+export function liveWait(tickets: Ticket[], now: Date, settings: ShopSettings): { waiting: number; waitNewMin: number } {
+  const ticked = project(tickets, planTick(tickets, now, settings));
+  const cur = currentTicket(ticked);
+  const avg = averageServiceMinutes(ticked, settings.defaultServiceMin);
+  const waiting = lineup(ticked).filter((t) => !t.held).length;
+  const waitNewMin = cur?.calledAt
+    ? Math.ceil(Math.max(avg - minutesBetween(cur.calledAt, now), 1) + waiting * avg)
+    : Math.ceil(waiting * avg);
+  return { waiting, waitNewMin };
+}
+
 interface Live {
-  waiting: number;
-  calledAt: Date | null;
-  durSum: number;
-  durN: number;
+  wait: { waiting: number; waitNewMin: number };
   closed: boolean;
 }
 
-async function liveCounts(q: Q, shopIds: string[], day: string): Promise<Map<string, Live>> {
+async function liveStates(q: Q, shops: Shop[], day: string, now: Date): Promise<Map<string, Live>> {
   const out = new Map<string, Live>();
-  if (!shopIds.length) return out;
-  const rows = await q.query<Row>(
-    `select t.shop_id,
-            count(*) filter (where t.status = 'waiting' and not t.held)::int as waiting,
-            max(t.called_at) filter (where t.status = 'called') as called_at,
-            coalesce(sum(extract(epoch from (t.done_at - t.called_at)) / 60) filter (
-              where t.status = 'done' and t.called_at is not null and t.done_at is not null
-                and t.done_at - t.called_at between interval '30 seconds' and interval '180 minutes'), 0)::float8 as dur_sum,
-            count(*) filter (
-              where t.status = 'done' and t.called_at is not null and t.done_at is not null
-                and t.done_at - t.called_at between interval '30 seconds' and interval '180 minutes')::int as dur_n
-       from tickets t
-      where t.shop_id = any($1::uuid[]) and t.day = $2
-      group by t.shop_id`,
-    [shopIds, day],
-  );
-  for (const r of rows) {
-    const c = r.called_at;
-    out.set(String(r.shop_id), {
-      waiting: Number(r.waiting),
-      calledAt: c == null ? null : c instanceof Date ? c : new Date(String(c)),
-      durSum: Number(r.dur_sum),
-      durN: Number(r.dur_n),
-      closed: false,
-    });
+  if (!shops.length) return out;
+  const ids = shops.map((s) => s.id);
+  const [ticketRows, closedRows] = await Promise.all([
+    q.query<Row>("select * from tickets where shop_id = any($1::uuid[]) and day = $2 order by number", [ids, day]),
+    // يوم مغلق (ولو بلا أيّ تذكرة): نقرؤه من queue_days مباشرة
+    q.query<{ shop_id: string }>("select shop_id from queue_days where shop_id = any($1::uuid[]) and day = $2 and closed", [ids, day]),
+  ]);
+  const byShop = new Map<string, Ticket[]>();
+  for (const r of ticketRows) {
+    const t = repo.rowToTicket(r);
+    const list = byShop.get(t.shopId);
+    if (list) list.push(t);
+    else byShop.set(t.shopId, [t]);
   }
-  // يوم مغلق بلا أيّ تذكرة: نقرؤه من queue_days مباشرة
-  const closedRows = await q.query<{ shop_id: string }>(
-    "select shop_id from queue_days where shop_id = any($1::uuid[]) and day = $2 and closed",
-    [shopIds, day],
-  );
-  for (const r of closedRows) {
-    const id = String(r.shop_id);
-    const cur = out.get(id);
-    if (cur) cur.closed = true;
-    else out.set(id, { waiting: 0, calledAt: null, durSum: 0, durN: 0, closed: true });
+  const closed = new Set(closedRows.map((r) => String(r.shop_id)));
+  for (const shop of shops) {
+    out.set(shop.id, { wait: liveWait(byShop.get(shop.id) ?? [], now, shop.settings), closed: closed.has(shop.id) });
   }
   return out;
 }

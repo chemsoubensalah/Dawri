@@ -49,11 +49,19 @@ import { now as clockNow } from "./clock";
 import { getDb, type Q } from "./db";
 import * as repo from "./repo";
 import * as ar from "./appointments-repo";
+import { claimRate, guardClientIp } from "./ratelimit";
 import { isSubscriptionActive, mutate } from "./service";
 import { getSms } from "./sms";
+import { clinicSendsCodes, codeSender } from "./smsgate";
 import { shortCode } from "./whatsapp";
 
 const DAY_MS = 86_400_000;
+/**
+ * رموز الحجز لكلّ عيادة في الساعة: عدّاد مستقلّ وأقلّ بكثير من حدّ الطابور الحيّ (200)،
+ * فلا يستنفد إغراقُ صفحة الحجز رموزَ المرضى الواقفين عند الباب.
+ */
+export const BOOKING_CODES_PER_HOUR = 50;
+export const bookingCodesKey = (shopId: string) => `codes:booking:${shopId}`;
 
 // ————————————————————————— أدوات —————————————————————————
 
@@ -65,11 +73,14 @@ function demoMode() {
   return process.env.DAWRI_DEMO === "1" || !process.env.DATABASE_URL;
 }
 
-/** كيف يُتحقَّق من هاتف المريض عند الحجز؟ unavailable = التحقّق مطلوب والرسائل غير مفعّلة. */
+/**
+ * كيف يُتحقَّق من هاتف المريض عند الحجز؟ unavailable = التحقّق مطلوب ولا وسيلة إرسال:
+ * لا مزوّد عامّ ولا هاتف عيادة يرسل الرموز (نفس منطق أخذ الرقم — service.ts).
+ */
 export type VerifyMode = "none" | "sms" | "unavailable";
-export function verifyMode(): VerifyMode {
+export async function verifyMode(shopId: string): Promise<VerifyMode> {
   if (!phoneVerificationOn()) return "none";
-  return getSms() ? "sms" : "unavailable";
+  return getSms() !== null || (await clinicSendsCodes(shopId)) ? "sms" : "unavailable";
 }
 
 function cleanName(v: unknown): string {
@@ -164,6 +175,7 @@ async function bookCore(
   shop: Shop,
   input: { name: string; phone: string | null; day: string; time: string; lang: Lang; source: ApptSource },
   now: Date,
+  /** رمز التحقّق: يُستهلك داخل المعاملة. وجوده = إثبات ملكية الهاتف */
   onCommit?: (q: Q) => Promise<void>,
 ): Promise<{ id: string; existing: boolean }> {
   const db = await getDb();
@@ -176,9 +188,10 @@ async function bookCore(
       if (input.phone) {
         const existing = await ar.findActiveByPhone(q, shop.id, input.day, input.phone);
         if (existing) {
-          // إعادة الإرسال (شبكة بطيئة) أو حجز ثانٍ في نفس اليوم ← نفس الموعد
-          if (!online) throw new DomainError("ap_already_booked", 409);
-          await onCommit?.(q);
+          // إعادة الإرسال (شبكة بطيئة) أو حجز ثانٍ في نفس اليوم ← نفس الموعد، لصاحب الهاتف المؤكَّد فقط:
+          // بلا رمز (PHONE_VERIFICATION=off) لا نكشف رابط موعد شخص آخر لمن كتب رقمه
+          if (!online || !onCommit) throw new DomainError("ap_already_booked", 409);
+          await onCommit(q);
           return { id: existing.id, existing: true };
         }
         if (online) await guardPhone(q, shop, input.phone, now);
@@ -209,7 +222,7 @@ export async function bookingTeaser(shop: Shop): Promise<BookingTeaser | null> {
   const db = await getDb();
   const now = clockNow();
   const s = await ar.getSettings(db, shop.id);
-  if (!s.enabled || !isSubscriptionActive(shop, now) || verifyMode() === "unavailable") return null;
+  if (!s.enabled || !isSubscriptionActive(shop, now) || (await verifyMode(shop.id)) === "unavailable") return null;
   const today = dayKey(now);
   const [counts, qd] = await Promise.all([ar.activeCounts(db, shop.id, today, addDays(today, s.daysAhead)), repo.getDay(db, shop.id, today)]);
   const days = availability({ settings: s, shopHours: shop.hours, now, counts, mode: "online", closedToday: qd.closed });
@@ -222,9 +235,10 @@ export async function publicAvailability(slug: string) {
   const now = clockNow();
   const { shop, settings } = await bookableShop(db, slug, now);
   const today = dayKey(now);
-  const [counts, qd] = await Promise.all([
+  const [counts, qd, verify] = await Promise.all([
     ar.activeCounts(db, shop.id, today, addDays(today, settings.daysAhead)),
     repo.getDay(db, shop.id, today),
+    verifyMode(shop.id),
   ]);
   return {
     slug: shop.slug,
@@ -232,17 +246,21 @@ export async function publicAvailability(slug: string) {
     slotMin: settings.slotMin,
     perSlot: settings.perSlot,
     minLeadMin: settings.minLeadMin,
-    verify: verifyMode(),
+    verify,
     days: availability({ settings, shopHours: shop.hours, now, counts, mode: "online", closedToday: qd.closed }),
   };
 }
 
 export type PublicAvailability = Awaited<ReturnType<typeof publicAvailability>>;
 
-/** الخطوة 1: رمز تحقّق بالرسالة (نفس جدول phone_codes ونفس الحدود). */
+/**
+ * الخطوة 1: رمز تحقّق بالرسالة (نفس جدول phone_codes، ونفس المرسل: هاتف العيادة أوّلاً ثمّ المزوّد العامّ).
+ * client.ip: عنوان العميل (من المسار) — حدّ رموز لكلّ عميل ضدّ إغراق أرقام عشوائية.
+ */
 export async function requestBookingCode(
   slug: string,
   body: { name?: unknown; phone?: unknown; day?: unknown; time?: unknown; lang?: unknown },
+  client: { ip?: string | null } = {},
 ) {
   const db = await getDb();
   const now = clockNow();
@@ -251,13 +269,15 @@ export async function requestBookingCode(
   const phone = requirePhone(body.phone);
   const { day, time } = slotInput(body, settings, now);
   // تحقّق مسبق بلا قفل: لا نرسل رسالة (لها كلفة) لحجز مستحيل.
-  // من له موعد في ذلك اليوم يستطيع استرجاعه بالرمز.
-  if (!(await ar.findActiveByPhone(db, shop.id, day, phone))) {
+  // من له موعد في ذلك اليوم يستطيع استرجاعه بالرمز (وبلا تحقّق: لا استرجاع لموعد شخص آخر).
+  if (await ar.findActiveByPhone(db, shop.id, day, phone)) {
+    if (!phoneVerificationOn()) throw new DomainError("ap_already_booked", 409);
+  } else {
     await guardPhone(db, shop, phone, now);
     await slotCheck(db, shop, settings, day, time, now, "online", day === dayKey(now) && (await repo.getDay(db, shop.id, day)).closed);
   }
   if (!phoneVerificationOn()) return { sent: false, verify: false, devCode: undefined as string | undefined };
-  const sms = getSms();
+  const sms = await codeSender(shop, getSms()); // هاتف العيادة أوّلاً (إن فعّلت ذلك) ثمّ المزوّد العامّ
   if (!sms) throw new DomainError("sms_unavailable", 503);
   if ((await repo.countRecentCodes(db, shop.id, phone, new Date(now.getTime() - 30 * 60000))) >= 3) {
     throw new DomainError("too_many_codes", 429);
@@ -265,11 +285,17 @@ export async function requestBookingCode(
   if ((await repo.countRecentCodes(db, shop.id, null, new Date(now.getTime() - 60 * 60000))) >= 200) {
     throw new DomainError("too_many_codes", 429);
   }
+  await guardClientIp(db, client.ip, "booking", now);
+  // عدّاد مستقلّ لرموز الحجز: لا تستنفد حدّ الطابور الحيّ
+  if (!(await claimRate(db, bookingCodesKey(shop.id), 3600_000, BOOKING_CODES_PER_HOUR, now))) {
+    throw new DomainError("too_many_codes", 429);
+  }
   const code = randomDigits(6);
   await repo.insertCode(db, shop.id, phone, hashCode(shop.id, phone, code), now, new Date(now.getTime() + 10 * 60000));
   try {
-    await sms.send(phone, t(langOf(body.lang, shop.defaultLang), "sms_code", { code }));
+    await sms.send(phone, code, langOf(body.lang, shop.defaultLang));
   } catch (e) {
+    if (e instanceof DomainError) throw e;
     console.error("[sms]", e);
     throw new DomainError("sms_failed", 502);
   }
@@ -461,7 +487,7 @@ async function convert(shop: Shop, apptId: string, o: { arrived: boolean; staff:
       } else {
         throw new DomainError("ap_ticket_done", 409);
       }
-      await ar.setTicketPriority(q, existing.id);
+      await ar.setTicketPriority(q, existing.id, now);
       ticketId = existing.id;
       number = existing.number;
     } else {
@@ -500,7 +526,7 @@ async function createPriorityTicket(
     notifiedSoonAt: flags.notifiedSoonAt ?? null,
     waCode: await freshWaCode(q, c.day),
   });
-  await ar.setTicketPriority(q, tk.id);
+  await ar.setTicketPriority(q, tk.id, c.now);
   return { id: tk.id, number };
 }
 
@@ -684,6 +710,10 @@ export async function staffAppointmentAction(
   body: { action?: unknown; id?: unknown; name?: unknown; phone?: unknown; day?: unknown; time?: unknown },
 ): Promise<{ ok: true; id?: string; ticketId?: string; number?: number | null }> {
   const now = clockNow();
+  // اشتراك منتهٍ: لا مواعيد جديدة ولا تذاكر من المكتب (كالحجز عبر الإنترنت وأخذ الأرقام)؛ الإلغاء يبقى ممكناً
+  if ((body.action === "book" || body.action === "checkin") && !isSubscriptionActive(shop, now)) {
+    throw new DomainError("subscription", 409);
+  }
   switch (body.action) {
     case "book": {
       // موعد هاتفي أو عند المكتب: بلا رمز تحقّق، والهاتف اختياري (الكبار بلا هاتف)
@@ -718,7 +748,7 @@ export async function bookingSettingsView(shop: Shop) {
   return {
     settings: await ar.getSettings(db, shop.id),
     shopHours: shop.hours,
-    verify: verifyMode(),
+    verify: await verifyMode(shop.id),
     active: isSubscriptionActive(shop, clockNow()),
   };
 }
