@@ -177,6 +177,18 @@ describe("نسيت الرمز السرّي", () => {
     }
   });
 
+  it("إرسال فاشل (المزوّد رفض) لا يُحسب من حدّ الساعة", async () => {
+    setMailer({ send: async () => { throw new Error("brevo 401: unrecognised IP"); } });
+    try {
+      for (let i = 0; i < 4; i++) await expect(svc.requestPinReset(shop.slug, "dr@example.com", BASE)).rejects.toThrow("email_unavailable");
+    } finally {
+      setMailer(undefined);
+    }
+    const before = sentMail.length;
+    await svc.requestPinReset(shop.slug, "dr@example.com", BASE);
+    expect(sentMail.length - before).toBe(1);
+  });
+
   it("المؤسّس يستطيع إنشاء رمز مؤقّت", async () => {
     const { pin } = await svc.adminResetPin(shop.id);
     expect(pin).toMatch(/^\d{6}$/);

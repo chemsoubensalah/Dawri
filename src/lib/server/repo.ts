@@ -732,6 +732,11 @@ export async function insertPinReset(q: Q, shopId: string, tokenHash: string, no
   await q.query("insert into pin_resets (shop_id, token_hash, created_at, expires_at) values ($1,$2,$3,$4)", [shopId, tokenHash, now, expires]);
 }
 
+/** إرسال فاشل لا يُحسب من حدّ الروابط الثلاثة في الساعة. */
+export async function deletePinReset(q: Q, shopId: string, tokenHash: string) {
+  await q.query("delete from pin_resets where shop_id = $1 and token_hash = $2", [shopId, tokenHash]);
+}
+
 /** يستهلك الرابط ذرّياً: ينجح مرّة واحدة فقط، قبل انتهاء صلاحيته. */
 export async function consumePinReset(q: Q, shopId: string, tokenHash: string, now: Date): Promise<boolean> {
   const rows = await q.query(

@@ -1051,6 +1051,7 @@ export async function requestPinReset(slug: string, email: unknown, baseUrl: str
     await mailer.send({ to: shop.ownerEmail, subject, html, text: `${body}\n\n${link}\n\n${ignore}` });
   } catch (e) {
     console.error("[email]", e);
+    await repo.deletePinReset(db, shop.id, resetHash(token)).catch(() => {});
     throw new DomainError("email_unavailable", 503);
   }
   return { ok: true };
