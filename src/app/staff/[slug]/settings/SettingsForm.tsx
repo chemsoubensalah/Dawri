@@ -8,6 +8,7 @@ import { LAYOUTS } from "@/app/d/[slug]/layouts";
 import { errorText, t, type DictKey } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
 import type { ChannelStatus } from "@/lib/server/channels";
+import BookingSection from "./BookingSection";
 
 // نبدأ الأسبوع بالسبت كما في الجزائر
 const DAYS = ["6", "0", "1", "2", "3", "4", "5"];
@@ -138,6 +139,7 @@ export default function SettingsForm({
               ["profile", "se_profile"],
               ["look", "se_look"],
               ["hours", "hours"],
+              ["booking", "ap_se_title"],
               ["rules", "se_rules"],
               ["alerts", "se_alerts"],
               ["security", "se_security"],
@@ -343,6 +345,7 @@ export default function SettingsForm({
             })}
           </div>
         </Section>
+        <BookingSection lang={lang} slug={slug} />
 
         <Section id="rules" icon={<ListChecks size={20} />} title={t(lang, "se_rules")} sub={t(lang, "se_rulesSub")}>
           <div className="space-y-3">

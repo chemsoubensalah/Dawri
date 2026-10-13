@@ -1,0 +1,575 @@
+/**
+ * المواعيد: الحجز، السعة تحت التزامن، الوصول ← تذكرة ذات أولوية، الغياب، والتجهيل.
+ * نفس SQL الإنتاج (PGlite، أو Postgres حقيقي عبر TEST_DATABASE_URL في مخطّط مستقلّ).
+ */
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement as h } from "react";
+import { renderToString } from "react-dom/server";
+import { createPgDb, createPgliteDb, migrate, setDb, type Db } from "@/lib/server/db";
+import { setClock } from "@/lib/server/clock";
+import { setNotifier } from "@/lib/server/notify";
+import * as svc from "@/lib/server/service";
+import * as ap from "@/lib/server/appointments";
+import * as repo from "@/lib/server/repo";
+import { estimateWaitMinutes, initialFlags, lineup, nextEligible, peopleAhead, planNext } from "@/lib/domain/queue";
+import { availability, checkinWindow, daySlots, DEFAULT_BOOKING, slotInstant } from "@/lib/domain/appointments";
+import { buildIcs, foldLine } from "@/lib/ics";
+import { DEFAULT_SETTINGS, type Shop, type Ticket } from "@/lib/domain/types";
+
+let db: Db;
+let clock = new Date("2026-10-11T07:00:00Z"); // الأحد 08:00 بتوقيت الجزائر
+const at = (day: string, hhmm: string) => (clock = new Date(`${day}T${hhmm}:00+01:00`));
+const advance = (m: number) => (clock = new Date(clock.getTime() + m * 60000));
+const SCHEMA = "appt_tests";
+
+beforeAll(async () => {
+  delete process.env.DATABASE_URL;
+  delete process.env.SIGNUP_CODE;
+  const url = process.env.TEST_DATABASE_URL;
+  if (url) {
+    // مخطّط خاصّ بهذا الملفّ: لا يتصادم مع service.test.ts الذي يعيد إنشاء public بالتوازي
+    const u = new URL(url);
+    u.searchParams.set("options", `-c search_path=${SCHEMA}`);
+    db = await createPgDb(u.toString());
+    await db.exec(`drop schema if exists ${SCHEMA} cascade; create schema ${SCHEMA};`);
+  } else {
+    db = await createPgliteDb();
+  }
+  await migrate(db);
+  setDb(db);
+  setClock(() => clock);
+  setNotifier({ send: async () => {} });
+});
+
+afterAll(async () => {
+  setDb(undefined);
+  setClock(undefined);
+  setNotifier(undefined);
+  if (process.env.TEST_DATABASE_URL) await db.exec(`drop schema if exists ${SCHEMA} cascade`);
+  await db.close();
+});
+
+let shop: Shop;
+let n = 0;
+let phoneSeq = 10;
+const newPhone = () => `06600000${String(phoneSeq++).padStart(2, "0")}`;
+
+beforeEach(async () => {
+  clock = new Date("2026-10-11T07:00:00Z");
+  shop = await svc.createShop({ name: "عيادة المواعيد", slug: `rdv-${++n}`, kind: "doctor", pin: "4321", email: "dr@example.com" });
+});
+
+afterEach(() => {
+  delete process.env.PHONE_VERIFICATION;
+});
+
+const fresh = async () => (await repo.getShopBySlug(db, shop.slug))!;
+const enable = (over: Record<string, unknown> = {}) => ap.saveBookingSettings(shop, { enabled: true, ...over });
+
+async function book(day: string, time: string, phone = newPhone(), name = "مريض") {
+  const c = await ap.requestBookingCode(shop.slug, { name, phone, day, time });
+  return ap.bookOnline(shop.slug, { name, phone, day, time, code: c.devCode });
+}
+
+async function desk(body: Record<string, unknown>) {
+  return ap.staffAppointmentAction(await fresh(), { action: "book", name: "حجز هاتفي", ...body });
+}
+
+async function staffState() {
+  return svc.staffState(await fresh());
+}
+
+// ————————————————————————— الطابور: الأولوية —————————————————————————
+
+const T0 = new Date("2026-10-11T07:00:00Z");
+const min = (m: number) => new Date(T0.getTime() + m * 60000);
+function mk(number: number, over: Partial<Ticket> = {}): Ticket {
+  return {
+    id: `t${number}`,
+    shopId: "s",
+    day: "2026-10-11",
+    number,
+    name: `P${number}`,
+    phone: null,
+    lang: "ar",
+    source: "online",
+    status: "waiting",
+    held: false,
+    createdAt: T0,
+    calledAt: null,
+    doneAt: null,
+    deferredAt: null,
+    arrivedAt: null,
+    confirmAskedAt: null,
+    confirmedAt: null,
+    notifiedSoonAt: null,
+    closedAt: null,
+    waCode: null,
+    waUserId: null,
+    waPhone: null,
+    waWindowUntil: null,
+    waOptOut: false,
+    ...over,
+  };
+}
+
+describe("الطابور: أصحاب المواعيد أوّلاً", () => {
+  const tickets = () => [
+    mk(1, { status: "called", calledAt: min(0) }),
+    mk(2),
+    mk(3),
+    mk(7, { priority: true, createdAt: min(20) }),
+    mk(5, { priority: true, createdAt: min(10) }),
+    mk(6, { priority: true, createdAt: min(5), held: true }),
+    mk(4),
+  ];
+
+  it("الترتيب: الأولوية بترتيب الوصول، ثمّ البقيّة بالأرقام", () => {
+    expect(lineup(tickets()).map((t) => t.number)).toEqual([6, 5, 7, 2, 3, 4]);
+    // المؤجَّل (held) يُتخطّى حتى لو كان ذا أولوية
+    expect(nextEligible(tickets())?.number).toBe(5);
+  });
+
+  it("من أمامه: صاحب الموعد لا يتقدّمه إلّا الحالي ومواعيد وصلت قبله", () => {
+    const ts = tickets();
+    const by = (num: number) => ts.find((t) => t.number === num)!;
+    expect(peopleAhead(ts, by(5))).toBe(1); // الحالي فقط
+    expect(peopleAhead(ts, by(7))).toBe(2); // الحالي + 5
+    expect(peopleAhead(ts, by(2))).toBe(3); // الحالي + 5 + 7
+    expect(peopleAhead(ts, by(4))).toBe(5);
+    expect(estimateWaitMinutes(ts, by(7), min(0), DEFAULT_SETTINGS)).toBe(20);
+  });
+
+  it("«التالي» ينادي صاحب الموعد قبل الأرقام الأصغر", () => {
+    const acts = planNext(tickets(), min(30), "done");
+    const called = acts.find((a) => a.kind === "update" && a.patch.status === "called");
+    expect(called && called.id).toBe("t5");
+  });
+
+  it("تذكرة موعد جديدة: لا يُحسب أمامها إلّا الحالي ومواعيد سابقة", () => {
+    const ts = [mk(1, { status: "called", calledAt: min(0) }), ...Array.from({ length: 8 }, (_, i) => mk(i + 2))];
+    const normal = initialFlags(ts, DEFAULT_SETTINGS, min(1), { arrived: false, source: "online" });
+    const prio = initialFlags(ts, DEFAULT_SETTINGS, min(1), { arrived: false, source: "online", priority: true });
+    expect(normal.notifiedSoonAt).toBeUndefined(); // 9 أمامه
+    expect(prio.notifiedSoonAt).toEqual(min(1)); // أمامه الحالي فقط
+  });
+});
+
+// ————————————————————————— الشبكة والنوافذ (دوالّ صافية) —————————————————————————
+
+describe("شبكة الأوقات", () => {
+  it("تُقسَّم الفترات بطول الموعد، والموعد لا يتجاوز الإغلاق", () => {
+    const hours = { "0": [["08:00", "09:00"], ["14:00", "14:50"]] as [string, string][] };
+    expect(daySlots(hours, "2026-10-11", 20)).toEqual(["08:00", "08:20", "08:40", "14:00", "14:20"]);
+    expect(daySlots(hours, "2026-10-12", 20)).toEqual([]); // الإثنين: لا ساعات
+  });
+
+  it("الأيّام: المغلق، المكتمل، والوقت الأدنى قبل الحجز", () => {
+    const now = new Date("2026-10-15T07:00:00Z"); // الخميس 08:00
+    const days = availability({
+      settings: { ...DEFAULT_BOOKING, enabled: true, daysAhead: 2, dailyMax: 1 },
+      shopHours: { "4": [["08:00", "10:00"]], "6": [["08:00", "09:00"]] },
+      now,
+      counts: [{ day: "2026-10-17", time: "08:15", n: 1 }],
+      mode: "online",
+    });
+    expect(days.map((d) => d.state)).toEqual(["open", "closed", "full"]);
+    expect(days[0].slots[0].time).toBe("08:30"); // 08:00 + 30 دقيقة
+    const desk = availability({ settings: { ...DEFAULT_BOOKING, daysAhead: 0 }, shopHours: { "4": [["08:00", "10:00"]] }, now, counts: [], mode: "desk" });
+    expect(desk[0].slots[0].time).toBe("08:00");
+  });
+
+  it("نافذة «وصلت»: من ساعة قبل الموعد حتى المهلة بعده", () => {
+    const a = { day: "2026-10-11", time: "10:00" };
+    expect(checkinWindow(a, 20, new Date("2026-10-11T08:59:00+01:00"))).toBe("early");
+    expect(checkinWindow(a, 20, new Date("2026-10-11T09:00:00+01:00"))).toBe("open");
+    expect(checkinWindow(a, 20, new Date("2026-10-11T10:20:00+01:00"))).toBe("open");
+    expect(checkinWindow(a, 20, new Date("2026-10-11T10:21:00+01:00"))).toBe("late");
+    expect(checkinWindow(a, 20, new Date("2026-10-10T10:00:00+01:00"))).toBe("early");
+    expect(slotInstant("2026-10-11", "10:00").toISOString()).toBe("2026-10-11T09:00:00.000Z");
+  });
+});
+
+// ————————————————————————— الإعدادات —————————————————————————
+
+describe("إعدادات المواعيد", () => {
+  it("معطّل افتراضياً، ويرفض القيم غير المنطقية", async () => {
+    expect((await ap.bookingSettingsView(shop)).settings).toEqual(DEFAULT_BOOKING);
+    for (const bad of [{ slotMin: 3 }, { perSlot: 11 }, { daysAhead: 61 }, { dailyMax: -1 }, { slotMin: 7.5 }, { enabled: "yes" }, { hours: { "0": [["10:00", "09:00"]] } }, { arrivalGraceMin: null }]) {
+      await expect(ap.saveBookingSettings(shop, bad)).rejects.toThrow("invalid_settings");
+    }
+    const s = await enable({ slotMin: 20, perSlot: 2, hours: { "0": [["09:00", "12:00"]] } });
+    expect(s).toMatchObject({ enabled: true, slotMin: 20, perSlot: 2, hours: { "0": [["09:00", "12:00"]] } });
+    expect((await ap.saveBookingSettings(shop, { hours: null })).hours).toBeNull();
+    expect((await ap.bookingSettingsView(shop)).settings.slotMin).toBe(20); // حفظ جزئي يُبقي الباقي
+  });
+});
+
+// ————————————————————————— الحجز (المريض) —————————————————————————
+
+describe("الحجز عبر الإنترنت", () => {
+  it("معطّل ← خطأ واضح، ولا يظهر في صفحة العيادة", async () => {
+    await expect(ap.publicAvailability(shop.slug)).rejects.toThrow("ap_off");
+    await expect(book("2026-10-12", "09:00")).rejects.toThrow("ap_off");
+    expect(await ap.bookingTeaser(shop)).toBeNull();
+  });
+
+  it("الأيّام والأوقات: من الآن + 30 دقيقة، الجمعة مغلقة، 14 يوماً", async () => {
+    await enable();
+    const av = await ap.publicAvailability(shop.slug);
+    expect(av.days).toHaveLength(15);
+    expect(av.days[0].slots[0]).toEqual({ time: "08:30", left: 1 });
+    expect(av.days.find((d) => d.day === "2026-10-16")!.state).toBe("closed");
+    expect((await ap.bookingTeaser(shop))!.next).toEqual({ day: "2026-10-11", time: "08:30" });
+  });
+
+  it("رمز SMS ← موعد مؤكَّد، والوقت ينقص من المتاح", async () => {
+    await enable();
+    const r = await book("2026-10-12", "09:00", "0660 12 34 56", "سميرة");
+    expect(r.existing).toBe(false);
+    const v = await ap.appointmentView(r.appointmentId);
+    expect(v).toMatchObject({ day: "2026-10-12", time: "09:00", status: "booked", name: "سميرة", phone: "0660 •• •• 56", canCancel: true, canCheckin: false, window: "early" });
+    const day = (await ap.publicAvailability(shop.slug)).days.find((d) => d.day === "2026-10-12")!;
+    expect(day.slots.find((s) => s.time === "09:00")!.left).toBe(0);
+    expect(day.booked).toBe(1);
+  });
+
+  it("الرمز الخاطئ يُحسب (لا يلغيه التراجع)، والرمز لا يُستهلك إن سُبق إلى الوقت", async () => {
+    await enable();
+    const phone = newPhone();
+    const c = await ap.requestBookingCode(shop.slug, { name: "علي علي", phone, day: "2026-10-12", time: "10:00" });
+    for (let i = 0; i < 5; i++) {
+      await expect(ap.bookOnline(shop.slug, { name: "علي علي", phone, day: "2026-10-12", time: "10:00", code: "000000" })).rejects.toThrow("invalid_code");
+    }
+    await expect(ap.bookOnline(shop.slug, { name: "علي علي", phone, day: "2026-10-12", time: "10:00", code: c.devCode })).rejects.toThrow("code_expired");
+
+    const p2 = newPhone();
+    const c2 = await ap.requestBookingCode(shop.slug, { name: "سارة", phone: p2, day: "2026-10-12", time: "11:00" });
+    await book("2026-10-12", "11:00"); // سبقها أحدهم
+    await expect(ap.bookOnline(shop.slug, { name: "سارة", phone: p2, day: "2026-10-12", time: "11:00", code: c2.devCode })).rejects.toThrow("ap_slot_unavailable");
+    const ok = await ap.bookOnline(shop.slug, { name: "سارة", phone: p2, day: "2026-10-12", time: "11:15", code: c2.devCode });
+    expect(ok.existing).toBe(false);
+    // الرمز استُهلك الآن
+    await expect(ap.bookOnline(shop.slug, { name: "سارة", phone: p2, day: "2026-10-13", time: "11:15", code: c2.devCode })).rejects.toThrow("code_expired");
+  });
+
+  it("موعد نشط واحد لكلّ هاتف في اليوم: إعادة الإرسال تُرجع نفس الموعد", async () => {
+    await enable();
+    const phone = newPhone();
+    const a = await book("2026-10-12", "09:00", phone);
+    const b = await book("2026-10-12", "12:00", phone);
+    expect(b).toEqual({ appointmentId: a.appointmentId, existing: true });
+    // بعد الإلغاء يستطيع الحجز من جديد في نفس اليوم
+    await ap.appointmentAction(a.appointmentId, { action: "cancel" });
+    expect((await book("2026-10-12", "12:00", phone)).appointmentId).not.toBe(a.appointmentId);
+  });
+
+  it("حجوزات متزامنة على نفس الوقت: لا يتجاوز عدد الأماكن أبداً", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable({ perSlot: 2 });
+    const res = await Promise.allSettled(
+      Array.from({ length: 7 }, (_, i) => ap.bookOnline(shop.slug, { name: `متزامن ${i}`, phone: newPhone(), day: "2026-10-13", time: "09:30" })),
+    );
+    expect(res.filter((r) => r.status === "fulfilled")).toHaveLength(2);
+    for (const r of res) if (r.status === "rejected") expect(String(r.reason)).toContain("ap_slot_unavailable");
+    const rows = await db.query<{ n: number }>("select count(*)::int n from appointments where shop_id = $1 and day = '2026-10-13'", [shop.id]);
+    expect(rows[0].n).toBe(2);
+  });
+
+  it("الحدّ اليومي، الأوقات الماضية والقريبة، الجمعة، وخارج المدّة", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable({ dailyMax: 2 });
+    const go = (day: string, time: unknown) => ap.bookOnline(shop.slug, { name: "x x", phone: newPhone(), day, time });
+    await go("2026-10-14", "09:00");
+    await go("2026-10-14", "10:00");
+    await expect(go("2026-10-14", "11:00")).rejects.toThrow("ap_day_full");
+    await expect(go("2026-10-11", "08:15")).rejects.toThrow("ap_slot_unavailable"); // أقلّ من 30 دقيقة
+    await expect(go("2026-10-11", "07:00")).rejects.toThrow("ap_slot_unavailable"); // مضى
+    await expect(go("2026-10-16", "09:00")).rejects.toThrow("ap_slot_unavailable"); // الجمعة
+    await expect(go("2026-10-12", "09:07")).rejects.toThrow("ap_slot_unavailable"); // ليس في الشبكة
+    await expect(go("2026-10-26", "09:00")).rejects.toThrow("ap_invalid_slot"); // بعد 14 يوماً
+    await expect(go("2026-10-10", "09:00")).rejects.toThrow("ap_invalid_slot"); // أمس
+    await expect(go("2026-02-31", "09:00")).rejects.toThrow("ap_invalid_slot");
+    await expect(go("2026-10-12", "9h")).rejects.toThrow("ap_invalid_slot");
+  });
+
+  it("طابور اليوم مغلق ← لا مواعيد لبقيّة اليوم، والأيّام القادمة متاحة", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable();
+    await svc.staffAction(await fresh(), { action: "close" });
+    const av = await ap.publicAvailability(shop.slug);
+    expect(av.days[0].state).toBe("over");
+    await expect(ap.bookOnline(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-11", time: "12:00" })).rejects.toThrow("ap_slot_unavailable");
+    await expect(ap.bookOnline(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-12", time: "12:00" })).resolves.toBeTruthy();
+  });
+
+  it("حدود ضدّ الاستغلال: 3 مواعيد قادمة لكلّ هاتف، ولا حجز لكثير الغياب", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable();
+    const phone = newPhone();
+    for (const day of ["2026-10-12", "2026-10-13", "2026-10-14"]) await ap.bookOnline(shop.slug, { name: "x x", phone, day, time: "09:00" });
+    await expect(ap.bookOnline(shop.slug, { name: "x x", phone, day: "2026-10-15", time: "09:00" })).rejects.toThrow("ap_too_many");
+    await expect(ap.requestBookingCode(shop.slug, { name: "x x", phone, day: "2026-10-15", time: "09:00" })).rejects.toThrow("ap_too_many");
+
+    const absent = newPhone();
+    for (const day of ["2026-10-11", "2026-10-12"]) {
+      await ap.bookOnline(shop.slug, { name: "غائب", phone: absent, day, time: "14:00" });
+    }
+    at("2026-10-12", "15:00");
+    await svc.runCron();
+    const rows = await db.query<{ n: number }>("select count(*)::int n from no_shows where shop_id = $1 and phone = $2", [shop.id, "+213" + absent.slice(1)]);
+    expect(rows[0].n).toBe(2);
+    await expect(ap.bookOnline(shop.slug, { name: "غائب", phone: absent, day: "2026-10-14", time: "10:00" })).rejects.toThrow("ap_no_shows");
+    // السكرتيرة تستطيع دائماً
+    await expect(desk({ phone: absent, day: "2026-10-14", time: "10:00" })).resolves.toBeTruthy();
+  });
+
+  it("الاشتراك المنتهي يوقف الحجز والوصول", async () => {
+    await enable();
+    const r = await book("2026-10-12", "09:00");
+    advance(61 * 24 * 60);
+    await expect(ap.publicAvailability(shop.slug)).rejects.toThrow("subscription");
+    expect(await ap.bookingTeaser(await fresh())).toBeNull();
+    expect((await ap.appointmentView(r.appointmentId)).status).toBe("no_show");
+  });
+});
+
+// ————————————————————————— الإلغاء —————————————————————————
+
+describe("الإلغاء", () => {
+  it("المريض يلغي حتى بداية الموعد، والوقت يتحرّر", async () => {
+    await enable();
+    const r = await book("2026-10-11", "10:00");
+    const v = (await ap.appointmentAction(r.appointmentId, { action: "cancel" })).view;
+    expect(v.status).toBe("cancelled");
+    expect((await ap.publicAvailability(shop.slug)).days[0].slots.find((s) => s.time === "10:00")!.left).toBe(1);
+    await expect(ap.appointmentAction(r.appointmentId, { action: "cancel" })).rejects.toThrow("ap_closed");
+
+    const r2 = await book("2026-10-11", "10:00");
+    at("2026-10-11", "10:00");
+    await expect(ap.appointmentAction(r2.appointmentId, { action: "cancel" })).rejects.toThrow("ap_cancel_late");
+    // السكرتيرة تستطيع
+    await ap.staffAppointmentAction(await fresh(), { action: "cancel", id: r2.appointmentId });
+    expect((await ap.appointmentView(r2.appointmentId)).status).toBe("cancelled");
+  });
+
+  it("رابط موعد غير موجود أو غير صالح", async () => {
+    await expect(ap.appointmentView("not-a-uuid")).rejects.toThrow("ap_not_found");
+    await expect(ap.appointmentView("8a6e0804-2bd0-4672-b79d-d97027f9071a")).rejects.toThrow("ap_not_found");
+  });
+});
+
+// ————————————————————————— الوصول ← تذكرة ذات أولوية —————————————————————————
+
+describe("الوصول: موعد ← تذكرة ذات أولوية", () => {
+  async function walkIn(name: string) {
+    const prev = process.env.PHONE_VERIFICATION;
+    process.env.PHONE_VERIFICATION = "off";
+    try {
+      return await svc.takeTicket(shop.slug, { name, phone: newPhone() });
+    } finally {
+      if (prev === undefined) delete process.env.PHONE_VERIFICATION;
+      else process.env.PHONE_VERIFICATION = prev;
+    }
+  }
+
+  it("قبل الوقت ← مبكّر؛ في النافذة ← تذكرة بأولوية تتقدّم الطابور، والضغطة الثانية نفس التذكرة", async () => {
+    await enable();
+    const r = await book("2026-10-11", "10:30");
+    await walkIn("أحمد");
+    await walkIn("بشير");
+    await expect(ap.appointmentAction(r.appointmentId, { action: "checkin" })).rejects.toThrow("ap_checkin_early");
+
+    at("2026-10-11", "09:40");
+    const a = await ap.appointmentAction(r.appointmentId, { action: "checkin" });
+    expect(a.ticketId).toBeTruthy();
+    expect(a.view.status).toBe("arrived");
+    expect(a.view.ticket?.number).toBe(3);
+    const again = await ap.appointmentAction(r.appointmentId, { action: "checkin" });
+    expect(again.ticketId).toBe(a.ticketId);
+
+    const tv = await svc.ticketView(a.ticketId!);
+    expect(tv.priority).toBe(true);
+    expect(tv.arrived).toBe(false); // بلا رمز الباب: الحضور غير مؤكَّد
+    expect(tv.ahead).toBe(0);
+    const st = await staffState();
+    expect(st.waiting.map((w) => [w.number, w.priority])).toEqual([[3, true], [1, false], [2, false]]);
+
+    // يمسح رمز الباب بعدها ← «في القاعة»
+    await ap.appointmentAction(r.appointmentId, { action: "checkin", door: shop.doorCode });
+    expect((await svc.ticketView(a.ticketId!)).arrived).toBe(true);
+    await expect(ap.appointmentAction(r.appointmentId, { action: "checkin", door: "wrong" })).rejects.toThrow("bad_door_code");
+
+    // «التالي» ينادي صاحب الموعد أوّلاً
+    await svc.staffAction(await fresh(), { action: "next", current: null });
+    expect((await staffState()).current?.number).toBe(3);
+  });
+
+  it("ضغطات متزامنة على «وصلت»: تذكرة واحدة فقط", async () => {
+    await enable();
+    const r = await book("2026-10-11", "08:45");
+    const res = await Promise.all(Array.from({ length: 5 }, () => ap.appointmentAction(r.appointmentId, { action: "checkin", door: shop.doorCode })));
+    expect(new Set(res.map((x) => x.ticketId)).size).toBe(1);
+    const rows = await db.query<{ n: number }>("select count(*)::int n from tickets where shop_id = $1", [shop.id]);
+    expect(rows[0].n).toBe(1);
+    expect((await svc.ticketView(res[0].ticketId!)).arrived).toBe(true);
+  });
+
+  it("له رقم عادي اليوم بنفس الهاتف ← تصير تذكرته ذات أولوية (لا تذكرة ثانية)", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable();
+    const phone = newPhone();
+    await walkIn("قبله");
+    const tk = await svc.takeTicket(shop.slug, { name: "صاحب الموعد", phone });
+    const r = await ap.bookOnline(shop.slug, { name: "صاحب الموعد", phone, day: "2026-10-11", time: "08:30" });
+    const st0 = (await ap.staffAppointments(await fresh(), "today")).todayItems[0];
+    expect(st0.walkIn).toBe(2);
+    const a = await ap.appointmentAction(r.appointmentId, { action: "checkin" });
+    expect(a.ticketId).toBe(tk.ticketId);
+    expect((await staffState()).waiting.map((w) => w.number)).toEqual([2, 1]);
+  });
+
+  it("بعد المهلة ← «لم يحضر» عند القراءة، ويُسجَّل غياباً؛ السكرتيرة تستطيع تسجيل وصوله متأخّراً", async () => {
+    await enable({ arrivalGraceMin: 10 });
+    const phone = newPhone();
+    const r = await book("2026-10-11", "09:00", phone);
+    at("2026-10-11", "09:11");
+    const v = await ap.appointmentView(r.appointmentId);
+    expect(v.status).toBe("no_show");
+    expect(v.canCheckin).toBe(false);
+    await expect(ap.appointmentAction(r.appointmentId, { action: "checkin" })).rejects.toThrow("ap_closed");
+    const ns = () => db.query<{ n: number }>("select count(*)::int n from no_shows where ticket_id = $1", [r.appointmentId]);
+    expect((await ns())[0].n).toBe(1);
+
+    const out = await ap.staffAppointmentAction(await fresh(), { action: "checkin", id: r.appointmentId });
+    expect(out.number).toBe(1);
+    expect((await ap.appointmentView(r.appointmentId)).status).toBe("arrived");
+    expect((await ns())[0].n).toBe(0); // وصل: يُمحى الغياب
+    expect((await svc.ticketView(out.ticketId!)).arrived).toBe(true);
+  });
+
+  it("أخذ رقماً عادياً قبل نافذة الوصول ولم يضغط «وصلت» ← لا يُحسب غائباً", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable();
+    at("2026-10-11", "07:00");
+    const phone = newPhone();
+    const r = await ap.bookOnline(shop.slug, { name: "س س", phone, day: "2026-10-11", time: "09:00" });
+    const tk = await svc.takeTicket(shop.slug, { name: "س س", phone });
+    expect((await svc.ticketView(tk.ticketId)).priority).toBe(false); // قبل النافذة: رقم عادي
+    at("2026-10-11", "12:00");
+    await svc.runCron();
+    const v = await ap.appointmentView(r.appointmentId);
+    expect(v.status).toBe("arrived");
+    expect(v.ticket?.id).toBe(tk.ticketId);
+  });
+
+  it("موعد هاتفي ثمّ أخذ رقماً عند الباب بنفس الهاتف ← رقم ذو أولوية تلقائياً", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    const phone = newPhone();
+    const d = await desk({ phone, day: "2026-10-11", time: "08:30", name: "الحاجّة فاطمة" });
+    await svc.takeTicket(shop.slug, { name: "قبلها", phone: newPhone() });
+    const tk = await svc.takeTicket(shop.slug, { name: "فاطمة", phone, door: shop.doorCode });
+    const tv = await svc.ticketView(tk.ticketId);
+    expect(tv).toMatchObject({ priority: true, arrived: true, name: "الحاجّة فاطمة", ahead: 0 });
+    const v = await ap.appointmentView(d.id!);
+    expect(v.status).toBe("arrived");
+    expect(v.ticket?.id).toBe(tk.ticketId);
+    // الضغطة الثانية (أو «حضر» من السكرتيرة) لا تُنشئ تذكرة أخرى
+    expect((await ap.staffAppointmentAction(await fresh(), { action: "checkin", id: d.id })).ticketId).toBe(tk.ticketId);
+  });
+
+  it("يوم آخر ← لا وصول؛ والاشتراك المنتهي يوقف «وصلت»", async () => {
+    await enable({ daysAhead: 60 });
+    const r = await book("2026-10-12", "09:00");
+    await expect(ap.appointmentAction(r.appointmentId, { action: "checkin" })).rejects.toThrow("ap_checkin_early");
+    await expect(ap.staffAppointmentAction(await fresh(), { action: "checkin", id: r.appointmentId })).rejects.toThrow("ap_checkin_early");
+    const r2 = await book("2026-12-10", "09:00");
+    at("2026-12-10", "08:30"); // انتهت التجربة (شهران) على 08:00
+    await expect(ap.appointmentAction(r2.appointmentId, { action: "checkin" })).rejects.toThrow("subscription");
+  });
+});
+
+// ————————————————————————— السكرتيرة —————————————————————————
+
+describe("السكرتيرة", () => {
+  it("موعد هاتفي بلا رمز (والهاتف اختياري)، حتى والحجز عبر الإنترنت معطّل", async () => {
+    const r = await desk({ day: "2026-10-11", time: "08:00" }); // بلا مهلة 30 دقيقة للسكرتيرة
+    expect(r.id).toBeTruthy();
+    const phone = newPhone();
+    await desk({ phone, day: "2026-10-12", time: "09:00" });
+    await expect(desk({ phone, day: "2026-10-12", time: "10:00" })).rejects.toThrow("ap_already_booked");
+    await expect(desk({ day: "2026-10-12", time: "09:00" })).rejects.toThrow("ap_slot_unavailable");
+    await expect(desk({ name: "x", day: "2026-10-12", time: "11:00" })).rejects.toThrow("invalid_name");
+
+    const st = await ap.staffAppointments(await fresh(), "upcoming");
+    expect(st.enabled).toBe(false);
+    expect(st.todayItems.map((x) => [x.time, x.source, x.status])).toEqual([["08:00", "desk", "booked"]]);
+    const mon = st.days.find((d) => d.day === "2026-10-12")!;
+    expect(mon.items).toHaveLength(1);
+    expect(mon.booked).toBe(1);
+    expect(mon.capacity).toBe(40); // 06:00–16:00 بمواعيد 15 دقيقة
+    expect(st.days.some((d) => d.day === "2026-10-16")).toBe(false); // الجمعة مغلقة
+    expect(st.summary.upcoming).toBe(1);
+
+    // «حضر» ← تذكرة بأولوية وحاضر
+    const c = await ap.staffAppointmentAction(await fresh(), { action: "checkin", id: r.id });
+    expect((await staffState()).waiting[0]).toMatchObject({ number: c.number, priority: true, arrived: true });
+  });
+
+  it("تقصير مدّة الحجز بعد الحجز: المواعيد البعيدة تبقى ظاهرة للسكرتيرة", async () => {
+    await enable({ daysAhead: 30 });
+    const r = await book("2026-11-05", "09:00");
+    await ap.saveBookingSettings(shop, { daysAhead: 7 });
+    const st = await ap.staffAppointments(await fresh(), "upcoming");
+    expect(st.days.find((x) => x.day === "2026-11-05")!.items.map((x) => x.id)).toEqual([r.appointmentId]);
+    expect(st.summary.upcoming).toBe(1);
+  });
+
+  it("عيادة أخرى لا تستطيع لمس مواعيدي", async () => {
+    await enable();
+    const r = await book("2026-10-12", "09:00");
+    const other = await svc.createShop({ name: "أخرى", slug: `rdv-other-${n}`, kind: "doctor", pin: "1111", email: "o@example.com" });
+    await expect(ap.staffAppointmentAction(other, { action: "cancel", id: r.appointmentId })).rejects.toThrow("ap_not_found");
+    await expect(ap.staffAppointmentAction(other, { action: "checkin", id: r.appointmentId })).rejects.toThrow("ap_not_found");
+    expect((await ap.appointmentView(r.appointmentId)).status).toBe("booked");
+  });
+});
+
+// ————————————————————————— الخصوصية والتقويم —————————————————————————
+
+describe("الخصوصية والتقويم", () => {
+  it("بعد 30 يوماً من تاريخ الموعد يُمحى الاسم والهاتف", async () => {
+    await enable({ daysAhead: 60 });
+    const old = await book("2026-10-12", "09:00", newPhone(), "نادية");
+    const future = await book("2026-12-01", "09:00", newPhone(), "ليلى"); // حُجز منذ زمن لكنّ تاريخه قادم
+    at("2026-11-12", "09:00");
+    await svc.runCron();
+    const a = await db.query<{ name: string; phone: string | null }>("select name, phone from appointments where id = $1", [old.appointmentId]);
+    expect(a[0]).toEqual({ name: "—", phone: null });
+    const b = await db.query<{ name: string }>("select name from appointments where id = $1", [future.appointmentId]);
+    expect(b[0].name).toBe("ليلى");
+  });
+
+  it("ملفّ .ics: توقيت عالمي، نصوص مهرّبة، وأسطر مطويّة", async () => {
+    await enable();
+    shop = await svc.updateSettings(shop, { name: "عيادة النور; الشفاء, وهران", profile: { address: "12 شارع العربي بن مهيدي، وهران — الطابق الأوّل فوق الصيدلية" } });
+    const r = await book("2026-10-12", "09:00");
+    const { body, filename } = await ap.appointmentIcs(r.appointmentId, "https://dawri.test");
+    expect(filename).toBe("dawri-2026-10-12-0900.ics");
+    expect(body).toContain("DTSTART:20261012T080000Z");
+    expect(body).toContain("DTEND:20261012T081500Z");
+    expect(body).toContain("عيادة النور\\; الشفاء\\, وهران");
+    expect(body).toContain("TRIGGER:-PT1H");
+    for (const line of body.split("\r\n")) expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(75);
+    await ap.appointmentAction(r.appointmentId, { action: "cancel" });
+    await expect(ap.appointmentIcs(r.appointmentId, "https://dawri.test")).rejects.toThrow("ap_closed");
+  });
+
+  it("طيّ الأسطر لا يقطع الحروف العربية", () => {
+    const long = "SUMMARY:" + "موعد ".repeat(40);
+    const folded = foldLine(long);
+    expect(folded.split("\r\n ").join("")).toBe(long);
+    const ics = buildIcs({ uid: "x", now: T0, start: T0, end: T0, summary: "a", alarm: "b" });
+    expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
+  });
+});

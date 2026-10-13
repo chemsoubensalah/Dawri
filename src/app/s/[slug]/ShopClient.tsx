@@ -8,6 +8,8 @@ import type { Lang } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
 import { api, ApiError, saveTicket, savedTicket, unlockAudio, usePoll } from "@/lib/client";
 import type { PublicShopView } from "@/lib/server/service";
+import type { BookingTeaser } from "@/lib/server/appointments";
+import ShopBooking from "./ShopBooking";
 
 const PROFILE = "dawri:profile";
 
@@ -19,8 +21,9 @@ function fmtWait(lang: Lang, min: number) {
   return t(lang, "sp_hmin", { h, m: String(m).padStart(2, "0") });
 }
 
-export default function ShopClient({ lang, initial, door }: { lang: Lang; initial: PublicShopView; door: string | null }) {
+export default function ShopClient({ lang, initial, door, booking = null }: { lang: Lang; initial: PublicShopView; door: string | null; booking?: BookingTeaser | null }) {
   const router = useRouter();
+  const [apptAtDoor, setApptAtDoor] = useState(false); // له موعد اليوم ومسح رمز الباب: بطاقة الوصول بدل النموذج
   const [view, setView] = useState(initial);
   const [mine, setMine] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -125,13 +128,15 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
         hoursToday={view.hoursToday}
       />
 
+      <ShopBooking lang={lang} slug={view.slug} door={door} teaser={booking} blocker={view.blocker} onHideForm={setApptAtDoor} />
+
       <section className="grid grid-cols-3 gap-2.5" aria-live="polite">
         <Stat icon={<Ticket size={13} />} label={t(lang, "nowServing")} value={view.currentNumber ?? "—"} />
         <Stat icon={<Users size={13} />} label={t(lang, "waitingCount")} value={view.waiting} />
         <Stat icon={<Hourglass size={13} />} label={t(lang, "sp_wait")} value={<span className="text-lg">{fmtWait(lang, view.waitNewMin)}</span>} />
       </section>
 
-      {mine && door ? (
+      {apptAtDoor ? null : mine && door ? (
         <section className="card space-y-4 text-center">
           {arrivedMsg ? (
             <div className="animate-pop py-4">

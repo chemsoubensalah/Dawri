@@ -29,6 +29,7 @@ export function privacyContent(lang: Lang) {
             [
               "Votre nom (ou prénom) et votre numéro de téléphone — pour vous appeler et vous prévenir.",
               "Les horaires de votre ticket (prise, appel, arrivée) — pour estimer l'attente.",
+              "Si vous prenez rendez-vous : le jour et l'heure choisis (jamais le motif de la consultation).",
               "Si vous l'activez : l'abonnement aux notifications de votre navigateur, ou votre numéro WhatsApp si vous liez votre ticket.",
             ],
             "Nous ne demandons et n'enregistrons AUCUNE information médicale (motif, symptômes, diagnostic…). Aucun nom n'est affiché sur l'écran de la salle d'attente : seulement des numéros.",
@@ -41,6 +42,7 @@ export function privacyContent(lang: Lang) {
               "Codes de vérification SMS : supprimés après 24 heures.",
               "Données WhatsApp de liaison : supprimées après 2 jours.",
               "Nom et téléphone sur les tickets : effacés après 30 jours (seuls des compteurs anonymes restent pour les statistiques du cabinet).",
+              "Nom et téléphone des rendez-vous : effacés 30 jours après la date du rendez-vous.",
               "Historique des absences (pour la règle « absences répétées ») : supprimé après 60 jours.",
             ],
           ],
@@ -65,6 +67,7 @@ export function privacyContent(lang: Lang) {
           [
             "اسمك ورقم هاتفك — لمناداتك وتنبيهك.",
             "أوقات تذكرتك (الأخذ، النداء، الوصول) — لتقدير مدّة الانتظار.",
+            "إن حجزت موعداً: اليوم والساعة اللذان اخترتهما (لا سبب الزيارة أبداً).",
             "إن فعّلتها: اشتراك إشعارات المتصفّح، أو رقم واتساب إن ربطت تذكرتك به.",
           ],
           "لا نطلب ولا نحفظ أيّ معلومة طبّية (سبب الزيارة، الأعراض، التشخيص…). ولا يظهر أيّ اسم على شاشة القاعة: أرقام فقط.",
@@ -77,6 +80,7 @@ export function privacyContent(lang: Lang) {
             "رموز التحقّق بالرسائل: تُحذف بعد 24 ساعة.",
             "معطيات ربط واتساب: تُحذف بعد يومين.",
             "الاسم والهاتف في التذاكر: يُمحيان بعد 30 يوماً (تبقى أعداد مجهولة فقط لإحصاءات العيادة).",
+            "الاسم والهاتف في المواعيد: يُمحيان بعد 30 يوماً من تاريخ الموعد.",
             "سجلّ الغياب (لقاعدة «الغياب المتكرّر»): يُحذف بعد 60 يوماً.",
           ],
         ],

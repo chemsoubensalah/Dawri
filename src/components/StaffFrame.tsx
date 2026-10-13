@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BarChart3, CreditCard, LayoutList, MonitorPlay, QrCode, Settings } from "lucide-react";
+import { CalendarClock } from "lucide-react";
 import type { ReactNode } from "react";
 import LangSwitch from "./LangSwitch";
 import LogoutButton from "./LogoutButton";
@@ -8,10 +9,11 @@ import { DEFAULT_LOOK, type Lang, type ShopLook } from "@/lib/domain/types";
 import { themeVars } from "@/lib/theme";
 import { dirOf, t, type DictKey } from "@/lib/i18n";
 
-export type StaffTab = "queue" | "stats" | "qr" | "settings" | "billing" | "welcome";
+export type StaffTab = "queue" | "stats" | "qr" | "settings" | "billing" | "welcome" | "appointments";
 
 const TABS: { key: StaffTab | "display"; label: DictKey; href: (s: string) => string; icon: ReactNode; external?: boolean }[] = [
   { key: "queue", label: "nav_queue", href: (s) => `/staff/${s}`, icon: <LayoutList size={17} /> },
+  { key: "appointments", label: "ap_nav", href: (s) => `/staff/${s}/appointments`, icon: <CalendarClock size={17} /> },
   { key: "stats", label: "nav_stats", href: (s) => `/staff/${s}/stats`, icon: <BarChart3 size={17} /> },
   { key: "qr", label: "nav_poster", href: (s) => `/staff/${s}/qr`, icon: <QrCode size={17} /> },
   { key: "display", label: "display", href: (s) => `/d/${s}`, icon: <MonitorPlay size={17} />, external: true },
