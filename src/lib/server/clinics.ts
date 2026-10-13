@@ -9,6 +9,7 @@ import { DomainError, type Lang, type Shop, type ShopKind } from "../domain/type
 import { isLang } from "../i18n";
 import { hashPin, isValidPin, safeEqual, signClinicSession, verifyPin } from "./auth";
 import { now as clockNow } from "./clock";
+import { getClinicTvMessages } from "./tvmessages";
 import { getDb } from "./db";
 import * as repo from "./repo";
 import * as crepo from "./clinicsRepo";
@@ -291,6 +292,7 @@ export async function clinicPublic(slug: unknown) {
       nextNumbers: live.nextNumbers,
       waitNewMin,
     })),
+    messages: await getClinicTvMessages(rows.map((r) => r.shop.id)),
     serverTime: now.toISOString(),
   };
 }

@@ -238,8 +238,13 @@ body {
 .dw-tk {
   --tk: clamp(3.5rem, 9vh, 6.5rem);
 }
-.dw-tk .dw-ticker {
+.dw-tk .dw-ticker,
+.dw-tk-solo .dw-ticker {
   height: var(--tk);
+}
+/* شاشة العيادة المشتركة: الشريط عنصر عاديّ في العمود */
+.dw-tk-solo {
+  --tk: clamp(3.5rem, 9vh, 6.5rem);
 }
 .dw-tk > main {
   min-height: calc(100dvh - var(--tk)) !important;

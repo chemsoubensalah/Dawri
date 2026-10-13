@@ -5,6 +5,7 @@ import * as plans from "./i18n-parts/plans";
 import * as reviews from "./i18n-parts/reviews";
 import * as sms from "./i18n-parts/sms";
 import * as tv from "./i18n-parts/tv";
+import * as why from "./i18n-parts/why";
 import type { Lang } from "./domain/types";
 
 const arCore = {
@@ -30,7 +31,7 @@ const arCore = {
   kind_lab: "مخبر تحاليل",
   kind_barber: "حلّاق",
   kind_other: "آخر",
-  pin: "رمز دخول السكرتيرة (4–8 أرقام)",
+  pin: "رمزك السرّي — الطبيب (4–8 أرقام)",
   signupCode: "رمز التسجيل",
   create: "إنشاء",
   created: "تمّ الإنشاء! احفظ الرمز.",
@@ -342,7 +343,7 @@ const arCore = {
   nw_namePh: "مثال: عيادة الشفاء",
   nw_doctorPh: "مثال: د. أمينة بن علي",
   nw_slugHint: "هذا رابط صفحة المرضى، ويُطبع في رمز QR. حروف لاتينية صغيرة وأرقام و-",
-  nw_pinHint: "تدخل به السكرتيرة إلى شاشة الطابور. احفظه جيّداً.",
+  nw_pinHint: "رمزك أنت: يفتح كلّ شيء (الطابور، الإعدادات، الاشتراك). لا تعطه لأحد — رمز السكرتيرة تضيفه لاحقاً من الإعدادات ← الأمان، وهو يفتح الطابور فقط.",
   nw_create: "أنشئ طابور العيادة",
   nw_trialNote: "مجّاني لمدّة شهرين. لا حاجة لأيّ دفع الآن.",
   optional: "اختياري",
@@ -640,6 +641,7 @@ const ar = {
   ...growth.ar,
   ...plans.ar,
   ...tv.ar,
+  ...why.ar,
 };
 
 export type Dict = typeof ar;
@@ -666,7 +668,7 @@ const frCore: typeof arCore = {
   kind_lab: "Laboratoire",
   kind_barber: "Coiffeur",
   kind_other: "Autre",
-  pin: "Code d'accès secrétaire (4–8 chiffres)",
+  pin: "Votre code secret — médecin (4–8 chiffres)",
   signupCode: "Code d'inscription",
   create: "Créer",
   created: "Créé ! Gardez le code.",
@@ -970,7 +972,7 @@ const frCore: typeof arCore = {
   nw_namePh: "Ex. : Cabinet El Chifa",
   nw_doctorPh: "Ex. : Dr Amina Benali",
   nw_slugHint: "C'est le lien de la page patients, imprimé dans le QR. Lettres minuscules, chiffres et -",
-  nw_pinHint: "La secrétaire l'utilise pour accéder à l'écran de la file. Gardez-le bien.",
+  nw_pinHint: "Votre code à vous : il ouvre tout (file, réglages, abonnement). Ne le donnez à personne — le code de la secrétaire s'ajoute ensuite dans Réglages → Sécurité et n'ouvre que la file.",
   nw_create: "Créer la file du cabinet",
   nw_trialNote: "Gratuit pendant 2 mois. Aucun paiement maintenant.",
   optional: "facultatif",
@@ -1267,6 +1269,7 @@ const fr: Dict = {
   ...growth.fr,
   ...plans.fr,
   ...tv.fr,
+  ...why.fr,
 };
 
 export const dicts: Record<Lang, Dict> = { ar, fr };

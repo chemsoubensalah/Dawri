@@ -16,6 +16,7 @@ import { setNotifier } from "@/lib/server/notify";
 import * as svc from "@/lib/server/service";
 import * as clinics from "@/lib/server/clinics";
 import * as repo from "@/lib/server/repo";
+import { saveTvMessages } from "@/lib/server/tvmessages";
 import { clinicCookieName, readSession, sessionCookieName } from "@/lib/server/auth";
 import { requireOwner, requireStaff, staffAccess } from "@/lib/server/http";
 import { DomainError, type Shop } from "@/lib/domain/types";
@@ -273,6 +274,13 @@ describe("العيادات بعدّة أطبّاء", () => {
     const mv = await clinics.managerView(clinic);
     expect(mv.doctors[0].subscription.active).toBe(true);
     expect(JSON.stringify(mv)).not.toContain("0550001234");
+  });
+
+  it("شاشة العيادة: رسائل الأطبّاء مجمّعة بلا تكرار", async () => {
+    const { clinic, shop: member } = await make();
+    expect((await clinics.clinicPublic(clinic.slug)).messages).toEqual([]);
+    await saveTvMessages(await fresh(member), ["الجمعة مغلق", "ضع هاتفك على الصامت", "الجمعة مغلق"]);
+    expect((await clinics.clinicPublic(clinic.slug)).messages).toEqual(["الجمعة مغلق", "ضع هاتفك على الصامت"]);
   });
 
   it("اشتراك منتهٍ يظهر «inactive»", async () => {

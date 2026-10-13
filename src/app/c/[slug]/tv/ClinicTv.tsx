@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Maximize } from "lucide-react";
 import SoundGate from "@/components/SoundGate";
+import MessageTicker from "@/app/d/[slug]/MessageTicker";
 import { LogoMark } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
 import { themeVars } from "@/lib/theme";
@@ -137,6 +138,12 @@ export default function ClinicTv({ lang, initial, qr }: { lang: Lang; initial: C
           );
         })}
       </main>
+
+      {view.messages?.length > 0 && (
+        <div className="dw-tk-solo mx-5 mb-4 overflow-hidden rounded-2xl sm:mx-8">
+          <MessageTicker messages={view.messages} />
+        </div>
+      )}
 
       <footer className="flex items-center justify-between gap-4 px-5 pb-5 sm:px-8">
         <p className="text-lg text-slate-300">{t(lang, "cl_tvScan")}</p>

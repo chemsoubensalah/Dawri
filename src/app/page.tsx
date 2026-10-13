@@ -74,6 +74,17 @@ function PhoneMock({ lang }: { lang: Lang }) {
   );
 }
 
+const WHY: { icon: React.ReactNode; title: DictKey; body: DictKey }[] = [
+  { icon: <Smartphone size={20} />, title: "why_f1", body: "why_f1b" },
+  { icon: <Wifi size={20} />, title: "why_f2", body: "why_f2b" },
+  { icon: <BellRing size={20} />, title: "why_f3", body: "why_f3b" },
+  { icon: <MonitorPlay size={20} />, title: "why_f4", body: "why_f4b" },
+  { icon: <CalendarCheck2 size={20} />, title: "why_f5", body: "why_f5b" },
+  { icon: <Users size={20} />, title: "why_f6", body: "why_f6b" },
+  { icon: <BarChart3 size={20} />, title: "why_f7", body: "why_f7b" },
+  { icon: <ShieldCheck size={20} />, title: "why_f8", body: "why_f8b" },
+];
+
 const STEPS: { icon: React.ReactNode; title: DictKey; body: DictKey }[] = [
   { icon: <QrCode size={26} />, title: "l_step1", body: "l_step1b" },
   { icon: <Ticket size={26} />, title: "l_step2", body: "l_step2b" },
@@ -133,6 +144,7 @@ export default async function Home() {
           <div className="hidden items-center gap-6 text-sm font-medium text-slate-600 md:flex">
             <a href="#how" className="hover:text-ink">{t(lang, "l_navHow")}</a>
             <a href="#doctors" className="hover:text-ink">{t(lang, "l_navDoctors")}</a>
+            <a href="#why" className="hover:text-ink">{t(lang, "why_nav")}</a>
             <a href="#pricing" className="hover:text-ink">{t(lang, "l_navPricing")}</a>
             <a href="#faq" className="hover:text-ink">{t(lang, "l_navFaq")}</a>
           </div>
@@ -249,6 +261,35 @@ export default async function Home() {
                 </li>
               ))}
             </ul>
+          </div>
+        </section>
+
+        {/* ——— لماذا دوري؟ ——— */}
+        <section id="why" className="mx-auto max-w-6xl scroll-mt-20 px-4 pb-16" data-testid="why">
+          <SectionTitle center eyebrow={t(lang, "why_eyebrow")} title={t(lang, "why_title")} sub={t(lang, "why_sub")} />
+          <div className="mt-10 grid grid-cols-2 gap-3 rounded-[2rem] bg-ink p-5 text-center text-white sm:grid-cols-4 sm:p-7">
+            {[
+              ["0", "why_st1"],
+              ["60", "why_st2"],
+              [String(priceNumber()), "why_st3"],
+              ["ع + Fr", "why_st4"],
+            ].map(([v, k]) => (
+              <div key={k}>
+                <div className="num text-3xl font-bold text-brand-300 sm:text-4xl" dir="ltr">{v}</div>
+                <div className="mt-1 text-sm text-slate-300">{t(lang, k as DictKey)}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {WHY.map((f) => (
+              <div key={f.title} className="card flex gap-4 transition hover:-translate-y-0.5 hover:shadow-(--shadow-lift) sm:block">
+                <IconBubble>{f.icon}</IconBubble>
+                <div>
+                  <h3 className="font-bold sm:mt-4">{t(lang, f.title)}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-600">{t(lang, f.body)}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </section>
 
