@@ -3,8 +3,11 @@ import { useState } from "react";
 import { CreditCard } from "lucide-react";
 import { api } from "@/lib/client";
 
-/** يُنشئ صفحة دفع جديدة عند الضغط ثمّ ينتقل إليها (البطاقة الذهبية / CIB عبر Chargily). */
-export default function PayButton({ slug, months, label, errorLabel }: { slug: string; months: number; label: string; errorLabel: string }) {
+/**
+ * يُنشئ صفحة دفع جديدة عند الضغط ثمّ ينتقل إليها (البطاقة الذهبية / CIB عبر Chargily).
+ * endpoint: /api/staff/{slug}/billing (طبيب واحد) أو /api/c/{slug}/billing (عيادة متعدّدة الأطبّاء).
+ */
+export default function PayButton({ endpoint, months, label, errorLabel }: { endpoint: string; months: number; label: string; errorLabel: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   return (
@@ -17,7 +20,7 @@ export default function PayButton({ slug, months, label, errorLabel }: { slug: s
           setBusy(true);
           setError(false);
           try {
-            const r = await api<{ url: string }>(`/api/staff/${slug}/billing`, { months });
+            const r = await api<{ url: string }>(endpoint, { months });
             location.href = r.url;
           } catch {
             setError(true);

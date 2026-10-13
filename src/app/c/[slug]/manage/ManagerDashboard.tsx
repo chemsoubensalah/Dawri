@@ -17,10 +17,10 @@ import {
 } from "lucide-react";
 import LangSwitch from "@/components/LangSwitch";
 import Dialog from "@/components/Dialog";
-import { LogoMark } from "@/components/ui";
+import { Chip, LogoMark } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
 import { themeVars } from "@/lib/theme";
-import { dirOf, drTitle, errorText, t } from "@/lib/i18n";
+import { dirOf, drTitle, errorText, t, tn } from "@/lib/i18n";
 import { api, ApiError, usePoll } from "@/lib/client";
 import type { ManagerView } from "@/lib/server/clinics";
 import { StatusBadge } from "../status";
@@ -68,6 +68,9 @@ export default function ManagerDashboard({ lang, initial }: { lang: Lang; initia
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <LangSwitch lang={lang} className="hidden sm:inline-flex" />
+            <Link href={`/c/${slug}/manage/billing`} className="btn-ghost btn-sm" data-testid="clinic-billing-link">
+              <CreditCard size={16} /> <span className="hidden sm:inline">{t(lang, "cb_button")}</span>
+            </Link>
             <button type="button" className="btn-ghost btn-sm" onClick={() => setModal({ kind: "pin" })} aria-label={t(lang, "cl_changePin")}>
               <KeyRound size={16} />
             </button>
@@ -88,7 +91,10 @@ export default function ManagerDashboard({ lang, initial }: { lang: Lang; initia
       <main className="mx-auto max-w-6xl space-y-5 px-3 py-5 sm:px-5 sm:py-7">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">{t(lang, "cl_dashTitle")}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold">{t(lang, "cl_dashTitle")}</h1>
+              <SubscriptionChip lang={lang} slug={slug} sub={view.subscription} />
+            </div>
             <p className="text-sm text-slate-600">{t(lang, "cl_dashSub")}</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -104,6 +110,12 @@ export default function ManagerDashboard({ lang, initial }: { lang: Lang; initia
           </div>
         </div>
 
+        {!view.subscription.active && (
+          <Link href={`/c/${slug}/manage/billing`} className="flex items-center gap-3 rounded-2xl bg-rose-50 p-4 font-semibold text-rose-800 ring-1 ring-rose-200">
+            <CreditCard size={20} /> {t(lang, "cb_expiredNote")}
+          </Link>
+        )}
+
         {view.doctors.length === 0 ? (
           <div className="card p-8 text-center">
             <Users size={32} className="mx-auto text-slate-400" />
@@ -112,7 +124,7 @@ export default function ManagerDashboard({ lang, initial }: { lang: Lang; initia
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {view.doctors.map((d) => (
-              <DoctorCard key={d.slug} lang={lang} d={d} onRoom={() => setModal({ kind: "room", doctor: d })} onRemove={() => setModal({ kind: "remove", doctor: d })} />
+              <DoctorCard key={d.slug} lang={lang} clinicSlug={slug} d={d} onRoom={() => setModal({ kind: "room", doctor: d })} onRemove={() => setModal({ kind: "remove", doctor: d })} />
             ))}
           </div>
         )}
@@ -126,7 +138,7 @@ export default function ManagerDashboard({ lang, initial }: { lang: Lang; initia
           </button>
           {full && <p className="self-center text-sm text-slate-500">{t(lang, "err_clinic_full")}</p>}
         </div>
-        <p className="text-xs leading-relaxed text-slate-500">{t(lang, "cl_billingNote")}</p>
+        <p className="text-xs leading-relaxed text-slate-500">{t(lang, "cl_billingNote", { max: view.clinic.maxDoctors })}</p>
       </main>
 
       <AddDialog lang={lang} slug={slug} open={modal?.kind === "add"} onClose={() => setModal(null)} onDone={refresh} />
@@ -138,7 +150,24 @@ export default function ManagerDashboard({ lang, initial }: { lang: Lang; initia
   );
 }
 
-function DoctorCard({ lang, d, onRoom, onRemove }: { lang: Lang; d: Doctor; onRoom: () => void; onRemove: () => void }) {
+/** «تجربة مجّانية: N يوماً» / «مدفوع حتى …» / «منتهٍ» — يفتح صفحة اشتراك العيادة. */
+function SubscriptionChip({ lang, slug, sub }: { lang: Lang; slug: string; sub: ManagerView["subscription"] }) {
+  const fmt = new Intl.DateTimeFormat(lang === "ar" ? "ar-DZ" : "fr-DZ", { day: "numeric", month: "long", year: "numeric", numberingSystem: "latn" });
+  return (
+    <Link href={`/c/${slug}/manage/billing`} data-testid="clinic-sub-chip">
+      <Chip tone={sub.paidUntil ? "green" : sub.trial ? "violet" : "rose"}>
+        <CreditCard size={12} />
+        {sub.paidUntil
+          ? t(lang, "cb_chipPaid", { d: fmt.format(new Date(sub.paidUntil)) })
+          : sub.trial
+            ? tn(lang, "cb_chipTrial", sub.daysLeft)
+            : t(lang, "cb_chipExpired")}
+      </Chip>
+    </Link>
+  );
+}
+
+function DoctorCard({ lang, clinicSlug, d, onRoom, onRemove }: { lang: Lang; clinicSlug: string; d: Doctor; onRoom: () => void; onRemove: () => void }) {
   const title = drTitle(lang, d.kind, d.doctorName) ?? d.name;
   const sub = d.subscription;
   return (
@@ -164,8 +193,9 @@ function DoctorCard({ lang, d, onRoom, onRemove }: { lang: Lang; d: Doctor; onRo
           <p className="num text-2xl font-bold" dir="ltr">{d.served}</p>
         </div>
       </div>
+      {/* المدير يدفع اشتراك العيادة من صفحة اشتراكها (صفحة الطبيب لا أزرار دفع فيها لأعضاء العيادة) */}
       <Link
-        href={`/staff/${d.slug}/billing`}
+        href={`/c/${clinicSlug}/manage/billing`}
         className={`mt-3 flex items-center justify-between gap-2 rounded-xl px-3 py-2 text-sm font-semibold ${
           !sub.active ? "bg-rose-50 text-rose-800" : sub.daysLeft <= 7 ? "bg-amber-50 text-amber-800" : "bg-slate-50 text-slate-600"
         }`}

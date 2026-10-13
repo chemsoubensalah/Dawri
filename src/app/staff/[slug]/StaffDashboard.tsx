@@ -150,12 +150,20 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
           </span>
         </Chip>
         {s.blocker === "outside_hours" && !s.closed && <Chip tone="amber">{t(lang, "outsideHours")}</Chip>}
-        {!s.shop.paidUntil && s.shop.active && (
+        {s.shop.clinic?.covers ? (
+          // مشمول باشتراك العيادة متعدّدة الأطبّاء: لا عدّاد تجربة خاصّ
           <a href={`/staff/${slug}/billing`}>
-            <Chip tone="violet">
-              {tn(lang, "db_trialLeft", Math.max(0, Math.ceil((new Date(s.shop.trialEndsAt).getTime() - new Date(s.serverTime).getTime()) / 86_400_000)))}
-            </Chip>
+            <Chip tone="green">{t(lang, "cb_dbCovered")}</Chip>
           </a>
+        ) : (
+          !(s.shop.paidUntil && new Date(s.shop.paidUntil) > new Date(s.serverTime)) &&
+          s.shop.active && (
+            <a href={`/staff/${slug}/billing`}>
+              <Chip tone="violet">
+                {tn(lang, "db_trialLeft", Math.max(0, Math.ceil((new Date(s.shop.until).getTime() - new Date(s.serverTime).getTime()) / 86_400_000)))}
+              </Chip>
+            </a>
+          )
         )}
         <span className="ms-auto flex items-center gap-2">
           {!online && (
@@ -169,7 +177,7 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
 
       {!s.shop.active && (
         <a href={`/staff/${slug}/billing`} className="flex items-center gap-3 rounded-2xl bg-rose-50 p-4 font-semibold text-rose-800 ring-1 ring-rose-200">
-          <ShieldAlert size={20} /> {t(lang, "subscriptionExpired")}
+          <ShieldAlert size={20} /> {s.shop.clinic ? t(lang, "cb_dbClinicExpired", { name: s.shop.clinic.name }) : t(lang, "subscriptionExpired")}
         </a>
       )}
       {!s.shop.hasEmail && (

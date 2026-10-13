@@ -3,7 +3,7 @@
  */
 import { readLook, type ShopLook } from "../domain/types";
 import type { Q, Row } from "./db";
-import { rowToShop } from "./repo";
+import { rowToPayment, rowToShop, SHOP_COLS, SHOP_FROM, type Payment } from "./repo";
 import type { Shop } from "../domain/types";
 
 export interface Clinic {
@@ -17,6 +17,9 @@ export interface Clinic {
   lockedUntil: Date | null;
   look: ShopLook;
   createdAt: Date;
+  /** اشتراك العيادة (014_clinic_billing): يغطّي كلّ أطبّائها */
+  trialEndsAt: Date;
+  paidUntil: Date | null;
 }
 
 const d = (v: unknown) => (v == null ? null : v instanceof Date ? v : new Date(String(v)));
@@ -34,6 +37,8 @@ export function rowToClinic(r: Row): Clinic {
     lockedUntil: d(r.locked_until),
     look: readLook(r.look == null ? {} : j(r.look)),
     createdAt: d(r.created_at)!,
+    trialEndsAt: d(r.trial_ends_at)!,
+    paidUntil: d(r.paid_until),
   };
 }
 
@@ -49,11 +54,12 @@ export async function getClinicById(q: Q, id: string): Promise<Clinic | null> {
 
 export async function insertClinic(
   q: Q,
-  c: { slug: string; name: string; ownerEmail: string | null; pinHash: string; look: ShopLook },
+  c: { slug: string; name: string; ownerEmail: string | null; pinHash: string; look: ShopLook; trialEndsAt?: Date },
 ): Promise<Clinic> {
   const rows = await q.query(
-    "insert into clinics (slug, name, owner_email, pin_hash, look) values ($1,$2,$3,$4,$5) returning *",
-    [c.slug, c.name, c.ownerEmail, c.pinHash, JSON.stringify(c.look)],
+    `insert into clinics (slug, name, owner_email, pin_hash, look, trial_ends_at)
+     values ($1,$2,$3,$4,$5, coalesce($6::timestamptz, now() + interval '60 days')) returning *`,
+    [c.slug, c.name, c.ownerEmail, c.pinHash, JSON.stringify(c.look), c.trialEndsAt ?? null],
   );
   return rowToClinic(rows[0]);
 }
@@ -96,7 +102,7 @@ export async function resetClinicLoginAttempts(q: Q, clinicId: string) {
 
 /** أطبّاء العيادة بترتيب ثابت (الأقدم أوّلاً). */
 export async function listClinicShops(q: Q, clinicId: string): Promise<Shop[]> {
-  const rows = await q.query("select * from shops where clinic_id = $1 order by created_at, slug", [clinicId]);
+  const rows = await q.query(`select ${SHOP_COLS} from ${SHOP_FROM} where s.clinic_id = $1 order by s.created_at, s.slug`, [clinicId]);
   return rows.map(rowToShop);
 }
 
@@ -140,7 +146,7 @@ export interface LiveRow {
  */
 export async function clinicLive(q: Q, clinicId: string, day: string): Promise<{ shop: Shop; live: LiveRow }[]> {
   const rows = await q.query(
-    `select s.*, s.id as shop_id,
+    `select ${SHOP_COLS}, s.id as shop_id,
             coalesce(qd.closed, false) as closed,
             cur.number as cur_number, cur.called_at as cur_called_at,
             (select count(*) from tickets t where t.shop_id = s.id and t.day = $2 and t.status = 'waiting' and not t.held) as waiting,
@@ -149,7 +155,7 @@ export async function clinicLive(q: Q, clinicId: string, day: string): Promise<{
                (select t.number from tickets t where t.shop_id = s.id and t.day = $2 and t.status = 'waiting' and not t.held
                  order by t.number limit 3) x) as next_numbers,
             dur.n as done_n, dur.sum_min as done_sum
-       from shops s
+       from ${SHOP_FROM}
        left join queue_days qd on qd.shop_id = s.id and qd.day = $2
        left join lateral (
          select t.number, t.called_at from tickets t
@@ -181,4 +187,31 @@ export async function clinicLive(q: Q, clinicId: string, day: string): Promise<{
     } });
   }
   return out;
+}
+
+// ————————————————————————— اشتراك العيادة (014_clinic_billing) —————————————————————————
+
+/** يمدّد اشتراك العيادة: من الأبعد بين (الآن، نهاية التجربة، نهاية الاشتراك الحالي) — كـ repo.extendSubscription. */
+export async function extendClinicSubscription(q: Q, clinicId: string, months: number, now: Date): Promise<Date | null> {
+  const rows = await q.query<{ paid_until: Date }>(
+    `update clinics set paid_until = greatest($2::timestamptz, trial_ends_at, coalesce(paid_until, $2::timestamptz))
+                                    + make_interval(months => $3)
+     where id = $1 returning paid_until`,
+    [clinicId, now, months],
+  );
+  return rows[0] ? d(rows[0].paid_until) : null;
+}
+
+export async function listClinicPayments(q: Q, clinicId: string): Promise<Payment[]> {
+  const rows = await q.query("select * from payments where clinic_id = $1 order by created_at desc limit 24", [clinicId]);
+  return rows.map(rowToPayment);
+}
+
+/** لوحة المؤسّس: كلّ العيادات متعدّدة الأطبّاء مع عدد أطبّائها. */
+export async function listClinicsAdmin(q: Q): Promise<(Clinic & { doctors: number })[]> {
+  const rows = await q.query(
+    `select c.*, (select count(*)::int from shops s where s.clinic_id = c.id) as doctors
+       from clinics c order by c.created_at desc limit 500`,
+  );
+  return rows.map((r) => ({ ...rowToClinic(r), doctors: Number(r.doctors) }));
 }

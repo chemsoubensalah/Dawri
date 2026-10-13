@@ -1,6 +1,7 @@
 import * as appointments from "./i18n-parts/appointments";
 import * as clinics from "./i18n-parts/clinics";
 import * as growth from "./i18n-parts/growth";
+import * as plans from "./i18n-parts/plans";
 import * as reviews from "./i18n-parts/reviews";
 import * as sms from "./i18n-parts/sms";
 import type { Lang } from "./domain/types";
@@ -299,10 +300,10 @@ const arCore = {
   l_ns4b: "بعد غيابين يحتاج موافقة السكرتيرة. يُمحى بعد شهرين.",
   l_ns5: "ضدّ التلاعب",
   l_ns5b: "رقم واحد لكلّ هاتف يومياً، تحقّق من الهاتف، وأرقام في ساعات العمل فقط.",
-  l_priceEyebrow: "سعر واحد بسيط",
+  l_priceEyebrow: "أسعار بسيطة",
   l_priceTitle: "جرّبه شهرين مجّاناً",
   l_priceSub: "بلا بطاقة بنكية للبدء. ادفع فقط إن أعجبك.",
-  l_planName: "اشتراك العيادة",
+  l_planName: "اشتراك عيادة طبيب واحد",
   l_planTrial: "أوّل شهرين مجّاناً",
   l_perMonth: "/ شهرياً",
   l_noCommission: "بلا عمولات على المرضى. ألغِ متى شئت.",
@@ -581,13 +582,14 @@ const arCore = {
   bl_stTrial: "{n} يوماً متبقّياً",
   bl_stExpired: "منتهٍ",
   bl_trialNote: "كلّ الميزات متاحة خلال التجربة. ادفع حين تقتنع — تُضاف المدّة بعد نهاية التجربة.",
-  bl_bestValue: "الأوفر — شهران مجّاناً",
+  bl_bestValue: "الأوفر",
   bl_monthly: "شهري",
   bl_yearly: "سنوي",
   bl_perYear: "/ سنوياً",
   bl_yearlyNote: "أي {m} شهرياً.",
   bl_payCard: "ادفع بالبطاقة الذهبية أو CIB",
   bl_onlineSoon: "الدفع الإلكتروني قريباً — استعمل التحويل أدناه.",
+  bl_onlineSoonContact: "الدفع الإلكتروني قريباً. للاشتراك الآن تواصل معنا: {c}",
   bl_secure: "دفع آمن عبر Chargily Pay — لا نرى بيانات بطاقتك.",
   bl_manual: "أو بتحويل بريدي (بريدي موب / CCP)",
   bl_manualSub: "حوّل المبلغ واكتب المرجع، ثمّ أرسل لنا صورة الوصل. نفعّل اشتراكك في نفس اليوم.",
@@ -635,6 +637,7 @@ const ar = {
   ...reviews.ar,
   ...clinics.ar,
   ...growth.ar,
+  ...plans.ar,
 };
 
 export type Dict = typeof ar;
@@ -924,7 +927,7 @@ const frCore: typeof arCore = {
   l_ns4b: "Après 2 absences, validation de la secrétaire. Effacé après 2 mois.",
   l_ns5: "Anti-abus",
   l_ns5b: "Un ticket par téléphone et par jour, vérification du numéro, horaires respectés.",
-  l_priceEyebrow: "Un tarif simple",
+  l_priceEyebrow: "Des tarifs simples",
   l_priceTitle: "Essayez-le 2 mois gratuitement",
   l_priceSub: "Sans carte bancaire pour commencer. Payez seulement s'il vous plaît.",
   l_planName: "Abonnement cabinet",
@@ -1206,13 +1209,14 @@ const frCore: typeof arCore = {
   bl_stTrial: "{n} jours restants",
   bl_stExpired: "Expiré",
   bl_trialNote: "Tout est inclus pendant l'essai. Payez quand vous êtes convaincu — la durée s'ajoute après l'essai.",
-  bl_bestValue: "Meilleure offre — 2 mois offerts",
+  bl_bestValue: "Meilleure offre",
   bl_monthly: "Mensuel",
   bl_yearly: "Annuel",
   bl_perYear: "/ an",
   bl_yearlyNote: "Soit {m} par mois.",
   bl_payCard: "Payer par Edahabia ou CIB",
   bl_onlineSoon: "Paiement en ligne bientôt — utilisez le virement ci-dessous.",
+  bl_onlineSoonContact: "Paiement en ligne bientôt. Pour vous abonner dès maintenant, contactez-nous : {c}",
   bl_secure: "Paiement sécurisé via Chargily Pay — nous ne voyons pas votre carte.",
   bl_manual: "Ou par virement (BaridiMob / CCP)",
   bl_manualSub: "Virez le montant avec la référence, puis envoyez-nous le reçu. Activation le jour même.",
@@ -1259,6 +1263,7 @@ const fr: Dict = {
   ...reviews.fr,
   ...clinics.fr,
   ...growth.fr,
+  ...plans.fr,
 };
 
 export const dicts: Record<Lang, Dict> = { ar, fr };

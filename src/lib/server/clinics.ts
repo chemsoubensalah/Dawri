@@ -13,13 +13,15 @@ import { getDb } from "./db";
 import * as repo from "./repo";
 import * as crepo from "./clinicsRepo";
 import type { Clinic } from "./clinicsRepo";
-import { createShop, isSubscriptionActive } from "./service";
+import { createShop } from "./service";
+import { MAX_DOCTORS } from "../pricing";
+import { clinicCoverUntil, isSubscriptionActive, ownUntil, subscriptionStatus, subscriptionUntil } from "../domain/subscription";
 
 export type { Clinic };
 
 const DAY_MS = 86_400_000;
-/** شاشة القاعة مصمّمة حتى 8 أطبّاء. */
-export const MAX_DOCTORS = 8;
+/** حدّ أطبّاء العيادة (المصدر: src/lib/pricing.ts، آمن للواجهة). */
+export { MAX_DOCTORS };
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{2,39}$/;
 const RESERVED = ["api", "new", "staff", "admin", "manage", "login"];
 const KINDS: ShopKind[] = ["doctor", "dentist", "lab", "barber", "other"];
@@ -105,7 +107,14 @@ export async function createClinic(input: {
   if (await repo.getShopBySlug(db, shopSlug)) throw new DomainError("slug_taken", 409);
   let clinic: Clinic;
   try {
-    clinic = await crepo.insertClinic(db, { slug, name, ownerEmail: email, pinHash: hashPin(input.pin), look: { theme: "emerald", custom: null, display: "night" } });
+    clinic = await crepo.insertClinic(db, {
+      slug,
+      name,
+      ownerEmail: email,
+      pinHash: hashPin(input.pin),
+      look: { theme: "emerald", custom: null, display: "night" },
+      trialEndsAt: new Date(clockNow().getTime() + 60 * DAY_MS), // مجّاني أوّل شهرين، كالطبيب الواحد
+    });
   } catch (e) {
     if ((e as { code?: string }).code === "23505") throw new DomainError("slug_taken", 409);
     throw e;
@@ -143,7 +152,10 @@ export async function changeClinicPin(clinic: Clinic, pin: unknown, currentPin?:
   return (await crepo.getClinicById(db, clinic.id))!;
 }
 
-/** الطبيب يغادر العيادة متعدّدة الأطبّاء: يسقط وصول مديرها إلى طابوره فوراً. */
+/**
+ * الطبيب يغادر العيادة متعدّدة الأطبّاء: يسقط وصول مديرها إلى طابوره فوراً،
+ * ولا يعود اشتراك العيادة يغطّيه — يرجع إلى اشتراكه الخاصّ (تجربته أو مدّته المدفوعة) كما هو.
+ */
 export async function leaveClinic(shop: Shop) {
   if (shop.clinicId) await crepo.detachShop(await getDb(), shop.id, shop.clinicId);
   return { inClinic: false };
@@ -220,7 +232,7 @@ export async function setDoctorRoom(clinic: Clinic, shopSlug: unknown, room: unk
   return { ok: true };
 }
 
-/** يُخرج الطبيب من العيادة: طابوره واشتراكه يبقيان كما هما. */
+/** يُخرج الطبيب من العيادة: طابوره واشتراكه الخاصّ يبقيان كما هما (لم يعد مشمولاً باشتراك العيادة). */
 export async function removeDoctor(clinic: Clinic, shopSlug: unknown) {
   const shop = await memberOr404(clinic, shopSlug);
   if (!(await crepo.detachShop(await getDb(), shop.id, clinic.id))) throw new DomainError("shop_not_found", 404);
@@ -286,15 +298,34 @@ export async function clinicPublic(slug: unknown) {
 export type ClinicPublicView = Awaited<ReturnType<typeof clinicPublic>>;
 export type PublicDoctor = ClinicPublicView["doctors"][number];
 
-/** لوحة المدير: نفس الحالة + المخدومون اليوم + حالة الاشتراك. */
+/** حالة اشتراك العيادة (للوحة المدير وصفحة الاشتراك). */
+export function clinicSubscription(clinic: Pick<Clinic, "trialEndsAt" | "paidUntil">, now: Date) {
+  const s = subscriptionStatus(clinic, now);
+  return {
+    active: s.active,
+    trial: s.trial,
+    until: s.until.toISOString(),
+    paidUntil: s.paidUntil?.toISOString() ?? null,
+    trialEndsAt: clinic.trialEndsAt.toISOString(),
+    daysLeft: s.daysLeft,
+  };
+}
+
+/** لوحة المدير: نفس الحالة + المخدومون اليوم + حالة الاشتراك (اشتراك العيادة يغطّي كلّ الأطبّاء). */
 export async function managerView(clinic: Clinic) {
   const db = await getDb();
   const now = clockNow();
   const rows = liveDoctors(await crepo.clinicLive(db, clinic.id, dayKey(now)), now);
   return {
     clinic: { slug: clinic.slug, name: clinic.name, look: clinic.look, maxDoctors: MAX_DOCTORS },
+    subscription: clinicSubscription(clinic, now),
     doctors: rows.map(({ shop, live, active, status, resumesAt, waitNewMin }) => {
-      const until = new Date(Math.max(shop.trialEndsAt.getTime(), shop.paidUntil?.getTime() ?? 0));
+      // النهاية الفعلية: اشتراك الطبيب الخاصّ أو اشتراك العيادة (الأبعد)
+      const until = subscriptionUntil(shop);
+      // «تجربة» أو «مدفوع» حسب المصدر الذي يحدّد النهاية (العيادة أو الطبيب نفسه)، لا خليط منهما
+      const cover = clinicCoverUntil(shop);
+      const fromClinic = Boolean(cover && cover.getTime() >= ownUntil(shop).getTime());
+      const trial = fromClinic ? subscriptionStatus(clinic, now).trial : subscriptionStatus(shop, now).trial;
       return {
         slug: shop.slug,
         name: shop.name,
@@ -310,7 +341,7 @@ export async function managerView(clinic: Clinic) {
         waitNewMin,
         subscription: {
           active,
-          trial: !shop.paidUntil || shop.paidUntil.getTime() < shop.trialEndsAt.getTime(),
+          trial,
           until: until.toISOString(),
           daysLeft: Math.max(0, Math.ceil((until.getTime() - now.getTime()) / DAY_MS)),
         },

@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BarChart3,
+  Building2,
   BellRing,
   CalendarCheck2,
   Check,
@@ -14,6 +15,7 @@ import {
   ShieldCheck,
   Smartphone,
   Sparkles,
+  Stethoscope,
   Ticket,
   UserPlus,
   UserX,
@@ -24,7 +26,18 @@ import LangSwitch from "@/components/LangSwitch";
 import { Chip, IconBubble, Logo, SectionTitle } from "@/components/ui";
 import { t, type DictKey } from "@/lib/i18n";
 import { getLang } from "@/lib/server/http";
-import { priceDzd, priceNumber, yearPriceDzd, yearPriceNumber } from "@/lib/pricing";
+import {
+  MAX_DOCTORS,
+  clinicPriceDzd,
+  clinicPriceNumber,
+  clinicYearPriceDzd,
+  clinicYearPriceNumber,
+  priceDzd,
+  priceNumber,
+  yearPriceDzd,
+  yearPriceNumber,
+  yearSavePct,
+} from "@/lib/pricing";
 import type { Lang } from "@/lib/domain/types";
 
 function PhoneMock({ lang }: { lang: Lang }) {
@@ -96,6 +109,7 @@ const FAQ: [DictKey, DictKey][] = [
 ];
 
 const PLAN: DictKey[] = ["l_plan1", "l_plan2", "l_plan3", "l_plan4", "l_plan5", "l_plan6"];
+const CLINIC_PLAN: DictKey[] = ["pl_clinic1", "pl_clinic2", "pl_clinic3", "pl_clinic4"];
 
 export default async function Home() {
   const lang = await getLang();
@@ -103,7 +117,10 @@ export default async function Home() {
   const showDemo = !process.env.DATABASE_URL;
   const price = priceDzd();
   const yearPrice = yearPriceDzd();
-  const savePct = Math.max(0, Math.round((1 - yearPriceNumber() / (priceNumber() * 12)) * 100));
+  const clinicPrice = clinicPriceDzd();
+  const clinicYearPrice = clinicYearPriceDzd();
+  const savePct = yearSavePct(priceNumber(), yearPriceNumber());
+  const clinicSavePct = yearSavePct(clinicPriceNumber(), clinicYearPriceNumber());
 
   return (
     <div className="bg-mesh min-h-dvh">
@@ -239,12 +256,16 @@ export default async function Home() {
         <section id="pricing" className="scroll-mt-20 border-y border-slate-200/70 bg-white py-16">
           <div className="mx-auto max-w-6xl px-4">
             <SectionTitle center eyebrow={t(lang, "l_priceEyebrow")} title={t(lang, "l_priceTitle")} sub={t(lang, "l_priceSub")} />
-            <div className="mx-auto mt-10 max-w-md rounded-[2rem] bg-ink p-1.5 shadow-(--shadow-lift)">
-              <div className="rounded-[1.6rem] bg-white p-7">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold">{t(lang, "l_planName")}</span>
+            <div className="mx-auto mt-10 grid max-w-5xl items-stretch gap-5 md:grid-cols-2">
+              {/* Cabinet — طبيب واحد */}
+              <div className="flex flex-col rounded-[2rem] bg-white p-7 ring-1 ring-slate-200" data-testid="plan-cabinet">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 font-bold">
+                    <Stethoscope size={20} className="text-brand-600" /> {t(lang, "pl_cabinet")}
+                  </span>
                   <Chip tone="green">{t(lang, "l_planTrial")}</Chip>
                 </div>
+                <p className="mt-1 text-sm text-slate-500">{t(lang, "pl_cabinetSub")}</p>
                 <div className="mt-5 flex items-end gap-2">
                   <span className="num text-5xl font-bold tracking-tight" dir="ltr">{price}</span>
                   <span className="mb-1.5 text-slate-500">{t(lang, "l_perMonth")}</span>
@@ -255,14 +276,49 @@ export default async function Home() {
                   {savePct > 0 && <span className="num ms-1.5 inline-block rounded-full bg-brand-600 px-2 py-0.5 text-xs text-white" dir="ltr">−{savePct}%</span>}
                 </p>
                 <p className="mt-2 text-sm text-slate-500">{t(lang, "l_noCommission")}</p>
-                <ul className="mt-6 space-y-2.5">
+                <ul className="mt-6 flex-1 space-y-2.5">
                   {PLAN.map((k) => (
                     <li key={k} className="flex items-center gap-2.5 text-slate-700">
                       <Check size={18} className="shrink-0 text-brand-600" /> {t(lang, k)}
                     </li>
                   ))}
                 </ul>
-                <Link href="/new" className="btn-primary mt-7 w-full text-lg">{t(lang, "l_ctaStart")}</Link>
+                <Link href="/new" className="btn-secondary mt-7 w-full text-lg">{t(lang, "l_ctaStart")}</Link>
+              </div>
+
+              {/* Clinique — عدّة أطبّاء، اشتراك واحد */}
+              <div className="relative rounded-[2rem] bg-ink p-1.5 shadow-(--shadow-lift)" data-testid="plan-clinic">
+                <span className="absolute -top-3 z-10 rounded-full bg-brand-600 px-3 py-1 text-xs font-bold text-white ltr:right-6 rtl:left-6">
+                  {t(lang, "pl_clinicBadge")}
+                </span>
+                <div className="flex h-full flex-col rounded-[1.6rem] bg-white p-7">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2 font-bold">
+                      <Building2 size={20} className="text-brand-600" /> {t(lang, "pl_clinic")}
+                    </span>
+                    <Chip tone="green">{t(lang, "l_planTrial")}</Chip>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-500">{t(lang, "pl_clinicSub")}</p>
+                  <div className="mt-5 flex items-end gap-2">
+                    <span className="num text-5xl font-bold tracking-tight" dir="ltr">{clinicPrice}</span>
+                    <span className="mb-1.5 text-slate-500">{t(lang, "l_perMonth")}</span>
+                  </div>
+                  <p className="mt-2 rounded-xl bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-800">
+                    {t(lang, "l_orYear")}
+                    <span className="num" dir="ltr">{clinicYearPrice}</span> {t(lang, "l_perYear")}
+                    {clinicSavePct > 0 && <span className="num ms-1.5 inline-block rounded-full bg-brand-600 px-2 py-0.5 text-xs text-white" dir="ltr">−{clinicSavePct}%</span>}
+                  </p>
+                  <p className="mt-2 text-sm text-slate-500">{t(lang, "l_noCommission")}</p>
+                  <p className="mt-6 text-sm font-semibold text-slate-500">{t(lang, "pl_clinicPlus")}</p>
+                  <ul className="mt-2.5 flex-1 space-y-2.5">
+                    {CLINIC_PLAN.map((k) => (
+                      <li key={k} className="flex items-center gap-2.5 text-slate-700">
+                        <Check size={18} className="shrink-0 text-brand-600" /> {t(lang, k, { max: MAX_DOCTORS })}
+                      </li>
+                    ))}
+                  </ul>
+                  <Link href="/new?type=clinic" className="btn-primary mt-7 w-full text-lg">{t(lang, "pl_clinicCta")}</Link>
+                </div>
               </div>
             </div>
           </div>

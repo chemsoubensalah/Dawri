@@ -9,6 +9,7 @@ import { averageServiceMinutes, currentTicket, lineup, planTick, project } from 
 import { DomainError, type Shop, type ShopKind, type ShopProfile, type ShopSettings, type Ticket } from "../domain/types";
 import { dayKey, isWithinHours, localTime, minutesBetween, nextOpeningToday } from "../domain/time";
 import { isWilaya } from "../domain/wilayas";
+import { isSubscriptionActive } from "../domain/subscription";
 import { now as clockNow } from "./clock";
 import { getDb, type Q, type Row } from "./db";
 import * as repo from "./repo";
@@ -28,10 +29,6 @@ export interface ReviewSettings {
 export interface RatingSummary {
   avg: number;
   count: number;
-}
-
-function isSubscriptionActive(shop: Shop, now: Date): boolean {
-  return now.getTime() < Math.max(shop.trialEndsAt.getTime(), shop.paidUntil?.getTime() ?? 0);
 }
 
 /** ينظّف التعليق: يحذف رموز التحكّم والاتّجاه الخفيّة، ويضغط المسافات. */
@@ -265,7 +262,8 @@ export async function directory(input: { q?: unknown; wilaya?: unknown; page?: u
   const db = await getDb();
   const now = clockNow();
   const params: unknown[] = [now];
-  const where = ["rs.listed", "greatest(s.trial_ends_at, coalesce(s.paid_until, s.trial_ends_at)) > $1"];
+  // الاشتراك الفعلي: الخاصّ أو اشتراك العيادة متعدّدة الأطبّاء (شرط مشترك مع التقارير)
+  const where = ["rs.listed", repo.activeShopSql("$1")];
   if (wilaya) {
     params.push(wilaya);
     where.push(`s.wilaya = $${params.length}`);
@@ -282,7 +280,7 @@ export async function directory(input: { q?: unknown; wilaya?: unknown; page?: u
   const total = Number(countRows[0]?.n ?? 0);
   params.push(size, (page - 1) * size);
   const shopRows = await db.query<Row>(
-    `select s.*, rs.public as rating_public from shops s join review_settings rs on rs.shop_id = s.id
+    `select ${repo.SHOP_COLS}, rs.public as rating_public from ${repo.SHOP_FROM} join review_settings rs on rs.shop_id = s.id
       where ${where.join(" and ")}
       order by s.name, s.id limit $${params.length - 1} offset $${params.length}`,
     params,

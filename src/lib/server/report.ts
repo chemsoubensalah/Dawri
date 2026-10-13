@@ -259,14 +259,14 @@ export async function sendDailyReports(opts: ReportRunOptions = {}) {
   if (!mailer) return { day, days, sent: 0, failed: 0, pending: 0, skipped: "no_mailer" as const };
   const staleBefore = new Date(now.getTime() - REPORT_CLAIM_STALE_MS);
   const rows = await db.query(
-    `select s.*, d.day as report_day
-       from shops s
+    `select ${repo.SHOP_COLS}, d.day as report_day
+       from ${repo.SHOP_FROM}
       cross join unnest($1::text[]) as d(day)
        left join report_settings r on r.shop_id = s.id
        left join report_log l on l.shop_id = s.id and l.day = d.day
       where s.owner_email is not null
         and coalesce(r.daily, true)
-        and greatest(s.trial_ends_at, coalesce(s.paid_until, s.trial_ends_at)) > $2
+        and ${repo.activeShopSql("$2")}
         and exists (select 1 from tickets t where t.shop_id = s.id and t.day = d.day)
         and (l.shop_id is null or (l.sent_at is null and l.claimed_at < $3))
       order by d.day desc, s.created_at

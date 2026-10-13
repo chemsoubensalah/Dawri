@@ -49,7 +49,38 @@ export function rowToShop(r: Row): Shop {
     assistantVersion: r.assistant_version == null ? 1 : Number(r.assistant_version),
     clinicId: r.clinic_id == null ? null : String(r.clinic_id),
     room: (r.room as string | null) ?? null,
+    clinicUntil: r.clinic_id == null ? null : d(r.clinic_until),
+    clinicName: r.clinic_id == null ? null : ((r.clinic_name as string | null) ?? null),
+    clinicSlug: r.clinic_id == null ? null : ((r.clinic_slug as string | null) ?? null),
   };
+}
+
+// ——— الاشتراك الفعلي في SQL (المصدر الوحيد: src/lib/domain/subscription.ts) ———
+
+/**
+ * أعمدة الطابور + اشتراك عيادته (للتحويل بـ rowToShop). يُستعمل مع SHOP_FROM:
+ *   select ${SHOP_COLS} from ${SHOP_FROM} where …
+ */
+/**
+ * نهاية تغطية العيادة لطابور عضو فيها (SQL). المدّة المدفوعة للعيادة تغطّي كلّ أعضائها؛
+ * أمّا تجربتها المجّانية فلا تغطّي إلا الطوابير التي أُنشئت بعد العيادة (أُضيفت داخلها) —
+ * كي لا يُحيي طبيبٌ انتهى اشتراكه طابورَه القديم بإنشاء عيادة جديدة (تجربة جديدة) ثمّ الانضمام إليها، مراراً.
+ * greatest() في Postgres يتجاهل null؛ النتيجة null = لا تغطية.
+ */
+export function clinicCoverSql(shop: string, clinic: string): string {
+  return `greatest(${clinic}.paid_until, case when ${shop}.created_at >= ${clinic}.created_at then ${clinic}.trial_ends_at end)`;
+}
+
+export const SHOP_COLS = `s.*, ${clinicCoverSql("s", "sc")} as clinic_until, sc.name as clinic_name, sc.slug as clinic_slug`;
+export const SHOP_FROM = "shops s left join clinics sc on sc.id = s.clinic_id";
+
+/**
+ * شرط SQL: اشتراك الطابور الفعلي سارٍ عند `now` (اشتراكه الخاصّ أو اشتراك عيادته).
+ * greatest() في Postgres يتجاهل null. `alias` = اسم جدول shops في الاستعلام.
+ */
+export function activeShopSql(now: string, alias = "s"): string {
+  return `(greatest(${alias}.trial_ends_at, ${alias}.paid_until) > ${now}
+    or exists (select 1 from clinics xc where xc.id = ${alias}.clinic_id and ${clinicCoverSql(alias, "xc")} > ${now}))`;
 }
 
 export function rowToTicket(r: Row): Ticket {
@@ -99,12 +130,12 @@ const PATCH_COLUMNS: Record<keyof TicketPatch, string> = {
 // ——— المحلّات ———
 
 export async function getShopBySlug(q: Q, slug: string): Promise<Shop | null> {
-  const rows = await q.query("select * from shops where slug = $1", [slug]);
+  const rows = await q.query(`select ${SHOP_COLS} from ${SHOP_FROM} where s.slug = $1`, [slug]);
   return rows[0] ? rowToShop(rows[0]) : null;
 }
 
 export async function getShopById(q: Q, id: string): Promise<Shop | null> {
-  const rows = await q.query("select * from shops where id = $1", [id]);
+  const rows = await q.query(`select ${SHOP_COLS} from ${SHOP_FROM} where s.id = $1`, [id]);
   return rows[0] ? rowToShop(rows[0]) : null;
 }
 
@@ -603,6 +634,9 @@ export async function purgeWa(q: Q, before: Date) {
 
 export interface Payment {
   id: number;
+  /** الدافع: طابور (طبيب واحد) أو عيادة متعدّدة الأطبّاء — واحد فقط (قيد payments_one_payer) */
+  shopId: string | null;
+  clinicId: string | null;
   provider: "chargily" | "manual";
   checkoutId: string | null;
   amount: number;
@@ -613,9 +647,11 @@ export interface Payment {
   paidAt: Date | null;
 }
 
-function rowToPayment(r: Row): Payment {
+export function rowToPayment(r: Row): Payment {
   return {
     id: Number(r.id),
+    shopId: r.shop_id == null ? null : String(r.shop_id),
+    clinicId: r.clinic_id == null ? null : String(r.clinic_id),
     provider: r.provider as Payment["provider"],
     checkoutId: r.checkout_id == null ? null : String(r.checkout_id),
     amount: Number(r.amount),
@@ -629,23 +665,31 @@ function rowToPayment(r: Row): Payment {
 
 export async function insertPayment(
   q: Q,
-  p: { shopId: string; provider: Payment["provider"]; checkoutId: string | null; amount: number; months: number; status: Payment["status"]; note?: string | null; now: Date },
+  p: ({ shopId: string; clinicId?: null } | { clinicId: string; shopId?: null }) & {
+    provider: Payment["provider"];
+    checkoutId: string | null;
+    amount: number;
+    months: number;
+    status: Payment["status"];
+    note?: string | null;
+    now: Date;
+  },
 ) {
   const rows = await q.query(
-    `insert into payments (shop_id, provider, checkout_id, amount, months, status, note, created_at, paid_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8, case when $6 = 'paid' then $8::timestamptz else null end) returning *`,
-    [p.shopId, p.provider, p.checkoutId, p.amount, p.months, p.status, p.note ?? null, p.now],
+    `insert into payments (shop_id, clinic_id, provider, checkout_id, amount, months, status, note, created_at, paid_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9, case when $7 = 'paid' then $9::timestamptz else null end) returning *`,
+    [p.shopId ?? null, p.clinicId ?? null, p.provider, p.checkoutId, p.amount, p.months, p.status, p.note ?? null, p.now],
   );
   return rowToPayment(rows[0]);
 }
 
 /** يعلّم الدفع «مدفوعاً» مرّة واحدة فقط؛ يُرجع الصفّ إن تغيّر الآن. */
-export async function markPaymentPaid(q: Q, checkoutId: string, now: Date): Promise<(Payment & { shopId: string }) | null> {
+export async function markPaymentPaid(q: Q, checkoutId: string, now: Date): Promise<Payment | null> {
   const rows = await q.query(
     "update payments set status = 'paid', paid_at = $2 where checkout_id = $1 and status <> 'paid' returning *",
     [checkoutId, now],
   );
-  return rows[0] ? { ...rowToPayment(rows[0]), shopId: String(rows[0].shop_id) } : null;
+  return rows[0] ? rowToPayment(rows[0]) : null;
 }
 
 export async function markPaymentFailed(q: Q, checkoutId: string) {
@@ -670,8 +714,8 @@ export async function extendSubscription(q: Q, shopId: string, months: number, n
 
 export async function listShopsAdmin(q: Q, since: Date) {
   const rows = await q.query(
-    `select s.*, (select count(*)::int from tickets t where t.shop_id = s.id and t.created_at >= $1) as tickets_30d
-     from shops s order by s.created_at desc limit 500`,
+    `select ${SHOP_COLS}, (select count(*)::int from tickets t where t.shop_id = s.id and t.created_at >= $1) as tickets_30d
+     from ${SHOP_FROM} order by s.created_at desc limit 500`,
     [since],
   );
   return rows.map((r) => ({ ...rowToShop(r), tickets30d: Number(r.tickets_30d) }));

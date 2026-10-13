@@ -28,7 +28,8 @@ export default function AdminLogin() {
   );
 }
 
-export function ExtendForm({ shopId, price, yearPrice }: { shopId: string; price: number; yearPrice: number }) {
+/** تفعيل يدوي: طابور طبيب واحد (shopId) أو عيادة متعدّدة الأطبّاء (clinicId) — المبلغ الافتراضي حسب خطّتها. */
+export function ExtendForm({ shopId, clinicId, price, yearPrice }: { shopId?: string; clinicId?: string; price: number; yearPrice: number }) {
   const [months, setMonths] = useState(1);
   const [amount, setAmount] = useState(price);
   const [note, setNote] = useState("");
@@ -40,7 +41,7 @@ export function ExtendForm({ shopId, price, yearPrice }: { shopId: string; price
         e.preventDefault();
         if (!confirm(`+${months} ?`)) return;
         try {
-          await api("/api/admin/extend", { shopId, months, amount, note });
+          await api("/api/admin/extend", clinicId ? { clinicId, months, amount, note } : { shopId, months, amount, note });
           location.reload();
         } catch {
           setMsg("✗");

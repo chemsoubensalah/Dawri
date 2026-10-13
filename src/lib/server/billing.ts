@@ -4,13 +4,18 @@
  * لا نثق بصفحة النجاح: التفعيل فقط عند حدث checkout.paid الموقَّع.
  *
  * المتغيّرات: CHARGILY_SECRET_KEY (test_sk_… أو مفتاح live)، CHARGILY_API_BASE (اختياري).
+ *
+ * خطّتان منفصلتان: طابور طبيب واحد (shop) أو عيادة متعدّدة الأطبّاء (clinic، أغلى، اشتراك واحد لكلّ أطبّائها).
+ * صفّ payments يحمل shop_id أو clinic_id (واحد فقط)؛ الـwebhook يمدّد الدافع المعنيّ.
  */
 import crypto from "node:crypto";
 import { DomainError, type Lang, type Shop } from "../domain/types";
-import { priceNumber, yearPriceNumber } from "../pricing";
+import { clinicPriceNumber, clinicYearPriceNumber, priceNumber, yearPriceNumber, type PlanKind } from "../pricing";
 import { now as clockNow } from "./clock";
 import { getDb } from "./db";
 import * as repo from "./repo";
+import * as crepo from "./clinicsRepo";
+import type { Clinic } from "./clinicsRepo";
 import { rewardReferrerOnPayment } from "./referral";
 
 export function chargilyConfig() {
@@ -21,12 +26,32 @@ export function chargilyConfig() {
   return { secret, base: base.replace(/\/$/, ""), enabled: Boolean(secret), test: secret.startsWith("test_") };
 }
 
-/** الخطط: شهري، أو سنوي بسعر مخفّض. */
-export function plans() {
-  return [
-    { months: 1, amount: priceNumber() },
-    { months: 12, amount: yearPriceNumber() },
-  ];
+/** الخطط: شهري، أو سنوي بسعر مخفّض — لطبيب واحد (cabinet) أو لعيادة متعدّدة الأطبّاء (clinic). */
+export function plans(kind: PlanKind = "cabinet") {
+  return kind === "clinic"
+    ? [
+        { months: 1, amount: clinicPriceNumber() },
+        { months: 12, amount: clinicYearPriceNumber() },
+      ]
+    : [
+        { months: 1, amount: priceNumber() },
+        { months: 12, amount: yearPriceNumber() },
+      ];
+}
+
+/** سعر تفعيل يدوي لمدّة ما (12 شهراً = السعر السنوي). */
+export function defaultAmount(kind: PlanKind, months: number): number {
+  const [m, y] = plans(kind);
+  return months === 12 ? y.amount : m.amount * months;
+}
+
+/**
+ * مرجع التحويل اليدوي (BaridiMob/CCP) الذي يكتبه الدافع ليطابقه المؤسّس في /admin.
+ * الشَّرطة السفلية «_» لا تظهر أبداً في slug ([a-z0-9-])، فلا يلتبس مرجع عيادة بمرجع طابور
+ * (مثلاً عيادة «nour» وطابور «c-nour» أو «clinic-nour»).
+ */
+export function paymentReference(kind: "cabinet" | "clinic", slug: string): string {
+  return kind === "clinic" ? `DAWRI-CLINIC_${slug.toUpperCase()}` : `DAWRI-${slug.toUpperCase()}`;
 }
 
 export function manualPayment() {
@@ -46,22 +71,31 @@ export function setChargilyFetch(f: Fetcher | undefined) {
   g.__dawriChargilyFetch = f;
 }
 
-export async function createCheckout(shop: Shop, months: number, lang: Lang, baseUrl: string): Promise<{ url: string }> {
+interface CheckoutTarget {
+  payer: { shopId: string } | { clinicId: string };
+  kind: PlanKind;
+  /** مسار صفحة الاشتراك (للعودة بعد الدفع) */
+  returnPath: string;
+  label: string;
+  metadata: Record<string, string>;
+}
+
+async function startCheckout(target: CheckoutTarget, months: number, lang: Lang, baseUrl: string): Promise<{ url: string }> {
   const c = chargilyConfig();
   if (!c.enabled) throw new DomainError("payments_unavailable", 503);
-  const plan = plans().find((p) => p.months === months);
+  const plan = plans(target.kind).find((p) => p.months === months);
   if (!plan) throw new DomainError("invalid_plan");
   const body = {
     amount: plan.amount,
     currency: "dzd",
     payment_method: "edahabia",
-    success_url: `${baseUrl}/staff/${shop.slug}/billing?paid=1`,
-    failure_url: `${baseUrl}/staff/${shop.slug}/billing?failed=1`,
+    success_url: `${baseUrl}${target.returnPath}?paid=1`,
+    failure_url: `${baseUrl}${target.returnPath}?failed=1`,
     webhook_endpoint: `${baseUrl}/api/billing/chargily`,
-    description: `Dawri — ${shop.name} — ${months} mois`,
+    description: `Dawri — ${target.label} — ${months} mois`,
     locale: lang,
     chargily_pay_fees_allocation: "merchant",
-    metadata: { shop_id: shop.id, months: String(months) },
+    metadata: { ...target.metadata, months: String(months) },
   };
   const res = await (g.__dawriChargilyFetch ?? fetch)(`${c.base}/checkouts`, {
     method: "POST",
@@ -76,7 +110,7 @@ export async function createCheckout(shop: Shop, months: number, lang: Lang, bas
   if (!data.id || !data.checkout_url) throw new DomainError("payment_failed", 502);
   const db = await getDb();
   await repo.insertPayment(db, {
-    shopId: shop.id,
+    ...target.payer,
     provider: "chargily",
     checkoutId: data.id,
     amount: plan.amount,
@@ -85,6 +119,39 @@ export async function createCheckout(shop: Shop, months: number, lang: Lang, bas
     now: clockNow(),
   });
   return { url: data.checkout_url };
+}
+
+/** صفحة دفع لطابور طبيب واحد (سعر cabinet). */
+export async function createCheckout(shop: Shop, months: number, lang: Lang, baseUrl: string): Promise<{ url: string }> {
+  // طابور داخل عيادة متعدّدة الأطبّاء: يمكنه الدفع لنفسه (يبقى له حين يغادر)، بسعر الطبيب الواحد
+  return startCheckout(
+    {
+      payer: { shopId: shop.id },
+      kind: "cabinet",
+      returnPath: `/staff/${shop.slug}/billing`,
+      label: shop.name,
+      metadata: { shop_id: shop.id },
+    },
+    months,
+    lang,
+    baseUrl,
+  );
+}
+
+/** صفحة دفع لعيادة متعدّدة الأطبّاء (سعر clinic، يغطّي كلّ أطبّائها). */
+export async function createClinicCheckout(clinic: Clinic, months: number, lang: Lang, baseUrl: string): Promise<{ url: string }> {
+  return startCheckout(
+    {
+      payer: { clinicId: clinic.id },
+      kind: "clinic",
+      returnPath: `/c/${clinic.slug}/manage/billing`,
+      label: `Clinique ${clinic.name}`,
+      metadata: { clinic_id: clinic.id },
+    },
+    months,
+    lang,
+    baseUrl,
+  );
 }
 
 /** ترويسة `signature` = HMAC-SHA256 للجسم الخام بالمفتاح السرّي (hex). */
@@ -110,6 +177,12 @@ export async function handleChargilyEvent(event: { type?: string; data?: { id?: 
       if (typeof event.data?.amount === "number" && event.data.amount < p.amount) {
         throw new Error(`chargily amount mismatch for ${id}`);
       }
+      if (p.clinicId) {
+        // اشتراك العيادة: لا مكافأة «ادعُ زميلاً» (الإحالات مرتبطة بطابور طبيب، لا بعيادة)
+        const until = await crepo.extendClinicSubscription(q, p.clinicId, p.months, now);
+        return { ...p, until };
+      }
+      if (!p.shopId) throw new Error(`payment ${p.id} has no payer`);
       const until = await repo.extendSubscription(q, p.shopId, p.months, now);
       await rewardReferrerOnPayment(q, p.shopId, now); // «ادعُ زميلاً»: أوّل دفعة فقط
       return { ...p, until };
@@ -132,5 +205,19 @@ export async function recordManualPayment(shopId: string, months: number, amount
     const until = await repo.extendSubscription(q, shopId, months, now);
     if (amount > 0) await rewardReferrerOnPayment(q, shopId, now); // «ادعُ زميلاً»: دفعة حقيقية فقط
     return until;
+  });
+}
+
+/** تفعيل يدوي لعيادة متعدّدة الأطبّاء (تحويل بريدي) — من لوحة الإدارة. بلا مكافأة إحالة. */
+export async function recordManualClinicPayment(clinicId: string, months: number, amount: number, note: string | null) {
+  if (!Number.isInteger(months) || months < 1 || months > 24) throw new DomainError("invalid_plan");
+  if (!Number.isInteger(amount) || amount < 0) throw new DomainError("invalid_plan");
+  if (!/^[0-9a-f-]{36}$/i.test(clinicId)) throw new DomainError("clinic_not_found", 404);
+  const db = await getDb();
+  const now = clockNow();
+  return db.tx(async (q) => {
+    if (!(await crepo.getClinicById(q, clinicId))) throw new DomainError("clinic_not_found", 404);
+    await repo.insertPayment(q, { clinicId, provider: "manual", checkoutId: null, amount, months, status: "paid", note, now });
+    return crepo.extendClinicSubscription(q, clinicId, months, now);
   });
 }

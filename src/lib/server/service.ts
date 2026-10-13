@@ -42,6 +42,7 @@ import {
   type WeeklyHours,
 } from "../domain/types";
 import { aheadText, errorText, isLang, t } from "../i18n";
+import { coveredByClinic, isSubscriptionActive, subscriptionUntil } from "../domain/subscription";
 import { hashCode, hashPin, isValidPin, randomDigits, randomToken, safeEqual, signSession, verifyPin } from "./auth";
 import { now as clockNow } from "./clock";
 import { getDb, type Q } from "./db";
@@ -71,10 +72,11 @@ export const TICKET_RETENTION_DAYS = 30;
 
 // ————————————————————————— أدوات مشتركة —————————————————————————
 
-export function isSubscriptionActive(shop: Shop, now: Date): boolean {
-  const until = Math.max(shop.trialEndsAt.getTime(), shop.paidUntil?.getTime() ?? 0);
-  return now.getTime() < until;
-}
+/**
+ * الاشتراك الفعلي: الخاصّ بالطابور أو اشتراك عيادته متعدّدة الأطبّاء (المصدر الوحيد في domain/subscription).
+ * يتطلّب Shop محمَّلاً من repo (getShopBySlug/ById…) كي يحمل clinicUntil.
+ */
+export { isSubscriptionActive };
 
 function demoMode() {
   return process.env.DAWRI_DEMO === "1" || !process.env.DATABASE_URL;
@@ -783,6 +785,18 @@ export async function staffState(shop: Shop) {
       trialEndsAt: shop.trialEndsAt.toISOString(),
       paidUntil: shop.paidUntil?.toISOString() ?? null,
       active: isSubscriptionActive(shop, now),
+      /** نهاية الاشتراك الفعلي (الخاصّ أو اشتراك العيادة) */
+      until: subscriptionUntil(shop).toISOString(),
+      /** عضو في عيادة متعدّدة الأطبّاء: اشتراكها يغطّي هذا الطابور (covers = سارٍ الآن) */
+      clinic:
+        shop.clinicId && shop.clinicSlug
+          ? {
+              name: shop.clinicName ?? shop.clinicSlug,
+              slug: shop.clinicSlug,
+              until: shop.clinicUntil?.toISOString() ?? null,
+              covers: coveredByClinic(shop, now),
+            }
+          : null,
       noShowLimit: shop.settings.noShowLimit,
       callGraceMin: shop.settings.callGraceMin,
       profileComplete: Boolean(shop.profile.address || shop.profile.phone || shop.profile.doctorName),

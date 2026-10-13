@@ -97,7 +97,18 @@ export function privacyContent(lang: Lang) {
   };
 }
 
-export function termsContent(lang: Lang, price: string, yearPrice: string) {
+export interface TermsPrices {
+  /** طبيب واحد (cabinet) */
+  price: string;
+  yearPrice: string;
+  /** عيادة متعدّدة الأطبّاء (clinique، حتى maxDoctors أطبّاء باشتراك واحد) */
+  clinicPrice: string;
+  clinicYearPrice: string;
+  /** حدّ أطبّاء خطّة العيادة (MAX_DOCTORS) */
+  maxDoctors: number;
+}
+
+export function termsContent(lang: Lang, { price, yearPrice, clinicPrice, clinicYearPrice, maxDoctors }: TermsPrices) {
   const c = contactLine(lang);
   if (lang === "fr") {
     return {
@@ -106,7 +117,7 @@ export function termsContent(lang: Lang, price: string, yearPrice: string) {
       intro: "En créant un espace cabinet sur Dawri, vous acceptez les conditions suivantes. Elles sont courtes et claires, comme le service.",
       sections: [
         { h: "1. Le service", p: ["Dawri fournit une file d'attente en ligne : prise de numéro par QR code ou lien, écran de la secrétaire, écran de salle d'attente, notifications aux patients et statistiques. Dawri n'est pas un dispositif médical et ne traite aucune donnée médicale."] },
-        { h: "2. Essai et abonnement", p: [[`Les 2 premiers mois sont gratuits, sans carte bancaire.`, `Ensuite : ${price} par mois ou ${yearPrice} par an, sans commission par patient.`, "Sans paiement à la fin de la période, les patients ne peuvent plus prendre de numéro en ligne ; vos données restent conservées et l'accès revient dès le paiement.", "Aucun engagement : vous pouvez arrêter à tout moment."]] },
+        { h: "2. Essai et abonnement", p: [[`Les 2 premiers mois sont gratuits, sans carte bancaire.`, `Ensuite, formule Cabinet (un médecin) : ${price} par mois ou ${yearPrice} par an.`, `Formule Clinique (centre jusqu'à ${maxDoctors} médecins, un seul abonnement pour tout le centre, réglé par le gestionnaire) : ${clinicPrice} par mois ou ${clinicYearPrice} par an. Un médecin qui quitte le centre revient à son abonnement personnel.`, "Aucune commission par patient.", "Sans paiement à la fin de la période, les patients ne peuvent plus prendre de numéro en ligne ; vos données restent conservées et l'accès revient dès le paiement.", "Aucun engagement : vous pouvez arrêter à tout moment."]] },
         { h: "3. Vos responsabilités", p: [["Garder votre code secret confidentiel et enregistrer un e-mail de récupération valide.", "Informer vos patients de l'utilisation de Dawri (l'affiche QR fournie le fait).", "Ne saisir aucune information médicale dans les noms des tickets."]] },
         { h: "4. Disponibilité", p: ["Nous faisons le maximum pour que le service fonctionne en continu, mais il dépend d'Internet et de prestataires tiers (hébergement, SMS, WhatsApp). La secrétaire peut toujours ajouter des patients manuellement en cas de problème de réseau côté patient."] },
         { h: "5. Données", p: ["Le traitement des données personnelles est décrit dans la politique de confidentialité. Vous restez propriétaire des données de votre cabinet ; sur demande, nous les supprimons."] },
@@ -120,7 +131,7 @@ export function termsContent(lang: Lang, price: string, yearPrice: string) {
     intro: "بإنشاء فضاء عيادة على «دوري» فإنّك توافق على الشروط التالية. قصيرة وواضحة، مثل الخدمة.",
     sections: [
       { h: "1. الخدمة", p: ["«دوري» يوفّر طابوراً إلكترونياً: أخذ الرقم برمز QR أو رابط، شاشة السكرتيرة، شاشة القاعة، تنبيهات المرضى والإحصاءات. «دوري» ليس جهازاً طبّياً ولا يعالج أيّ معلومة طبّية."] },
-      { h: "2. التجربة والاشتراك", p: [["أوّل شهرين مجّاناً، بلا بطاقة بنكية.", `بعدها: ${price} شهرياً أو ${yearPrice} سنوياً، بلا أيّ عمولة على المرضى.`, "إن لم يُدفع الاشتراك بعد انتهاء المدّة، يتوقّف أخذ الأرقام عبر الإنترنت؛ تبقى معطياتك محفوظة ويعود كلّ شيء فور الدفع.", "بلا التزام: تستطيع التوقّف متى شئت."]] },
+      { h: "2. التجربة والاشتراك", p: [["أوّل شهرين مجّاناً، بلا بطاقة بنكية.", `بعدها، خطّة الطبيب الواحد: ${price} شهرياً أو ${yearPrice} سنوياً.`, `خطّة العيادة متعدّدة الأطبّاء (حتى ${maxDoctors} أطبّاء باشتراك واحد للعيادة كلّها، يدفعه مديرها): ${clinicPrice} شهرياً أو ${clinicYearPrice} سنوياً. الطبيب الذي يغادر العيادة يرجع إلى اشتراكه الخاصّ.`, "بلا أيّ عمولة على المرضى.", "إن لم يُدفع الاشتراك بعد انتهاء المدّة، يتوقّف أخذ الأرقام عبر الإنترنت؛ تبقى معطياتك محفوظة ويعود كلّ شيء فور الدفع.", "بلا التزام: تستطيع التوقّف متى شئت."]] },
       { h: "3. مسؤولياتك", p: [["الحفاظ على سرّية الرمز السرّي وتسجيل بريد استعادة صحيح.", "إعلام مرضاك باستعمال «دوري» (الملصق المطبوع يفعل ذلك).", "عدم كتابة أيّ معلومة طبّية في أسماء التذاكر."]] },
       { h: "4. التوفّر", p: ["نبذل أقصى جهدنا ليعمل الدوري دون انقطاع، لكنّه يعتمد على الإنترنت وعلى مزوّدين خارجيين (الاستضافة، الرسائل، واتساب). تستطيع السكرتيرة دائماً إضافة المرضى يدوياً عند أيّ مشكلة شبكة لدى المريض."] },
       { h: "5. المعطيات", p: ["معالجة المعطيات الشخصية موضّحة في سياسة الخصوصية. تبقى أنت مالك معطيات عيادتك، ونحذفها عند الطلب."] },

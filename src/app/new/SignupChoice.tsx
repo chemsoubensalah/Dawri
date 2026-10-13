@@ -4,6 +4,7 @@ import { Building2, Stethoscope } from "lucide-react";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
+import { MAX_DOCTORS } from "@/lib/pricing";
 import NewShopForm from "./NewShopForm";
 
 function suggestSlug(name: string) {
@@ -17,8 +18,22 @@ function suggestSlug(name: string) {
 }
 
 /** «طبيب واحد» أو «عيادة بعدّة أطبّاء». */
-export default function SignupChoice({ lang, needsCode, refCode = null }: { lang: Lang; needsCode: boolean; refCode?: string | null }) {
-  const [mode, setMode] = useState<"single" | "clinic">("single");
+export default function SignupChoice({
+  lang,
+  needsCode,
+  refCode = null,
+  initialMode = "single",
+  prices,
+}: {
+  lang: Lang;
+  needsCode: boolean;
+  refCode?: string | null;
+  /** /new?type=clinic يختار «عيادة بعدّة أطبّاء» مسبقاً */
+  initialMode?: "single" | "clinic";
+  /** السعر الشهري لكلّ خطّة («1 000 DA»)، من الخادم (المتغيّرات NEXT_PUBLIC_*) */
+  prices?: { single: string; clinic: string };
+}) {
+  const [mode, setMode] = useState<"single" | "clinic">(initialMode);
   const opt = (m: typeof mode, Icon: typeof Stethoscope, title: string, sub: string) => (
     <button
       type="button"
@@ -34,15 +49,20 @@ export default function SignupChoice({ lang, needsCode, refCode = null }: { lang
       </span>
       <span className="leading-snug">
         <span className="block font-bold text-ink">{title}</span>
-        <span className="block text-xs text-slate-500">{sub}</span>
+        {prices && (
+          <span className="mt-0.5 block text-sm font-semibold text-brand-700" data-testid={`signup-price-${m}`}>
+            <span dir="ltr" className="num">{prices[m]}</span> {t(lang, "l_perMonth")}
+          </span>
+        )}
+        <span className="mt-0.5 block text-xs text-slate-500">{sub}</span>
       </span>
     </button>
   );
   return (
     <>
       <div className="mt-6 grid grid-cols-2 gap-3">
-        {opt("single", Stethoscope, t(lang, "cl_single"), t(lang, "cl_singleSub"))}
-        {opt("clinic", Building2, t(lang, "cl_multi"), t(lang, "cl_multiSub"))}
+        {opt("single", Stethoscope, t(lang, "pl_cabinet"), t(lang, "cl_singleSub"))}
+        {opt("clinic", Building2, t(lang, "pl_clinic"), t(lang, "cl_multiSub"))}
       </div>
       {mode === "single" ? <NewShopForm lang={lang} needsCode={needsCode} refCode={refCode} /> : <NewClinicForm lang={lang} needsCode={needsCode} />}
     </>
@@ -153,7 +173,7 @@ function NewClinicForm({ lang, needsCode }: { lang: Lang; needsCode: boolean }) 
       )}
       {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
       <button className="btn-primary w-full text-lg" disabled={busy}>{busy ? "…" : t(lang, "cl_create")}</button>
-      <p className="text-center text-xs leading-relaxed text-slate-500">{t(lang, "cl_trialNote")}</p>
+      <p className="text-center text-xs leading-relaxed text-slate-500">{t(lang, "cl_trialNote", { max: MAX_DOCTORS })}</p>
     </form>
   );
 }

@@ -189,6 +189,13 @@ export interface Shop {
   assistantVersion?: number;
   clinicId?: string | null;
   room?: string | null;
+  /**
+   * اشتراك العيادة التي ينتمي إليها الطابور (014_clinic_billing) — يُحمَّل بـ LEFT JOIN في repo:
+   * paid_until للعيادة، وتجربتها فقط إن أُنشئ الطابور بعد العيادة (repo.clinicCoverSql). انظر src/lib/domain/subscription.ts.
+   */
+  clinicUntil?: Date | null;
+  clinicName?: string | null;
+  clinicSlug?: string | null;
 }
 
 export interface ShopProfile {

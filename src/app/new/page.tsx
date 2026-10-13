@@ -6,12 +6,15 @@ import { t, type DictKey } from "@/lib/i18n";
 import { getLang } from "@/lib/server/http";
 import SignupChoice from "./SignupChoice";
 import { normalizeRefCode } from "@/lib/server/referral";
+import { clinicPriceDzd, priceDzd } from "@/lib/pricing";
 
 export const metadata = { title: "عيادة جديدة" };
 
-export default async function NewShop({ searchParams }: { searchParams: Promise<{ ref?: string | string[] }> }) {
+export default async function NewShop({ searchParams }: { searchParams: Promise<{ ref?: string | string[]; type?: string | string[] }> }) {
   const lang = await getLang();
-  const refCode = normalizeRefCode((await searchParams).ref);
+  const sp = await searchParams;
+  const refCode = normalizeRefCode(sp.ref);
+  const initialMode = sp.type === "clinic" ? "clinic" : "single";
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[1fr_1.1fr]">
       <aside className="relative hidden overflow-hidden bg-ink p-10 text-white lg:flex lg:flex-col lg:justify-between">
@@ -38,7 +41,13 @@ export default async function NewShop({ searchParams }: { searchParams: Promise<
         <div className="mx-auto w-full max-w-lg flex-1 px-4 pb-12">
           <h2 className="text-3xl font-bold">{t(lang, "newTitle")}</h2>
           <p className="mt-1 text-slate-600">{t(lang, "nw_sub")}</p>
-          <SignupChoice lang={lang} needsCode={Boolean(process.env.SIGNUP_CODE)} refCode={refCode} />
+          <SignupChoice
+            lang={lang}
+            needsCode={Boolean(process.env.SIGNUP_CODE)}
+            refCode={refCode}
+            initialMode={initialMode}
+            prices={{ single: priceDzd(), clinic: clinicPriceDzd() }}
+          />
           <p className="mt-6 text-center text-sm text-slate-600">
             {t(lang, "nw_haveClinic")}{" "}
             <Link href="/login" className="font-semibold text-brand-700 hover:underline">{t(lang, "l_login")}</Link>
