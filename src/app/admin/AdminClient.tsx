@@ -85,3 +85,35 @@ export function ResetPinButton({ shopId }: { shopId: string }) {
     </button>
   );
 }
+
+/** اختبار البريد: يرسل رسالة تجريبية ويعرض سبب الفشل كما يردّه Brevo. */
+export function TestEmail() {
+  const [to, setTo] = useState("");
+  const [out, setOut] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <form
+      className="card space-y-2 p-4"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setOut("");
+        try {
+          const r = await api<{ ok: boolean; error?: string; config: Record<string, unknown> }>("/api/admin/test-email", { to });
+          setOut(r.ok ? `✓ أُرسلت — افحص البريد (وSpam).\n${JSON.stringify(r.config)}` : `✗ ${r.error}\n${JSON.stringify(r.config)}`);
+        } catch {
+          setOut("✗");
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <h2 className="font-bold">اختبار البريد · Test e-mail</h2>
+      <div className="flex flex-wrap gap-2">
+        <input className="input max-w-xs flex-1" dir="ltr" type="email" required value={to} onChange={(e) => setTo(e.target.value)} placeholder="you@gmail.com" />
+        <button className="btn-primary btn-sm" disabled={busy}>{busy ? "…" : "إرسال"}</button>
+      </div>
+      {out && <pre className="overflow-x-auto rounded-lg bg-slate-50 p-3 text-xs whitespace-pre-wrap" dir="ltr" data-testid="test-email-out">{out}</pre>}
+    </form>
+  );
+}

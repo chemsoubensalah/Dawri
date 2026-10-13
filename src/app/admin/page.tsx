@@ -10,7 +10,7 @@ import { paymentReference } from "@/lib/server/billing";
 import { coveredByClinic, isSubscriptionActive, subscriptionStatus } from "@/lib/domain/subscription";
 import { clinicPriceNumber, clinicYearPriceNumber, priceNumber, yearPriceNumber } from "@/lib/pricing";
 import { adminStats } from "@/lib/server/analytics";
-import AdminLogin, { ExtendForm, ResetPinButton } from "./AdminClient";
+import AdminLogin, { ExtendForm, ResetPinButton, TestEmail } from "./AdminClient";
 import StatsView from "./StatsView";
 
 export const metadata = { title: "Admin", robots: { index: false } };
@@ -69,6 +69,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           <StatsView s={stats} subs={subs} />
         ) : (
           <>
+            <TestEmail />
           <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               ["العيادات", shops.length],
