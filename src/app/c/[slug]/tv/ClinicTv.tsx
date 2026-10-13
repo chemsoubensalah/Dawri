@@ -118,7 +118,7 @@ export default function ClinicTv({ lang, initial, qr }: { lang: Lang; initial: C
               <div className="flex flex-1 flex-col items-center justify-center py-4">
                 <p className="text-sm tracking-wide text-slate-400">{t(lang, "cl_nowServing")}</p>
                 <p className={`num leading-none font-black ${big} ${off ? "text-slate-600" : "text-white"}`} dir="ltr">
-                  {d.currentNumber ?? "—"}
+                  {d.currentNumber ?? <span className="text-[0.35em] font-bold text-slate-600">· · ·</span>}
                 </p>
                 {off && <p className="mt-2 text-base font-semibold text-amber-300/90">{t(lang, `cl_st_${d.status}`)}</p>}
               </div>

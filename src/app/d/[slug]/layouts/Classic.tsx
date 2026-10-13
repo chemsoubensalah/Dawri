@@ -134,7 +134,7 @@ function makeClassic(skin: ClassicSkin) {
               data-testid="display-number"
               className={`flex aspect-square w-[min(62vw,46vh,26rem)] animate-pop items-center justify-center rounded-full ring-[10px] ${k.ball}`}
             >
-              <span className="num text-[min(34vw,25vh,14rem)] leading-none font-bold">{v.currentNumber ?? "—"}</span>
+              <span className="num text-[min(34vw,25vh,14rem)] leading-none font-bold">{v.currentNumber ?? <span className="text-[0.35em] opacity-50">· · ·</span>}</span>
             </div>
             <p className={`text-2xl font-semibold sm:text-3xl ${k.enter}`}>
               {v.currentNumber !== null ? t(lang, "dp_enter") : t(lang, "dp_soon")}
