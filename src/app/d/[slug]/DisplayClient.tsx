@@ -6,6 +6,7 @@ import { api, playSound, unlockAudio, usePoll } from "@/lib/client";
 import { themeVars } from "@/lib/theme";
 import type { PublicShopView } from "@/lib/server/service";
 import { LAYOUTS } from "./layouts";
+import MessageTicker from "./MessageTicker";
 
 const VOICE_KEY = "dawri:voice";
 
@@ -91,7 +92,13 @@ export default function DisplayClient({
   const { Layout } = LAYOUTS[skin] ?? LAYOUTS.night;
 
   return (
-    <div dir={dirOf(lang)} lang={lang} style={themeVars(preview.look ?? v.look)} data-skin={skin}>
+    <div
+      dir={dirOf(lang)}
+      lang={lang}
+      style={themeVars(preview.look ?? v.look)}
+      data-skin={skin}
+      className={v.messages?.length ? "dw-tk" : undefined}
+    >
       <Layout
         lang={lang}
         v={v}
@@ -104,6 +111,7 @@ export default function DisplayClient({
         voice={voice}
         toggleVoice={toggleVoice}
       />
+      {v.messages?.length ? <MessageTicker messages={v.messages} /> : null}
     </div>
   );
 }

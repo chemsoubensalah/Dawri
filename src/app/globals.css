@@ -233,3 +233,24 @@ body {
     opacity: 1;
   }
 }
+
+/* شريط رسائل الطبيب أسفل شاشة القاعة: يقتطع ارتفاعه من التصميم كي لا تظهر أشرطة تمرير */
+.dw-tk {
+  --tk: clamp(3.5rem, 9vh, 6.5rem);
+}
+.dw-tk .dw-ticker {
+  height: var(--tk);
+}
+.dw-tk > main {
+  min-height: calc(100dvh - var(--tk)) !important;
+}
+@media (orientation: landscape) and (min-width: 1024px) {
+  .dw-tk > main {
+    height: calc(100dvh - var(--tk)) !important;
+  }
+}
+@media (orientation: portrait) and (min-width: 700px) and (min-height: 1200px) {
+  .dw-tk > main {
+    height: calc(100dvh - var(--tk)) !important;
+  }
+}

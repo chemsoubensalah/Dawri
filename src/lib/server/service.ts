@@ -7,6 +7,7 @@ import { dayKey, isValidHours, isWithinHours, localTime, minutesBetween, nextOpe
 import { formatPhone, normalizePhone } from "../domain/phone";
 import { isWilaya } from "../domain/wilayas";
 import { publicRating } from "./reviews";
+import { getTvMessages } from "./tvmessages";
 import {
   averageServiceMinutes,
   currentTicket,
@@ -326,6 +327,8 @@ export async function publicShop(slug: string) {
         .map((t) => t.number),
       /** ★ المعدّل العامّ (null إن أخفاه الطبيب أو أقلّ من 3 تقييمات) */
       rating: await publicRating(shop.id),
+      /** رسائل الطبيب لشاشة القاعة */
+      messages: await getTvMessages(shop.id),
     },
   };
 }

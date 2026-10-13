@@ -518,3 +518,16 @@ describe("الاستراحات والحدّ اليومي", () => {
     expect(tk!.phone).toBeNull();
   });
 });
+
+describe("رسائل شاشة القاعة", () => {
+  it("تُحفظ وتُنظَّف وتظهر في الصفحة العامّة، مع حدود العدد والطول", async () => {
+    const { saveTvMessages } = await import("@/lib/server/tvmessages");
+    expect((await svc.publicShop(shop.slug)).view.messages).toEqual([]);
+    const saved = await saveTvMessages(shop, ["  اغسل يديك ‮ ", "", "العيادة مغلقة يوم الجمعة"]);
+    expect(saved).toEqual(["اغسل يديك", "العيادة مغلقة يوم الجمعة"]);
+    expect((await svc.publicShop(shop.slug)).view.messages).toEqual(saved);
+    await expect(saveTvMessages(shop, ["x".repeat(161)])).rejects.toThrow("tv_too_long");
+    await expect(saveTvMessages(shop, Array.from({ length: 11 }, () => "a"))).rejects.toThrow("tv_invalid");
+    await expect(saveTvMessages(shop, "nope")).rejects.toThrow("tv_invalid");
+  });
+});

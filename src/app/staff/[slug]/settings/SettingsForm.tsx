@@ -11,6 +11,7 @@ import type { ChannelStatus } from "@/lib/server/channels";
 import SmsSection from "./SmsSection";
 import { WILAYAS } from "@/lib/domain/wilayas";
 import ReviewsSection from "./ReviewsSection";
+import TvMessagesSection from "./TvMessagesSection";
 import BookingSection from "./BookingSection";
 import AssistantPin from "./AssistantPin";
 import ReportSection from "./ReportSection";
@@ -144,6 +145,7 @@ export default function SettingsForm({
               ["profile", "se_profile"],
               ["look", "se_look"],
               ["reviews", "rv_se"],
+              ["tv", "tv_se"],
               ["hours", "hours"],
               ["booking", "ap_se_title"],
               ["rules", "se_rules"],
@@ -319,6 +321,7 @@ export default function SettingsForm({
         </Section>
 
         <ReviewsSection lang={lang} slug={slug} />
+        <TvMessagesSection lang={lang} slug={slug} />
 
         <Section id="hours" icon={<Clock3 size={20} />} title={t(lang, "hours")} sub={t(lang, "se_hoursSub")}>
           <div className="divide-y divide-slate-100">

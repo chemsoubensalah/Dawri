@@ -4,6 +4,7 @@ import * as growth from "./i18n-parts/growth";
 import * as plans from "./i18n-parts/plans";
 import * as reviews from "./i18n-parts/reviews";
 import * as sms from "./i18n-parts/sms";
+import * as tv from "./i18n-parts/tv";
 import type { Lang } from "./domain/types";
 
 const arCore = {
@@ -638,6 +639,7 @@ const ar = {
   ...clinics.ar,
   ...growth.ar,
   ...plans.ar,
+  ...tv.ar,
 };
 
 export type Dict = typeof ar;
@@ -1264,6 +1266,7 @@ const fr: Dict = {
   ...clinics.fr,
   ...growth.fr,
   ...plans.fr,
+  ...tv.fr,
 };
 
 export const dicts: Record<Lang, Dict> = { ar, fr };
