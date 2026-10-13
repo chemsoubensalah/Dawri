@@ -4,7 +4,7 @@ import LangSwitch from "@/components/LangSwitch";
 import { Logo } from "@/components/ui";
 import { t, type DictKey } from "@/lib/i18n";
 import { getLang } from "@/lib/server/http";
-import NewShopForm from "./NewShopForm";
+import SignupChoice from "./SignupChoice";
 
 export const metadata = { title: "عيادة جديدة" };
 
@@ -36,7 +36,7 @@ export default async function NewShop() {
         <div className="mx-auto w-full max-w-lg flex-1 px-4 pb-12">
           <h2 className="text-3xl font-bold">{t(lang, "newTitle")}</h2>
           <p className="mt-1 text-slate-600">{t(lang, "nw_sub")}</p>
-          <NewShopForm lang={lang} needsCode={Boolean(process.env.SIGNUP_CODE)} />
+          <SignupChoice lang={lang} needsCode={Boolean(process.env.SIGNUP_CODE)} />
           <p className="mt-6 text-center text-sm text-slate-600">
             {t(lang, "nw_haveClinic")}{" "}
             <Link href="/login" className="font-semibold text-brand-700 hover:underline">{t(lang, "l_login")}</Link>

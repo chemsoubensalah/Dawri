@@ -12,6 +12,7 @@ import SmsSection from "./SmsSection";
 import { WILAYAS } from "@/lib/domain/wilayas";
 import ReviewsSection from "./ReviewsSection";
 import BookingSection from "./BookingSection";
+import AssistantPin from "./AssistantPin";
 
 // نبدأ الأسبوع بالسبت كما في الجزائر
 const DAYS = ["6", "0", "1", "2", "3", "4", "5"];
@@ -414,6 +415,7 @@ export default function SettingsForm({
               </span>
             </label>
           </div>
+          <AssistantPin lang={lang} slug={slug} />
         </Section>
 
         <div className="sticky bottom-3 z-20 flex items-center justify-end gap-3 rounded-2xl bg-white/90 p-3 shadow-(--shadow-lift) ring-1 ring-slate-200 backdrop-blur">

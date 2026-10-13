@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import StaffFrame from "@/components/StaffFrame";
 import { drTitle } from "@/lib/i18n";
 import { getDb } from "@/lib/server/db";
-import { getLang, staffShop } from "@/lib/server/http";
+import { getLang, staffAccess } from "@/lib/server/http";
 import * as repo from "@/lib/server/repo";
 import { staffState } from "@/lib/server/service";
 import { manualPayment } from "@/lib/server/billing";
@@ -13,7 +13,8 @@ export const metadata = { title: "الطابور", robots: { index: false } };
 
 export default async function StaffPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const shop = await staffShop(slug);
+  const access = await staffAccess(slug);
+  const shop = access?.shop ?? null;
   if (!shop) {
     const exists = await repo.getShopBySlug(await getDb(), slug.toLowerCase());
     if (!exists) notFound();
@@ -22,7 +23,7 @@ export default async function StaffPage({ params }: { params: Promise<{ slug: st
   }
   const lang = await getLang(shop.defaultLang);
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="queue">
+    <StaffFrame role={access?.role} lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="queue">
       <StaffDashboard lang={lang} slug={shop.slug} initial={await staffState(shop)} />
     </StaffFrame>
   );

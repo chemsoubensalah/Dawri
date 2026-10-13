@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { DomainError, type Shop } from "../domain/types";
 import { isLang } from "../i18n";
 import type { Lang } from "../domain/types";
-import { readSession, sessionCookieName } from "./auth";
+import { clinicCookieName, readClinicSession, readSession, sessionCookieName } from "./auth";
+import * as clinicsRepo from "./clinicsRepo";
 import { now } from "./clock";
 import { getDb } from "./db";
 import * as repo from "./repo";
@@ -77,15 +78,40 @@ export async function readJson(req: Request): Promise<Record<string, unknown>> {
   }
 }
 
-/** المحلّ إن كانت جلسة السكرتيرة صالحة، وإلّا null. */
-export async function staffShop(slug: string): Promise<Shop | null> {
+export type StaffRole = "owner" | "assistant" | "manager";
+
+/**
+ * من يفتح فضاء هذا الطابور؟ جلسة الطبيب (owner) أو السكرتيرة (assistant)،
+ * أو مدير العيادة متعدّدة الأطبّاء إن كان الطابور عضواً في عيادته (manager = صلاحيات الطبيب).
+ */
+export async function staffAccess(slug: string): Promise<{ shop: Shop; role: StaffRole } | null> {
+  if (typeof slug !== "string") return null;
   const db = await getDb();
   const shop = await repo.getShopBySlug(db, slug.toLowerCase());
   if (!shop) return null;
   const jar = await cookies();
-  const s = readSession(jar.get(sessionCookieName(shop.id))?.value, now());
-  if (!s || s.shopId !== shop.id || s.v !== shop.sessionVersion) return null;
-  return shop;
+  const t = now();
+  const s = readSession(jar.get(sessionCookieName(shop.id))?.value, t);
+  if (s && s.shopId === shop.id) {
+    if (s.r === "a") {
+      if (shop.assistantPinHash && s.v === (shop.assistantVersion ?? 1)) return { shop, role: "assistant" };
+    } else if (s.v === shop.sessionVersion) {
+      return { shop, role: "owner" };
+    }
+  }
+  if (shop.clinicId) {
+    const c = readClinicSession(jar.get(clinicCookieName(shop.clinicId))?.value, t);
+    if (c && c.clinicId === shop.clinicId) {
+      const clinic = await clinicsRepo.getClinicById(db, shop.clinicId);
+      if (clinic && clinic.sessionVersion === c.v) return { shop, role: "manager" };
+    }
+  }
+  return null;
+}
+
+/** المحلّ إن كانت أيّ جلسة فريق صالحة (طبيب، سكرتيرة، مدير العيادة)، وإلّا null. */
+export async function staffShop(slug: string): Promise<Shop | null> {
+  return (await staffAccess(slug))?.shop ?? null;
 }
 
 export async function requireStaff(slug: string): Promise<Shop> {
@@ -94,18 +120,22 @@ export async function requireStaff(slug: string): Promise<Shop> {
   return shop;
 }
 
-/**
- * صاحب العيادة فقط (الإعدادات، الاشتراك، إعدادات الميزات).
- * حالياً = أيّ جلسة صالحة؛ تصير أدقّ مع أدوار «الطبيب/السكرتيرة».
- */
+/** صاحب العيادة فقط (الإعدادات، الاشتراك، إعدادات الميزات): الطبيب أو مدير العيادة — لا السكرتيرة. */
 export async function ownerShop(slug: string): Promise<Shop | null> {
-  return staffShop(slug);
+  const a = await staffAccess(slug);
+  return a && a.role !== "assistant" ? a.shop : null;
 }
 
 export async function requireOwner(slug: string): Promise<Shop> {
-  const shop = await ownerShop(slug);
-  if (!shop) throw new DomainError("unauthorized", 401);
-  return shop;
+  const a = await staffAccess(slug);
+  if (!a) throw new DomainError("unauthorized", 401);
+  if (a.role === "assistant") throw new DomainError("forbidden", 403);
+  return a.shop;
+}
+
+/** دور الجلسة الحالية لعرض الواجهة (إخفاء الإعدادات عن السكرتيرة…). */
+export async function staffRole(slug: string): Promise<StaffRole | null> {
+  return (await staffAccess(slug))?.role ?? null;
 }
 
 export function setSessionCookie(res: NextResponse, shop: Shop, token: string) {

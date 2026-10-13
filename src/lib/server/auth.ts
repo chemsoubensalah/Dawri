@@ -34,7 +34,37 @@ export interface StaffSession {
   shopId: string;
   v: number;
   exp: number;
+  /** الدور: o = الطبيب (صاحب العيادة)، a = السكرتيرة. غيابه = صاحب العيادة (جلسات قديمة). */
+  r?: "o" | "a";
 }
+
+/** جلسة مدير عيادة متعدّدة الأطبّاء (توقيع منفصل عن جلسات الطوابير). */
+export interface ClinicSession {
+  clinicId: string;
+  v: number;
+  exp: number;
+}
+
+export function signClinicSession(s: ClinicSession): string {
+  const body = Buffer.from(JSON.stringify(s)).toString("base64url");
+  return `${body}.${hmac(`clinic:${body}`)}`;
+}
+
+export function readClinicSession(token: string | undefined, now: Date): ClinicSession | null {
+  if (!token) return null;
+  const [body, sig] = token.split(".");
+  if (!body || !sig) return null;
+  const expected = hmac(`clinic:${body}`);
+  if (sig.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  try {
+    const s = JSON.parse(Buffer.from(body, "base64url").toString()) as ClinicSession;
+    return typeof s.clinicId === "string" && typeof s.v === "number" && s.exp > now.getTime() ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+export const clinicCookieName = (clinicId: string) => `dawri_c_${clinicId.replace(/-/g, "").slice(0, 12)}`;
 
 export function signSession(s: StaffSession): string {
   const body = Buffer.from(JSON.stringify(s)).toString("base64url");

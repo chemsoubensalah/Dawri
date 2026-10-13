@@ -5,14 +5,15 @@ import { ArrowLeft, ArrowRight, Clock3, MonitorPlay, PartyPopper, Printer, Smart
 import StaffFrame from "@/components/StaffFrame";
 import { IconBubble } from "@/components/ui";
 import { t, type DictKey, drTitle } from "@/lib/i18n";
-import { baseUrl, getLang, staffShop } from "@/lib/server/http";
+import { baseUrl, getLang, staffAccess } from "@/lib/server/http";
 
 export const metadata = { title: "مرحباً", robots: { index: false } };
 
 /** أوّل صفحة بعد إنشاء العيادة: قائمة خطوات قصيرة للبدء. */
 export default async function Welcome({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const shop = await staffShop(slug);
+  const access = await staffAccess(slug);
+  const shop = access?.shop ?? null;
   if (!shop) redirect(`/staff/${slug}`);
   const lang = await getLang(shop.defaultLang);
   const Arrow = lang === "ar" ? ArrowLeft : ArrowRight;
@@ -27,7 +28,7 @@ export default async function Welcome({ params }: { params: Promise<{ slug: stri
   ];
 
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="welcome">
+    <StaffFrame role={access?.role} lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="welcome">
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <section className="space-y-4">
           <div className="card flex items-center gap-4 bg-gradient-to-br from-brand-600 to-brand-800 text-white ring-0">

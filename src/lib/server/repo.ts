@@ -45,6 +45,10 @@ export function rowToShop(r: Row): Shop {
     },
     look: readLook(r.look == null ? {} : json(r.look)),
     ownerEmail: (r.owner_email as string | null) ?? null,
+    assistantPinHash: (r.assistant_pin_hash as string | null) ?? null,
+    assistantVersion: r.assistant_version == null ? 1 : Number(r.assistant_version),
+    clinicId: r.clinic_id == null ? null : String(r.clinic_id),
+    room: (r.room as string | null) ?? null,
   };
 }
 

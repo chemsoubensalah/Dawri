@@ -6,7 +6,7 @@ import { t, tn, drTitle } from "@/lib/i18n";
 import { chargilyConfig, manualPayment, plans } from "@/lib/server/billing";
 import { now as clockNow } from "@/lib/server/clock";
 import { getDb } from "@/lib/server/db";
-import { getLang, ownerShop } from "@/lib/server/http";
+import { getLang, ownerShop, staffRole } from "@/lib/server/http";
 import * as repo from "@/lib/server/repo";
 import { isSubscriptionActive } from "@/lib/server/service";
 import PayButton from "./PayButton";
@@ -44,7 +44,7 @@ export default async function BillingPage({
   const ref = `DAWRI-${shop.slug.toUpperCase()}`;
 
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="billing">
+    <StaffFrame role={await staffRole(slug)} lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="billing">
       <div className="mx-auto max-w-4xl space-y-5">
         <h1 className="text-2xl font-bold">{t(lang, "nav_billing")}</h1>
 

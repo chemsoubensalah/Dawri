@@ -4,7 +4,7 @@ import { BellRing, Hourglass, QrCode, Smartphone, UserCheck } from "lucide-react
 import StaffFrame from "@/components/StaffFrame";
 import { LogoMark } from "@/components/ui";
 import { t, type DictKey, drTitle } from "@/lib/i18n";
-import { baseUrl, getLang, staffShop } from "@/lib/server/http";
+import { baseUrl, getLang, staffAccess } from "@/lib/server/http";
 import PrintButton from "./PrintButton";
 
 export const metadata = { title: "ملصق QR", robots: { index: false } };
@@ -12,7 +12,8 @@ export const metadata = { title: "ملصق QR", robots: { index: false } };
 /** ملصق الباب A4 — بالعربية والفرنسية معاً. رمز الباب يسمح بتسجيل «وصلت». */
 export default async function QrPoster({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const shop = await staffShop(slug);
+  const access = await staffAccess(slug);
+  const shop = access?.shop ?? null;
   if (!shop) redirect(`/staff/${slug}`);
   const lang = await getLang(shop.defaultLang);
   const base = await baseUrl();
@@ -27,7 +28,7 @@ export default async function QrPoster({ params }: { params: Promise<{ slug: str
   ];
 
   return (
-    <StaffFrame lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="qr">
+    <StaffFrame role={access?.role} lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="qr">
       <div className="no-print mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{t(lang, "nav_poster")}</h1>
