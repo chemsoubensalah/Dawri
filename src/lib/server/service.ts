@@ -47,6 +47,7 @@ import { getNotifier, type Notification } from "./notify";
 import * as repo from "./repo";
 import { getMailer } from "./email";
 import { getSms } from "./sms";
+import { clinicSendsCodes, codeSender } from "./smsgate";
 import {
   alertsMessage,
   parseInbound,
@@ -303,7 +304,7 @@ export async function publicShop(slug: string) {
       avgServiceMin: Math.round(avg),
       verifyPhone: phoneVerificationOn(),
       waVerify: waConfig().enabled,
-      smsVerify: getSms() !== null,
+      smsVerify: getSms() !== null || (await clinicSendsCodes(shop.id)),
       nextNumbers: lineup(tickets)
         .filter((t) => !t.held)
         .slice(0, 3)
@@ -330,7 +331,7 @@ export async function requestCode(slug: string, body: { name?: unknown; phone?: 
     if (blocker) throw new DomainError(blocker, 409);
   }
   if (!phoneVerificationOn()) return { sent: false, verify: false, devCode: undefined as string | undefined };
-  const sms = getSms();
+  const sms = await codeSender(shop, getSms()); // هاتف العيادة أوّلاً (إن فعّلت ذلك) ثمّ المزوّد العامّ
   if (!sms) throw new DomainError("sms_unavailable", 503);
   if ((await repo.countRecentCodes(db, shop.id, phone, new Date(now.getTime() - 30 * 60000))) >= 3) {
     throw new DomainError("too_many_codes", 429);
@@ -341,7 +342,7 @@ export async function requestCode(slug: string, body: { name?: unknown; phone?: 
   const code = randomDigits(6);
   await repo.insertCode(db, shop.id, phone, hashCode(shop.id, phone, code), now, new Date(now.getTime() + 10 * 60000));
   try {
-    await sms.send(phone, t(langOf(body.lang, shop.defaultLang), "sms_code", { code }));
+    await sms.send(phone, code, langOf(body.lang, shop.defaultLang));
   } catch (e) {
     console.error("[sms]", e);
     throw new DomainError("sms_failed", 502);

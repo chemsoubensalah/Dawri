@@ -49,6 +49,7 @@ export function privacyContent(lang: Lang) {
         { h: "5. Hébergement et sécurité", p: ["Les données sont hébergées chez des prestataires cloud (base de données Supabase et serveurs Vercel, région Europe — Francfort). Accès chiffré (HTTPS), base fermée à tout accès direct, codes des cabinets stockés sous forme chiffrée (hachage)."] },
         { h: "6. Vos droits", p: [`Vous pouvez demander l'accès, la rectification ou la suppression de vos données auprès du cabinet, ou nous contacter : ${c}. Vous pouvez aussi saisir l'Autorité nationale de protection des données à caractère personnel (ANPDP).`] },
         { h: "7. Données des cabinets", p: ["Pour chaque cabinet : nom, médecin, spécialité, adresse, téléphone, e-mail de récupération et code secret (haché). L'e-mail sert uniquement à récupérer le code oublié et aux informations de service — jamais de publicité."] },
+        { h: "8. SMS envoyés par le téléphone du cabinet", p: ["Si le cabinet relie son propre téléphone Android (application SMS Gateway), les SMS partent du numéro du cabinet via le service sms-gate.app : seuls votre numéro et un texte court y transitent (nom du cabinet, numéro de ticket ou code de vérification). Dawri ne garde aucun historique de ces SMS — seulement un compteur mensuel, sans numéro. Les identifiants de l'application sont stockés chiffrés."] },
       ] satisfies LegalSection[],
     };
   }
@@ -85,6 +86,7 @@ export function privacyContent(lang: Lang) {
       { h: "5. الاستضافة والأمان", p: ["المعطيات مستضافة لدى مزوّدي خدمات سحابية (قاعدة بيانات Supabase وخوادم Vercel، منطقة أوروبا — فرانكفورت). الاتّصال مشفّر (HTTPS)، وقاعدة البيانات مغلقة أمام أيّ وصول مباشر، ورموز العيادات محفوظة مشفّرة (بصمة)."] },
       { h: "6. حقوقك", p: [`يمكنك طلب الاطّلاع على معطياتك أو تصحيحها أو حذفها لدى العيادة، أو التواصل معنا: ${c}. ويمكنك أيضاً اللجوء إلى السلطة الوطنية لحماية المعطيات ذات الطابع الشخصي (ANPDP).`] },
       { h: "7. معطيات العيادات", p: ["لكلّ عيادة: الاسم، الطبيب، التخصّص، العنوان، الهاتف، بريد الاستعادة، والرمز السرّي (مشفّراً). البريد يُستعمل فقط لاستعادة الرمز المنسيّ ولرسائل الخدمة — لا إعلانات أبداً."] },
+      { h: "8. الرسائل القصيرة من هاتف العيادة", p: ["إن ربطت العيادة هاتفها الأندرويد (تطبيق SMS Gateway) تُرسل الرسائل القصيرة من رقم العيادة عبر خدمة sms-gate.app: لا يمرّ إلّا رقمك ونصّ قصير (اسم العيادة، رقم التذكرة أو رمز التحقّق). لا يحفظ «دوري» أيّ سجلّ لهذه الرسائل — عدّاد شهري فقط بلا أرقام. وبيانات دخول التطبيق محفوظة مشفّرة."] },
     ] satisfies LegalSection[],
   };
 }
