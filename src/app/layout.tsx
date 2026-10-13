@@ -3,6 +3,7 @@ import { Readex_Pro } from "next/font/google";
 import { getLang } from "@/lib/server/http";
 import { dirOf } from "@/lib/i18n";
 import SwRegister from "@/components/SwRegister";
+import VisitBeacon from "@/components/VisitBeacon";
 import "./globals.css";
 
 // خطّ عربي/لاتيني حديث، يُخدَم من موقعنا نفسه (لا طلبات إلى Google عند الزيارة)
@@ -33,6 +34,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-dvh font-sans antialiased">
         {children}
         <SwRegister />
+        <VisitBeacon />
       </body>
     </html>
   );

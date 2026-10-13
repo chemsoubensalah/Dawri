@@ -1125,6 +1125,8 @@ export async function runCron() {
     ),
   );
   await step("purgeWa", () => repo.purgeWa(db, new Date(now.getTime() - 2 * DAY_MS)));
+  // إحصائيات الزيارات: 13 شهراً تكفي
+  await step("purgeVisits", async () => (await import("./analytics")).purgeVisits(db, dayKey(new Date(now.getTime() - 400 * DAY_MS))));
   // صفحات دفع Chargily تنتهي بعد 30 دقيقة: ما بقي معلّقاً بعد ساعة = لم يكتمل
   await step("expireStalePayments", () => repo.expireStalePayments(db, new Date(now.getTime() - 3600_000)));
   // المواعيد: الغياب + محو الاسم والهاتف بعد 30 يوماً
