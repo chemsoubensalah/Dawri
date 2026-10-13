@@ -7,6 +7,7 @@ import { LogoMark } from "./ui";
 import { DEFAULT_LOOK, type Lang, type ShopLook } from "@/lib/domain/types";
 import { themeVars } from "@/lib/theme";
 import { dirOf, t, type DictKey } from "@/lib/i18n";
+import type { StaffRole } from "@/lib/server/http";
 
 export type StaffTab = "queue" | "stats" | "qr" | "settings" | "billing" | "welcome";
 
@@ -29,7 +30,10 @@ export default function StaffFrame({
   active,
   actions,
   children,
+  role,
 }: {
+  /** دور الجلسة: السكرتيرة لا ترى الإعدادات ولا الاشتراك. */
+  role?: StaffRole | null;
   lang: Lang;
   slug: string;
   name: string;
@@ -56,13 +60,18 @@ export default function StaffFrame({
             </span>
           </Link>
           <div className="flex shrink-0 items-center gap-2">
+            {role && (
+              <span className="hidden rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 sm:inline-flex" data-testid="staff-role">
+                {t(lang, role === "assistant" ? "cl_roleAssistant" : role === "manager" ? "cl_roleManager" : "cl_roleOwner")}
+              </span>
+            )}
             {actions}
             <LangSwitch lang={lang} className="hidden sm:inline-flex" />
             <LogoutButton slug={slug} label={t(lang, "logout")} />
           </div>
         </div>
         <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 pt-2 sm:px-4" aria-label={t(lang, "nav_space")}>
-          {TABS.map((tab) => {
+          {TABS.filter((tab) => role !== "assistant" || (tab.key !== "settings" && tab.key !== "billing")).map((tab) => {
             const on = tab.key === active;
             return (
               <Link

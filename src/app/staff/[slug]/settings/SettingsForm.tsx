@@ -8,6 +8,7 @@ import { LAYOUTS } from "@/app/d/[slug]/layouts";
 import { errorText, t, type DictKey } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
 import type { ChannelStatus } from "@/lib/server/channels";
+import AssistantPin from "./AssistantPin";
 
 // نبدأ الأسبوع بالسبت كما في الجزائر
 const DAYS = ["6", "0", "1", "2", "3", "4", "5"];
@@ -392,6 +393,7 @@ export default function SettingsForm({
               </span>
             </label>
           </div>
+          <AssistantPin lang={lang} slug={slug} />
         </Section>
 
         <div className="sticky bottom-3 z-20 flex items-center justify-end gap-3 rounded-2xl bg-white/90 p-3 shadow-(--shadow-lift) ring-1 ring-slate-200 backdrop-blur">

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Building2 } from "lucide-react";
 import type { Lang } from "@/lib/domain/types";
 import { t } from "@/lib/i18n";
+import ManagerEntry from "./ManagerEntry";
 
 /** يطلب الرابط القصير للعيادة ثمّ يفتح شاشة السكرتيرة. يتذكّر آخر عيادة على هذا الجهاز. */
 export default function ClinicLogin({ lang }: { lang: Lang }) {
@@ -48,6 +49,7 @@ export default function ClinicLogin({ lang }: { lang: Lang }) {
         </div>
         <button className="btn-primary w-full">{t(lang, "login")}</button>
       </form>
+      <ManagerEntry lang={lang} />
     </div>
   );
 }
