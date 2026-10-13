@@ -3,6 +3,10 @@
  * أضف المفتاح في ar ثمّ في fr (الفحص يفرض وجوده في اللغتين).
  */
 export const ar = {
+  cl_currentPin: "الرمز الحالي",
+  cl_leaveClinic: "مغادرة العيادة متعدّدة الأطبّاء",
+  cl_leaveHint: "يُلغي وصول مدير العيادة إلى طابورك فوراً.",
+  cl_left: "غادرت العيادة.",
   // الأدوار
   cl_roleOwner: "الطبيب",
   cl_roleAssistant: "السكرتيرة",
@@ -114,6 +118,10 @@ export const ar = {
 };
 
 export const fr: Record<keyof typeof ar, string> = {
+  cl_currentPin: "Code actuel",
+  cl_leaveClinic: "Quitter le centre multi-médecins",
+  cl_leaveHint: "Retire immédiatement l'accès du gestionnaire à votre file.",
+  cl_left: "Vous avez quitté le centre.",
   cl_roleOwner: "Médecin",
   cl_roleAssistant: "Secrétaire",
   cl_roleManager: "Gestionnaire du centre",

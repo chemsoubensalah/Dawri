@@ -132,11 +132,21 @@ export async function clinicLogin(slug: unknown, pin: unknown) {
 }
 
 /** تغيير رمز المدير: يُخرج كلّ أجهزة المدير الأخرى. */
-export async function changeClinicPin(clinic: Clinic, pin: unknown) {
+export async function changeClinicPin(clinic: Clinic, pin: unknown, currentPin?: unknown) {
   if (!isValidPin(pin)) throw new DomainError("invalid_pin");
+  // كوكي مسروق لا يكفي لتغيير الرمز: نطلب الرمز الحالي
+  if (!(typeof currentPin === "string" && isValidPin(currentPin) && verifyPin(currentPin, clinic.pinHash))) {
+    throw new DomainError("wrong_pin", 401);
+  }
   const db = await getDb();
   await crepo.updateClinic(db, clinic.id, { pinHash: hashPin(pin), bumpSession: true });
   return (await crepo.getClinicById(db, clinic.id))!;
+}
+
+/** الطبيب يغادر العيادة متعدّدة الأطبّاء: يسقط وصول مديرها إلى طابوره فوراً. */
+export async function leaveClinic(shop: Shop) {
+  if (shop.clinicId) await crepo.detachShop(await getDb(), shop.id, shop.clinicId);
+  return { inClinic: false };
 }
 
 // ————————————————————————— إدارة الأطبّاء —————————————————————————
@@ -182,11 +192,12 @@ export async function joinDoctor(clinic: Clinic, input: { slug?: unknown; pin?: 
   if (!shop) throw new DomainError("shop_not_found", 404);
   const room = cleanText(input.room, 30);
   const now = clockNow();
-  if (!(await repo.claimLoginAttempt(db, shop.id, now))) throw new DomainError("locked", 429);
+  // عدّاد قفل العيادة (لا عدّاد الطبيب): التخمين يقفل المدير، ولا يقفل الطبيب خارج طابوره
+  if (!(await crepo.claimClinicLoginAttempt(db, clinic.id, now))) throw new DomainError("locked", 429);
   // رمز الطبيب فقط (لا رمز السكرتيرة)
   const ok = typeof input.pin === "string" && isValidPin(input.pin) && verifyPin(input.pin, shop.pinHash);
   if (!ok) throw new DomainError("wrong_pin", 401);
-  await repo.resetLoginAttempts(db, shop.id);
+  await crepo.resetClinicLoginAttempts(db, clinic.id);
   if (shop.clinicId === clinic.id) return shop;
   if (shop.clinicId) throw new DomainError("already_in_clinic", 409);
   if ((await memberCount(clinic.id)) >= MAX_DOCTORS) throw new DomainError("clinic_full", 409);

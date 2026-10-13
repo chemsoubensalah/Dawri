@@ -215,8 +215,32 @@ describe("العيادات بعدّة أطبّاء", () => {
   it("تغيير رمز المدير يُبطل جلساته القديمة", async () => {
     const { clinic, shop: member } = await make();
     jar.set(clinicCookieName(clinic.id), (await clinics.clinicLogin(clinic.slug, "7777")).token);
-    await clinics.changeClinicPin(clinic, "8888");
+    await clinics.changeClinicPin(clinic, "8888", "7777");
     expect(await staffAccess(member.slug)).toBeNull();
+  });
+
+  it("أمان: تغيير رمز المدير يتطلّب الرمز الحالي، والضمّ يخمّن على عدّاد العيادة لا الطبيب", async () => {
+    const { clinic } = await make();
+    expect(await code(clinics.changeClinicPin(clinic, "8888"))).toBe("wrong_pin");
+    expect(await code(clinics.changeClinicPin(clinic, "8888", "0000"))).toBe("wrong_pin");
+    for (let i = 0; i < 5; i++) expect(await code(clinics.joinDoctor(clinic, { slug: shop.slug, pin: "0000" }))).toBe("wrong_pin");
+    expect(await code(clinics.joinDoctor(clinic, { slug: shop.slug, pin: "4321" }))).toBe("locked");
+    // الطبيب نفسه لم يُقفل خارج طابوره
+    await expect(svc.staffLogin(shop.slug, "4321")).resolves.toBeTruthy();
+  });
+
+  it("أمان: استعادة الرمز تفصل الطابور عن العيادة وتُخرج السكرتيرة؛ والطبيب يستطيع المغادرة", async () => {
+    const { clinic, shop: member } = await make();
+    await clinics.setAssistantPin(member, "1111");
+    const before = await fresh(member);
+    await svc.adminResetPin(member.id);
+    const after = await fresh(member);
+    expect(after.clinicId).toBeNull();
+    expect(after.assistantVersion).toBe((before.assistantVersion ?? 1) + 1);
+    await clinics.joinDoctor(clinic, { slug: member.slug, pin: (await svc.adminResetPin(member.id)).pin });
+    expect((await fresh(member)).clinicId).toBe(clinic.id);
+    await clinics.leaveClinic(await fresh(member));
+    expect((await fresh(member)).clinicId).toBeNull();
   });
 
   it("قفل دخول المدير بعد 5 محاولات خاطئة، ثمّ يُفتح بعد 15 دقيقة", async () => {

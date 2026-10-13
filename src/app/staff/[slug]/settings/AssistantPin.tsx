@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Trash2, UserRoundCog } from "lucide-react";
+import { LogOut, Trash2, UserRoundCog } from "lucide-react";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
@@ -11,14 +11,19 @@ import { api, ApiError } from "@/lib/client";
  */
 export default function AssistantPin({ lang, slug }: { lang: Lang; slug: string }) {
   const [hasPin, setHasPin] = useState<boolean | null>(null);
+  const [inClinic, setInClinic] = useState(false);
+  const [hidden, setHidden] = useState(false); // مدير العيادة: هذا القسم للطبيب وحده
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
-    api<{ hasPin: boolean }>(`/api/staff/${slug}/assistant`)
-      .then((r) => setHasPin(r.hasPin))
-      .catch(() => setHasPin(false));
+    api<{ hasPin: boolean; inClinic: boolean }>(`/api/staff/${slug}/assistant`)
+      .then((r) => {
+        setHasPin(r.hasPin);
+        setInClinic(r.inClinic);
+      })
+      .catch((e) => ((e as ApiError).status === 403 ? setHidden(true) : setHasPin(false)));
   }, [slug]);
 
   async function send(value: string | null) {
@@ -37,6 +42,7 @@ export default function AssistantPin({ lang, slug }: { lang: Lang; slug: string 
     }
   }
 
+  if (hidden) return null;
   return (
     <div className="mt-5 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200/70" data-testid="assistant-pin">
       <div className="flex items-start gap-3">
@@ -93,6 +99,28 @@ export default function AssistantPin({ lang, slug }: { lang: Lang; slug: string 
           </button>
         )}
       </div>
+      {inClinic && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
+          <p className="text-xs text-slate-500">{t(lang, "cl_leaveHint")}</p>
+          <button
+            type="button"
+            className="btn-ghost btn-sm text-rose-700"
+            disabled={busy}
+            onClick={async () => {
+              if (!confirm(t(lang, "cl_leaveClinic") + " ?")) return;
+              try {
+                await api(`/api/staff/${slug}/assistant`, { leaveClinic: true });
+                setInClinic(false);
+                setMsg({ ok: true, text: t(lang, "cl_left") });
+              } catch (e) {
+                setMsg({ ok: false, text: errorText(lang, (e as ApiError).code) });
+              }
+            }}
+          >
+            <LogOut size={15} /> {t(lang, "cl_leaveClinic")}
+          </button>
+        </div>
+      )}
       {msg && <p className={`mt-2 text-sm font-semibold ${msg.ok ? "text-brand-700" : "text-rose-700"}`} role="status">{msg.text}</p>}
     </div>
   );

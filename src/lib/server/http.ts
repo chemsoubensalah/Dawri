@@ -133,6 +133,14 @@ export async function requireOwner(slug: string): Promise<Shop> {
   return a.shop;
 }
 
+/** الطبيب نفسه فقط (رمزه، بريده، رمز السكرتيرة، مغادرة العيادة) — لا مدير العيادة ولا السكرتيرة. */
+export async function requireDoctor(slug: string): Promise<Shop> {
+  const a = await staffAccess(slug);
+  if (!a) throw new DomainError("unauthorized", 401);
+  if (a.role !== "owner") throw new DomainError("forbidden", 403);
+  return a.shop;
+}
+
 /** دور الجلسة الحالية لعرض الواجهة (إخفاء الإعدادات عن السكرتيرة…). */
 export async function staffRole(slug: string): Promise<StaffRole | null> {
   return (await staffAccess(slug))?.role ?? null;

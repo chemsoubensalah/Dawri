@@ -393,6 +393,7 @@ function RemoveDialog({ lang, slug, doctor, onClose, onDone }: { lang: Lang; slu
 
 function PinDialog({ lang, slug, open, onClose }: { lang: Lang; slug: string; open: boolean; onClose: () => void }) {
   const [pin, setPin] = useState("");
+  const [cur, setCur] = useState("");
   const [done, setDone] = useState(false);
   const a = useAction(slug, lang);
   return (
@@ -401,12 +402,17 @@ function PinDialog({ lang, slug, open, onClose }: { lang: Lang; slug: string; op
         className="space-y-4 p-5"
         onSubmit={(e) => {
           e.preventDefault();
-          a.run({ action: "pin", pin }, () => {
+          a.run({ action: "pin", pin, currentPin: cur }, () => {
             setPin("");
+            setCur("");
             setDone(true);
           });
         }}
       >
+        <div>
+          <label className="label" htmlFor="mg-cur">{t(lang, "cl_currentPin")}</label>
+          <input id="mg-cur" className="input num tracking-[0.3em]" dir="ltr" inputMode="numeric" type="password" autoComplete="current-password" required minLength={4} maxLength={8} value={cur} onChange={(e) => setCur(e.target.value.replace(/\D/g, ""))} />
+        </div>
         <div>
           <label className="label" htmlFor="mg-pin">{t(lang, "newPin")}</label>
           <input id="mg-pin" className="input num tracking-[0.3em]" dir="ltr" inputMode="numeric" type="password" autoComplete="new-password" required minLength={4} maxLength={8} value={pin} onChange={(e) => { setDone(false); setPin(e.target.value.replace(/\D/g, "")); }} />

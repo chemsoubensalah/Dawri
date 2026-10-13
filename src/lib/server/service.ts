@@ -1039,6 +1039,9 @@ export async function resetPinWithToken(slug: string, token: unknown, pin: unkno
     if (!(await repo.consumePinReset(q, shop.id, resetHash(token), now))) throw new DomainError("reset_invalid", 400);
     await repo.voidPinResets(q, shop.id, now);
     await repo.updateShop(q, shop.id, { pinHash: hashPin(pin), bumpSession: true });
+    // استعادة الرمز = استعادة السيطرة: يُفصل الطابور عن أيّ عيادة متعدّدة الأطبّاء
+    // ونُخرج أجهزة السكرتيرة أيضاً (اشتباه في تسريب الرمز)
+    await q.query("update shops set clinic_id = null, assistant_version = assistant_version + 1 where id = $1", [shop.id]);
     await repo.resetLoginAttempts(q, shop.id);
     return (await repo.getShopById(q, shop.id))!;
   });
@@ -1052,6 +1055,7 @@ export async function adminResetPin(shopId: string) {
   if (!shop) throw new DomainError("shop_not_found", 404);
   const pin = randomDigits(6);
   await repo.updateShop(db, shop.id, { pinHash: hashPin(pin), bumpSession: true });
+  await db.query("update shops set clinic_id = null, assistant_version = assistant_version + 1 where id = $1", [shop.id]);
   await repo.resetLoginAttempts(db, shop.id);
   await repo.voidPinResets(db, shop.id, clockNow());
   return { pin };

@@ -30,7 +30,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       case "remove":
         return json(await clinics.removeDoctor(clinic, body.shop));
       case "pin": {
-        const updated = await clinics.changeClinicPin(clinic, body.pin);
+        const updated = await clinics.changeClinicPin(clinic, body.pin, body.currentPin);
         const res = json({ ok: true });
         setClinicCookie(res, updated, clinics.clinicSessionFor(updated, now()));
         return res;
