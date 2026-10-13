@@ -2,6 +2,7 @@ import { Clock3, MapPin, Phone, Stethoscope } from "lucide-react";
 import type { Lang, ShopKind, ShopProfile } from "@/lib/domain/types";
 import { drTitle, errorText, t, type DictKey } from "@/lib/i18n";
 import { Chip, LiveDot } from "./ui";
+import RatingBadge from "./RatingBadge";
 
 /** بطاقة العيادة كما يراها المريض. */
 export default function ClinicCard({
@@ -12,6 +13,7 @@ export default function ClinicCard({
   blocker,
   hoursToday,
   compact = false,
+  rating,
 }: {
   lang: Lang;
   name: string;
@@ -20,6 +22,8 @@ export default function ClinicCard({
   blocker?: string | null;
   hoursToday?: [string, string][];
   compact?: boolean;
+  /** ★ المعدّل — يُمرَّر فقط إن سمح الطبيب وبلغ العدد 3 */
+  rating?: { avg: number; count: number } | null;
 }) {
   const doctor = drTitle(lang, kind, profile.doctorName);
   const sub = profile.specialty || t(lang, `kind_${kind}` as DictKey);
@@ -33,6 +37,7 @@ export default function ClinicCard({
           <h1 className="text-xl leading-snug font-bold text-ink">{name}</h1>
           {doctor && <p className="mt-0.5 text-lg leading-snug font-bold text-brand-700">{doctor}</p>}
           <p className="truncate text-sm text-slate-500">{sub}</p>
+          {rating && <RatingBadge lang={lang} avg={rating.avg} count={rating.count} className="mt-1.5" />}
           {blocker !== undefined && (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {blocker ? (

@@ -123,6 +123,7 @@ export default function ShopClient({ lang, initial, door }: { lang: Lang; initia
         profile={view.profile}
         blocker={view.blocker}
         hoursToday={view.hoursToday}
+        rating={view.rating}
       />
 
       <section className="grid grid-cols-3 gap-2.5" aria-live="polite">

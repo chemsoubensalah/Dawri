@@ -188,6 +188,8 @@ export interface ShopProfile {
   address: string | null;
   phone: string | null;
   mapsUrl: string | null;
+  /** رمز الولاية 1–58 (src/lib/domain/wilayas.ts) — لدليل العيادات */
+  wilaya: number | null;
 }
 
 export type NotifyType = "confirm" | "soon" | "called" | "missed" | "held" | "approved";

@@ -5,6 +5,7 @@ import ClinicCard from "@/components/ClinicCard";
 import { ConfirmDialog } from "@/components/Dialog";
 import PushButton from "@/components/PushButton";
 import SoundGate from "@/components/SoundGate";
+import ReviewCard from "./ReviewCard";
 import { Chip } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
 import { aheadText, errorText, t } from "@/lib/i18n";
@@ -348,6 +349,8 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
           </section>
         </>
       )}
+
+      {v.status === "done" && <ReviewCard lang={lang} ticketId={v.id} />}
 
       <ClinicCard lang={lang} name={v.shop.name} kind={v.shop.kind} profile={v.shop.profile} compact={!v.shop.profile.address && !v.shop.profile.phone} />
 

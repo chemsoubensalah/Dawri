@@ -41,6 +41,7 @@ export function rowToShop(r: Row): Shop {
       address: (r.address as string | null) ?? null,
       phone: (r.phone as string | null) ?? null,
       mapsUrl: (r.maps_url as string | null) ?? null,
+      wilaya: r.wilaya == null ? null : Number(r.wilaya),
     },
     look: readLook(r.look == null ? {} : json(r.look)),
     ownerEmail: (r.owner_email as string | null) ?? null,
@@ -140,6 +141,7 @@ export async function updateShop(
     set("address", patch.profile.address);
     set("phone", patch.profile.phone);
     set("maps_url", patch.profile.mapsUrl);
+    set("wilaya", patch.profile.wilaya ?? null);
   }
   if (patch.look !== undefined) set("look", JSON.stringify(patch.look));
   if (patch.ownerEmail !== undefined) set("owner_email", patch.ownerEmail);

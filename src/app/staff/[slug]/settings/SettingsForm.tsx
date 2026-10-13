@@ -9,6 +9,8 @@ import { errorText, t, type DictKey } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
 import type { ChannelStatus } from "@/lib/server/channels";
 import SmsSection from "./SmsSection";
+import { WILAYAS } from "@/lib/domain/wilayas";
+import ReviewsSection from "./ReviewsSection";
 
 // نبدأ الأسبوع بالسبت كما في الجزائر
 const DAYS = ["6", "0", "1", "2", "3", "4", "5"];
@@ -138,6 +140,7 @@ export default function SettingsForm({
             [
               ["profile", "se_profile"],
               ["look", "se_look"],
+              ["reviews", "rv_se"],
               ["hours", "hours"],
               ["rules", "se_rules"],
               ["alerts", "se_alerts"],
@@ -178,6 +181,17 @@ export default function SettingsForm({
             <div>
               <label className="label" htmlFor="maps">{t(lang, "se_maps")}</label>
               <input id="maps" className="input text-start" dir="ltr" type="url" value={profile.mapsUrl ?? ""} onChange={(e) => setP("mapsUrl", e.target.value)} placeholder="https://maps.app.goo.gl/…" />
+            </div>
+            <div>
+              <label className="label" htmlFor="wilaya">{t(lang, "rv_wilaya")}</label>
+              <select id="wilaya" className="input" value={profile.wilaya ?? ""} onChange={(e) => setProfile((p) => ({ ...p, wilaya: e.target.value ? Number(e.target.value) : null }))}>
+                <option value="">{t(lang, "rv_wilayaNone")}</option>
+                {WILAYAS.map((w) => (
+                  <option key={w.code} value={w.code}>
+                    {String(w.code).padStart(2, "0")} · {w[lang]}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="sm:col-span-2">
               <label className="label">{t(lang, "defaultLang")}</label>
@@ -298,6 +312,8 @@ export default function SettingsForm({
             })}
           </div>
         </Section>
+
+        <ReviewsSection lang={lang} slug={slug} />
 
         <Section id="hours" icon={<Clock3 size={20} />} title={t(lang, "hours")} sub={t(lang, "se_hoursSub")}>
           <div className="divide-y divide-slate-100">

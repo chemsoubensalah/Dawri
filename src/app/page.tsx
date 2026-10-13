@@ -302,6 +302,7 @@ export default async function Home() {
           <Logo size={28} sub={false} />
           <p>{t(lang, "privacy")}</p>
           <div className="flex flex-wrap justify-center gap-4">
+            <Link href="/doctors" className="hover:text-ink">{t(lang, "rv_dirLink")}</Link>
             <Link href="/privacy" className="hover:text-ink">{t(lang, "lg_privacy")}</Link>
             <Link href="/terms" className="hover:text-ink">{t(lang, "lg_terms")}</Link>
             <Link href="/login" className="hover:text-ink">{t(lang, "l_login")}</Link>

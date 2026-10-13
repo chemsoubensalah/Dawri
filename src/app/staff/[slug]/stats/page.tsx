@@ -10,6 +10,8 @@ import { now as clockNow } from "@/lib/server/clock";
 import { getDb } from "@/lib/server/db";
 import { getLang, staffShop } from "@/lib/server/http";
 import * as repo from "@/lib/server/repo";
+import { staffReviews } from "@/lib/server/reviews";
+import ReviewsPanel from "./ReviewsPanel";
 
 export const metadata = { title: "الإحصاءات", robots: { index: false } };
 
@@ -36,6 +38,7 @@ export default async function StatsPage({
     repo.hourlyCounts(db, shop.id, new Date(`${from}T00:00:00+01:00`)),
     repo.periodTotals(db, shop.id, from),
   ]);
+  const reviews = await staffReviews(shop);
 
   // كلّ أيّام الفترة (حتى الأيّام بلا مرضى = 0)
   const byDay = new Map(daily.map((d) => [d.day, d]));
@@ -137,6 +140,8 @@ export default async function StatsPage({
             <p className="mt-3 text-xs text-slate-500">{t(lang, "stt_peakHint")}</p>
           </section>
         </div>
+
+        <ReviewsPanel lang={lang} slug={shop.slug} data={reviews} />
       </div>
     </StaffFrame>
   );
