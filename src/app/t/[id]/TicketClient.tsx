@@ -274,7 +274,7 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
       </section>
 
       {v.status === "waiting" && v.comeNow && !v.arrived && (
-        <div className="flex animate-pulse items-center justify-center gap-2 rounded-3xl bg-brand-600 p-4 text-center text-xl font-bold text-white shadow-(--shadow-brand)">
+        <div className="flex animate-pulse-ring items-center justify-center gap-2 rounded-3xl bg-brand-600 p-4 text-center text-xl font-bold text-white shadow-(--shadow-brand)">
           <BellRing size={22} /> {t(lang, "comeNow")}
         </div>
       )}

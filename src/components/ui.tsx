@@ -1,17 +1,19 @@
 /** مكوّنات واجهة مشتركة (بلا حالة — تعمل في الخادم والمتصفّح). */
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 /** شعار «دوري»: دائرة تقدّم (الطابور يتحرّك) داخل مربّع أخضر. */
 export function LogoMark({ size = 36, className = "" }: { size?: number; className?: string }) {
+  // معرّف فريد لكلّ شعار: لو تكرّر «dawri-g» وكان أوّل شعار مخفيّاً، تختفي خلفية الشعارات الأخرى
+  const gid = `dawri-g-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" className={className} aria-hidden="true">
       <defs>
-        <linearGradient id="dawri-g" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" style={{ stopColor: "var(--color-brand-500)" }} />
           <stop offset="1" style={{ stopColor: "var(--color-brand-700)" }} />
         </linearGradient>
       </defs>
-      <rect width="48" height="48" rx="14" fill="url(#dawri-g)" />
+      <rect width="48" height="48" rx="14" fill={`url(#${gid})`} />
       <circle cx="24" cy="24" r="13" fill="none" stroke="#fff" strokeOpacity="0.28" strokeWidth="4.5" />
       <path d="M24 11a13 13 0 1 1-12.36 8.98" fill="none" stroke="#fff" strokeWidth="4.5" strokeLinecap="round" />
       <circle cx="24" cy="24" r="4" fill="#fff" />

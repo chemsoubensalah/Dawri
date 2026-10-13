@@ -48,7 +48,7 @@
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-brand-500) 55%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 22px color-mix(in srgb, var(--color-brand-500) 0%, transparent);
+    box-shadow: 0 0 0 12px color-mix(in srgb, var(--color-brand-500) 0%, transparent);
   }
 }
 
@@ -116,7 +116,33 @@ body {
   @apply mb-1.5 block text-sm font-semibold text-slate-600;
 }
 @utility chip {
-  @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold;
+  @apply inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap;
+}
+
+@layer utilities {
+  /* قوائم الاختيار: سهم موحّد في الجهة الصحيحة (العربية يساراً) بدل سهم المتصفّح الملتصق بالحافّة */
+  select.input {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    padding-inline-end: 2.75rem;
+  }
+  [dir="rtl"] select.input {
+    background-position: left 1rem center;
+  }
+}
+
+@layer base {
+  /* لا كلمة وحيدة في آخر سطر العناوين والفقرات */
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
 }
 
 @media print {

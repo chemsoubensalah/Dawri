@@ -132,7 +132,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
       <ShopBooking lang={lang} slug={view.slug} door={door} teaser={booking} blocker={view.blocker} onHideForm={setApptAtDoor} />
 
       <section className="grid grid-cols-3 gap-2.5" aria-live="polite">
-        <Stat icon={<Ticket size={13} />} label={t(lang, "nowServing")} value={view.currentNumber ?? "—"} />
+        <Stat icon={<Ticket size={13} />} label={t(lang, "nowServing")} value={view.currentNumber ?? <span className="text-slate-300">· · ·</span>} />
         <Stat icon={<Users size={13} />} label={t(lang, "waitingCount")} value={view.waiting} />
         <Stat icon={<Hourglass size={13} />} label={t(lang, "sp_wait")} value={<span className="text-lg">{fmtWait(lang, view.waitNewMin)}</span>} />
       </section>
@@ -216,7 +216,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
                   <Phone size={18} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-slate-400 ltr:left-4 rtl:right-4" />
                   <input
                     id="phone"
-                    className="input num ps-11 text-start"
+                    className="input num pl-11 text-left rtl:pr-11 rtl:pl-4 rtl:text-right"
                     dir="ltr"
                     type="tel"
                     inputMode="tel"

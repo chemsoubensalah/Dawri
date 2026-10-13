@@ -67,7 +67,7 @@ export default function ClinicClient({ lang, initial }: { lang: Lang; initial: C
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                   <div className="rounded-xl bg-brand-50 p-2">
                     <p className="text-xs text-brand-800">{t(lang, "cl_now")}</p>
-                    <p className="num text-2xl font-bold text-brand-700" dir="ltr">{d.currentNumber ?? "—"}</p>
+                    <p className="num text-2xl font-bold text-brand-700" dir="ltr">{d.currentNumber ?? <span className="text-brand-300">· · ·</span>}</p>
                   </div>
                   <div className="rounded-xl bg-slate-50 p-2">
                     <p className="flex items-center justify-center gap-1 text-xs text-slate-500"><Users size={12} /> {t(lang, "cl_waiting")}</p>

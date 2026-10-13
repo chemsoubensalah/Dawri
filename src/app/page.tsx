@@ -9,6 +9,8 @@ import {
   Check,
   Clock3,
   HeartPulse,
+  LogIn,
+  Plus,
   Languages,
   MonitorPlay,
   QrCode,
@@ -62,7 +64,7 @@ function PhoneMock({ lang }: { lang: Lang }) {
               <div className="text-xs text-slate-500">{t(lang, "etaAbout", { n: 20 })}</div>
             </div>
           </div>
-          <div className="animate-pulse rounded-2xl bg-brand-600 p-3 text-center text-sm font-bold text-white">
+          <div className="animate-pulse-ring rounded-2xl bg-brand-600 p-3 text-center text-sm font-bold text-white">
             {t(lang, "comeNow")}
           </div>
           <div className="flex items-center gap-2 rounded-2xl bg-white p-3 text-xs text-slate-500 shadow-sm">
@@ -151,6 +153,7 @@ export default async function Home() {
           <div className="flex items-center gap-2">
             <LangSwitch lang={lang} />
             <Link href="/login" className="btn-ghost btn-sm hidden sm:inline-flex">{t(lang, "l_login")}</Link>
+            <Link href="/login" aria-label={t(lang, "l_login")} className="btn-ghost btn-sm px-2 sm:hidden"><LogIn size={18} /></Link>
             <Link href="/new" className="btn-primary btn-sm">{t(lang, "l_startFree")}</Link>
           </div>
         </nav>
@@ -168,13 +171,13 @@ export default async function Home() {
             </h1>
             <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600">{t(lang, "l_heroSub")}</p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link href="/new" className="btn-primary px-7 text-lg">
+              <Link href="/new" className="btn-primary w-full px-7 text-lg sm:w-auto">
                 {t(lang, "l_ctaStart")} <Arrow size={20} />
               </Link>
               {showDemo ? (
-                <Link href="/s/demo" className="btn-secondary px-6 text-lg">{t(lang, "homeDemo")}</Link>
+                <Link href="/s/demo" className="btn-secondary w-full px-6 text-lg sm:w-auto">{t(lang, "homeDemo")}</Link>
               ) : (
-                <a href="#how" className="btn-secondary px-6 text-lg">{t(lang, "l_ctaHow")}</a>
+                <a href="#how" className="btn-secondary w-full px-6 text-lg sm:w-auto">{t(lang, "l_ctaHow")}</a>
               )}
             </div>
             <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-slate-600">
@@ -206,7 +209,7 @@ export default async function Home() {
             <ol className="mt-12 grid gap-5 md:grid-cols-3">
               {STEPS.map((s, i) => (
                 <li key={s.title} className="card relative">
-                  <span className="num absolute top-5 text-5xl font-bold text-slate-100 ltr:right-5 rtl:left-5">{i + 1}</span>
+                  <span className="num absolute top-5 text-5xl font-bold text-brand-100 ltr:right-5 rtl:left-5">{i + 1}</span>
                   <IconBubble size="lg">{s.icon}</IconBubble>
                   <h3 className="mt-4 text-lg font-bold">{t(lang, s.title)}</h3>
                   <p className="mt-1.5 leading-relaxed text-slate-600">{t(lang, s.body)}</p>
@@ -221,10 +224,12 @@ export default async function Home() {
           <SectionTitle eyebrow={t(lang, "l_docEyebrow")} title={t(lang, "l_docTitle")} sub={t(lang, "l_docSub")} />
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {DOCTOR.map((f) => (
-              <div key={f.title} className="card transition hover:-translate-y-0.5 hover:shadow-(--shadow-lift)">
+              <div key={f.title} className="card flex gap-4 transition hover:-translate-y-0.5 hover:shadow-(--shadow-lift) sm:block">
                 <IconBubble>{f.icon}</IconBubble>
-                <h3 className="mt-4 font-bold">{t(lang, f.title)}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">{t(lang, f.body)}</p>
+                <div>
+                  <h3 className="font-bold sm:mt-4">{t(lang, f.title)}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-600">{t(lang, f.body)}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -300,7 +305,7 @@ export default async function Home() {
             <div className="mx-auto mt-10 grid max-w-5xl items-stretch gap-5 md:grid-cols-2">
               {/* Cabinet — طبيب واحد */}
               <div className="flex flex-col rounded-[2rem] bg-white p-7 ring-1 ring-slate-200" data-testid="plan-cabinet">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="flex items-center gap-2 font-bold">
                     <Stethoscope size={20} className="text-brand-600" /> {t(lang, "pl_cabinet")}
                   </span>
@@ -314,13 +319,13 @@ export default async function Home() {
                 <p className="mt-2 rounded-xl bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-800">
                   {t(lang, "l_orYear")}
                   <span className="num" dir="ltr">{yearPrice}</span> {t(lang, "l_perYear")}
-                  {savePct > 0 && <span className="num ms-1.5 inline-block rounded-full bg-brand-600 px-2 py-0.5 text-xs text-white" dir="ltr">−{savePct}%</span>}
+                  {savePct > 0 && <span className="num mx-1.5 inline-block rounded-full bg-brand-600 px-2 py-0.5 text-xs text-white" dir="ltr">−{savePct}%</span>}
                 </p>
                 <p className="mt-2 text-sm text-slate-500">{t(lang, "l_noCommission")}</p>
                 <ul className="mt-6 flex-1 space-y-2.5">
                   {PLAN.map((k) => (
-                    <li key={k} className="flex items-center gap-2.5 text-slate-700">
-                      <Check size={18} className="shrink-0 text-brand-600" /> {t(lang, k)}
+                    <li key={k} className="flex items-start gap-2.5 text-slate-700">
+                      <Check size={18} className="mt-0.5 shrink-0 text-brand-600" /> {t(lang, k)}
                     </li>
                   ))}
                 </ul>
@@ -333,7 +338,7 @@ export default async function Home() {
                   {t(lang, "pl_clinicBadge")}
                 </span>
                 <div className="flex h-full flex-col rounded-[1.6rem] bg-white p-7">
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="flex items-center gap-2 font-bold">
                       <Building2 size={20} className="text-brand-600" /> {t(lang, "pl_clinic")}
                     </span>
@@ -347,14 +352,14 @@ export default async function Home() {
                   <p className="mt-2 rounded-xl bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-800">
                     {t(lang, "l_orYear")}
                     <span className="num" dir="ltr">{clinicYearPrice}</span> {t(lang, "l_perYear")}
-                    {clinicSavePct > 0 && <span className="num ms-1.5 inline-block rounded-full bg-brand-600 px-2 py-0.5 text-xs text-white" dir="ltr">−{clinicSavePct}%</span>}
+                    {clinicSavePct > 0 && <span className="num mx-1.5 inline-block rounded-full bg-brand-600 px-2 py-0.5 text-xs text-white" dir="ltr">−{clinicSavePct}%</span>}
                   </p>
                   <p className="mt-2 text-sm text-slate-500">{t(lang, "l_noCommission")}</p>
                   <p className="mt-6 text-sm font-semibold text-slate-500">{t(lang, "pl_clinicPlus")}</p>
                   <ul className="mt-2.5 flex-1 space-y-2.5">
                     {CLINIC_PLAN.map((k) => (
-                      <li key={k} className="flex items-center gap-2.5 text-slate-700">
-                        <Check size={18} className="shrink-0 text-brand-600" /> {t(lang, k, { max: MAX_DOCTORS })}
+                      <li key={k} className="flex items-start gap-2.5 text-slate-700">
+                        <Check size={18} className="mt-0.5 shrink-0 text-brand-600" /> {t(lang, k, { max: MAX_DOCTORS })}
                       </li>
                     ))}
                   </ul>
@@ -373,7 +378,7 @@ export default async function Home() {
               <details key={q} className="group card p-0 open:shadow-(--shadow-lift)">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-5 font-semibold">
                   {t(lang, q)}
-                  <span className="text-xl text-brand-600 transition group-open:rotate-45">+</span>
+                  <Plus size={20} className="shrink-0 text-brand-600 transition group-open:rotate-45" />
                 </summary>
                 <p className="px-5 pb-5 leading-relaxed text-slate-600">{t(lang, a)}</p>
               </details>
@@ -398,12 +403,12 @@ export default async function Home() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 text-sm text-slate-500 sm:flex-row">
           <Logo size={28} sub={false} />
           <p>{t(lang, "privacy")}</p>
-          <div className="flex flex-wrap justify-center gap-4">
-            <Link href="/doctors" className="hover:text-ink">{t(lang, "rv_dirLink")}</Link>
-            <Link href="/privacy" className="hover:text-ink">{t(lang, "lg_privacy")}</Link>
-            <Link href="/terms" className="hover:text-ink">{t(lang, "lg_terms")}</Link>
-            <Link href="/login" className="hover:text-ink">{t(lang, "l_login")}</Link>
-            <Link href="/new" className="hover:text-ink">{t(lang, "l_startFree")}</Link>
+          <div className="flex flex-wrap justify-center gap-x-4">
+            <Link href="/doctors" className="py-2 hover:text-ink">{t(lang, "rv_dirLink")}</Link>
+            <Link href="/privacy" className="py-2 hover:text-ink">{t(lang, "lg_privacy")}</Link>
+            <Link href="/terms" className="py-2 hover:text-ink">{t(lang, "lg_terms")}</Link>
+            <Link href="/login" className="py-2 hover:text-ink">{t(lang, "l_login")}</Link>
+            <Link href="/new" className="py-2 hover:text-ink">{t(lang, "l_startFree")}</Link>
           </div>
         </div>
       </footer>

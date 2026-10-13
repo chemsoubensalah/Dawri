@@ -12,7 +12,7 @@ export default function NotFound() {
         <p className="mt-2 text-lg font-semibold">الصفحة غير موجودة</p>
         <p className="text-slate-500" dir="ltr">Page introuvable</p>
         <p className="mt-3 text-sm text-slate-500">تأكّد من الرابط أو امسح رمز QR الموجود على باب العيادة.</p>
-        <Link href="/" className="btn-secondary mt-5 w-full">دوري · Dawri</Link>
+        <Link href="/" className="btn-secondary mt-5 w-full">العودة للرئيسية · Accueil</Link>
       </div>
     </main>
   );

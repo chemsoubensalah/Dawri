@@ -56,8 +56,8 @@ export default function PushButton({ lang, ticketId, pushKey }: { lang: Lang; ti
   }
 
   if (state === "unknown") return null;
-  if (state === "unsupported") return <p className="text-center text-sm text-slate-600">{t(lang, "alertsUnsupported")}</p>;
-  if (state === "denied") return <p className="text-center text-sm text-amber-700">{t(lang, "alertsBlocked")}</p>;
+  if (state === "unsupported") return <p className="text-start text-sm text-slate-600">{t(lang, "alertsUnsupported")}</p>;
+  if (state === "denied") return <p className="text-start text-sm text-amber-700">{t(lang, "alertsBlocked")}</p>;
   if (state === "granted") return <p className="text-center font-semibold text-brand-700">{t(lang, "alertsOn")}</p>;
   return (
     <button className="btn-secondary w-full" onClick={enable} disabled={busy}>

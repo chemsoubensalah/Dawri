@@ -43,7 +43,7 @@ export default function SoundGate({
       {part === "banner" && !ready && !muted && (
         <button
           type="button"
-          className={`group flex w-full animate-fade-up items-center gap-3 rounded-2xl p-2.5 text-start ring-1 transition ${
+          className={`group flex w-full animate-fade-up items-center gap-3 overflow-hidden rounded-2xl p-2.5 text-start ring-1 transition ${
             tone === "dark"
               ? "bg-white/[0.07] ring-white/15 hover:bg-white/10"
               : "bg-white shadow-[0_6px_20px_-12px_rgb(15_23_42/0.35)] ring-slate-200 hover:ring-brand-300"
@@ -65,7 +65,7 @@ export default function SoundGate({
           </span>
           <span className="min-w-0 flex-1 leading-tight">
             <span className={`block font-bold ${tone === "dark" ? "text-white" : "text-ink"}`}>{t(lang, "soundEnable")}</span>
-            <span className={`block truncate text-sm ${tone === "dark" ? "text-slate-400" : "text-slate-500"}`}>{t(lang, "soundHint")}</span>
+            <span className={`line-clamp-2 block text-sm ${tone === "dark" ? "text-slate-400" : "text-slate-500"}`}>{t(lang, "soundHint")}</span>
           </span>
           <span className="shrink-0 rounded-full bg-brand-600 px-4 py-2 text-sm font-bold text-white transition group-hover:bg-brand-700">
             {t(lang, "soundCta")}

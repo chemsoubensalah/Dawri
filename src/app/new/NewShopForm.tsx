@@ -83,14 +83,14 @@ export default function NewShopForm({ lang, needsCode, refCode = null }: { lang:
       </div>
       <div>
         <label className="label">{t(lang, "shopKind")}</label>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+        <div className="flex flex-wrap gap-2">
           {KINDS.map(({ k, icon: Icon }) => (
             <button
               type="button"
               key={k}
               onClick={() => setKind(k)}
               aria-pressed={kind === k}
-              className={`flex flex-col items-center gap-1.5 rounded-2xl px-2 py-3 text-sm font-semibold ring-1 transition ${
+              className={`flex flex-1 basis-[30%] flex-col items-center gap-1.5 rounded-2xl px-2 py-3 text-sm font-semibold ring-1 transition sm:basis-0 ${
                 kind === k ? "bg-brand-50 text-brand-800 ring-2 ring-brand-500" : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50"
               }`}
             >

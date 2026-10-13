@@ -92,7 +92,7 @@ function makeClassic(skin: ClassicSkin) {
         <div className="flex min-w-0 items-center gap-4">
           <LogoMark size={52} />
           <div className="min-w-0">
-            <h1 className="truncate pb-0.5 text-2xl leading-normal font-bold sm:text-3xl">{v.name}</h1>
+            <h1 className="line-clamp-2 pb-0.5 text-2xl leading-normal font-bold sm:truncate sm:text-3xl">{v.name}</h1>
             {v.profile.specialty && <p className={`truncate text-lg ${k.accent}`}>{v.profile.specialty}</p>}
           </div>
         </div>
@@ -185,7 +185,7 @@ function makeClassic(skin: ClassicSkin) {
           <div className="mt-auto flex items-center gap-5 rounded-[2rem] bg-white p-5 text-ink shadow-[0_20px_50px_-20px_rgb(0_0_0/0.45)] ring-1 ring-slate-200/60">
             <div className="w-28 shrink-0 rounded-xl bg-white p-1 ring-4 ring-brand-100" dangerouslySetInnerHTML={{ __html: qr }} />
             <div>
-              <div className="text-xl leading-snug font-bold">{t(lang, "posterTitle")}</div>
+              <div className="text-xl leading-snug font-bold text-balance">{t(lang, "posterTitle").replace(" —", "\u00a0—")}</div>
               <p className="mt-1 text-sm text-slate-600">{t(lang, "dp_scan")}</p>
             </div>
           </div>

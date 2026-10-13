@@ -251,7 +251,7 @@ export default function BookClient({
                     <Phone size={18} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-slate-400 ltr:left-4 rtl:right-4" />
                     <input
                       id="bk-phone"
-                      className="input num ps-11 text-start"
+                      className="input num pl-11 text-left rtl:pr-11 rtl:pl-4 rtl:text-right"
                       dir="ltr"
                       type="tel"
                       inputMode="tel"

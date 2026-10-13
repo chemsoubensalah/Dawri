@@ -51,7 +51,7 @@ export default function SignupChoice({
         <span className="block font-bold text-ink">{title}</span>
         {prices && (
           <span className="mt-0.5 block text-sm font-semibold text-brand-700" data-testid={`signup-price-${m}`}>
-            <span dir="ltr" className="num">{prices[m]}</span> {t(lang, "l_perMonth")}
+            <span className="whitespace-nowrap"><span dir="ltr" className="num">{prices[m]}</span> {t(lang, "l_perMonth")}</span>
           </span>
         )}
         <span className="mt-0.5 block text-xs text-slate-500">{sub}</span>
@@ -60,7 +60,7 @@ export default function SignupChoice({
   );
   return (
     <>
-      <div className="mt-6 grid grid-cols-2 gap-3">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
         {opt("single", Stethoscope, t(lang, "pl_cabinet"), t(lang, "cl_singleSub"))}
         {opt("clinic", Building2, t(lang, "pl_clinic"), t(lang, "cl_multiSub"))}
       </div>
