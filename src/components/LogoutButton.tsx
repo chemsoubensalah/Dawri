@@ -14,7 +14,7 @@ export default function LogoutButton({ slug, label }: { slug: string; label: str
         location.href = `/staff/${slug}`;
       }}
     >
-      <LogOut size={16} />
+      <LogOut size={16} className="rtl:-scale-x-100" />
     </button>
   );
 }

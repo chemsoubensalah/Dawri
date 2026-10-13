@@ -309,7 +309,7 @@ export default function BookingSection({ lang, slug }: { lang: Lang; slug: strin
             {msg.text}
           </p>
         )}
-        <button type="button" form={FORM} className="btn-primary" onClick={save} disabled={busy} data-testid="booking-save">
+        <button type="button" form={FORM} className="btn-primary btn-sm" onClick={save} disabled={busy} data-testid="booking-save">
           <Save size={18} /> {busy ? "…" : t(lang, "ap_se_save")}
         </button>
       </div>

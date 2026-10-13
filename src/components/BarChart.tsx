@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface Bar {
   key: string;
@@ -14,14 +14,24 @@ export interface Bar {
  */
 export default function BarChart({ data, height = 180, color = "var(--color-brand-600)", unit = "" }: { data: Bar[]; height?: number; color?: string; unit?: string }) {
   const [hover, setHover] = useState<number | null>(null);
+  // عرض حقيقي بالبكسل: النصوص تبقى بحجمها (11px) على الهاتف بدل أن تُصغَّر مع الرسم
+  const box = useRef<HTMLDivElement>(null);
+  const [W, setW] = useState(640);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(240, Math.round(e.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const max = Math.max(1, ...data.map((d) => d.value));
   const nice = (() => {
     const pow = 10 ** Math.floor(Math.log10(max));
     const step = [1, 2, 2.5, 5, 10].map((m) => m * pow).find((s) => max / s <= 4) ?? pow * 10;
     return Math.ceil(max / step) * step;
   })();
-  const ticks = [0, nice / 2, nice];
-  const W = 640;
+  // لا «0.5 مريض»: المنتصف فقط إن كان عدداً صحيحاً
+  const ticks = Number.isInteger(nice / 2) ? [0, nice / 2, nice] : [0, nice];
   const H = height;
   const padL = 30;
   const padB = 22;
@@ -30,9 +40,17 @@ export default function BarChart({ data, height = 180, color = "var(--color-bran
   const band = plotW / data.length;
   const bw = Math.min(24, Math.max(3, band - 2));
   const y = (v: number) => 8 + plotH - (v / nice) * plotH;
+  // تسميات المحور: نتخطّى ما يلتصق بالسابقة (≥ 34px بينها)
+  let lastX = -Infinity;
+  const showLabel = data.map((d, i) => {
+    const cx = padL + i * band + band / 2;
+    if (!d.label || cx - lastX < 34) return false;
+    lastX = cx;
+    return true;
+  });
 
   return (
-    <div className="relative" dir="ltr">
+    <div className="relative" dir="ltr" ref={box}>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-hidden="true">
         {ticks.map((tk) => (
           <g key={tk}>
@@ -68,7 +86,7 @@ export default function BarChart({ data, height = 180, color = "var(--color-bran
                   pointerEvents="none"
                 />
               )}
-              {d.label && (
+              {showLabel[i] && (
                 <text x={x + bw / 2} y={H - 6} textAnchor="middle" fontSize="10.5" fill="#64748b" className="num">
                   {d.label}
                 </text>
@@ -81,9 +99,9 @@ export default function BarChart({ data, height = 180, color = "var(--color-bran
       {hover !== null && (
         <div
           className="pointer-events-none absolute top-0 z-10 -translate-x-1/2 rounded-xl bg-ink px-3 py-2 text-xs whitespace-nowrap text-white shadow-lg"
-          style={{ left: `${((padL + hover * band + band / 2) / W) * 100}%` }}
+          style={{ left: `${Math.min(85, Math.max(15, ((padL + hover * band + band / 2) / W) * 100))}%` }}
         >
-          <div className="text-slate-300">{data[hover].tip}</div>
+          <div className="text-slate-300" dir="auto">{data[hover].tip}</div>
           <div className="num text-sm font-bold">
             {data[hover].value}
             {unit}

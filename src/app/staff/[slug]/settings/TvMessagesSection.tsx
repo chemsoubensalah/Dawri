@@ -101,7 +101,7 @@ export default function TvMessagesSection({ lang, slug }: { lang: Lang; slug: st
                 key={k}
                 disabled={used || list.length >= MAX}
                 onClick={() => set([...list, text])}
-                className="rounded-full bg-slate-50 px-3 py-1.5 text-start text-xs text-slate-700 ring-1 ring-slate-200 transition hover:bg-brand-50 hover:ring-brand-200 disabled:opacity-40"
+                className="rounded-xl bg-slate-50 px-3 py-1.5 text-start text-xs text-slate-700 ring-1 ring-slate-200 transition hover:bg-brand-50 hover:ring-brand-200 disabled:opacity-40"
               >
                 + {text}
               </button>

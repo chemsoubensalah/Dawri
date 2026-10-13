@@ -19,7 +19,7 @@ export default async function ReferralCard({ lang, shopId }: { lang: Lang; shopI
     [t(lang, "gr_refMonths"), s.rewardedMonths],
   ];
   return (
-    <section className="card overflow-hidden">
+    <section className="card overflow-hidden p-0">
       <div className="bg-gradient-to-br from-brand-600 to-brand-800 p-6 text-white">
         <h2 className="flex items-center gap-2 text-lg font-bold">
           <Gift size={22} /> {t(lang, "gr_refTitle")}
@@ -29,7 +29,7 @@ export default async function ReferralCard({ lang, shopId }: { lang: Lang; shopI
       <div className="space-y-4 p-6">
         <CopyField label={t(lang, "gr_refLink")} value={link} copy={t(lang, "gr_refCopy")} copied={t(lang, "gr_refCopied")} />
         <div className="flex flex-wrap items-center gap-3">
-          <a href={wa} target="_blank" rel="noopener noreferrer" className="btn bg-[#25D366] text-white hover:bg-[#1ebe5b]">
+          <a href={wa} target="_blank" rel="noopener noreferrer" className="btn bg-[#128C7E] text-white hover:bg-[#0e6f64]">
             <MessageCircle size={18} /> {t(lang, "gr_refWhatsapp")}
           </a>
           <span className="text-sm text-slate-500">

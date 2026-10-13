@@ -339,7 +339,7 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
               </p>
             ) : (
               v.wa.link && (
-                <a href={v.wa.link} className="btn w-full bg-[#25D366] text-white hover:bg-[#1ebe5b]" data-testid="wa-alerts">
+                <a href={v.wa.link} className="btn w-full bg-[#128C7E] text-white hover:bg-[#0e6f64]" data-testid="wa-alerts">
                   <MessageCircle size={18} /> {t(lang, "tk_waLink")}
                 </a>
               )

@@ -132,7 +132,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
       <ShopBooking lang={lang} slug={view.slug} door={door} teaser={booking} blocker={view.blocker} onHideForm={setApptAtDoor} />
 
       <section className="grid grid-cols-3 gap-2.5" aria-live="polite">
-        <Stat icon={<Ticket size={13} />} label={t(lang, "nowServing")} value={view.currentNumber ?? <span className="text-slate-300">· · ·</span>} />
+        <Stat icon={<Ticket size={13} />} label={t(lang, "nowServing")} value={view.currentNumber ?? <span className="text-slate-400">· · ·</span>} />
         <Stat icon={<Users size={13} />} label={t(lang, "waitingCount")} value={view.waiting} />
         <Stat icon={<Hourglass size={13} />} label={t(lang, "sp_wait")} value={<span className="text-lg">{fmtWait(lang, view.waitNewMin)}</span>} />
       </section>
@@ -231,7 +231,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
               {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
               {view.waVerify && view.verifyPhone ? (
                 <>
-                  <button className="btn w-full bg-[#25D366] text-lg text-white shadow-sm hover:bg-[#1ebe5b] focus-visible:ring-green-200" disabled={busy}>
+                  <button className="btn w-full bg-[#128C7E] text-lg text-white shadow-sm hover:bg-[#0e6f64] focus-visible:ring-green-200" disabled={busy}>
                     <MessageCircle size={20} /> {busy ? "…" : t(lang, "sp_viaWa")}
                   </button>
                   <p className="text-center text-xs text-slate-500">{t(lang, "sp_viaWaHint")}</p>
@@ -261,7 +261,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
                 <>
                   <a
                     href={wa.link}
-                    className="btn w-full bg-[#25D366] py-4 text-lg text-white shadow-sm hover:bg-[#1ebe5b]"
+                    className="btn w-full bg-[#128C7E] py-4 text-lg text-white shadow-sm hover:bg-[#0e6f64]"
                     data-testid="wa-open"
                   >
                     <MessageCircle size={22} /> {t(lang, "sp_waOpen")}

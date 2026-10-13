@@ -116,7 +116,7 @@ export default function AppointmentsBoard({ lang, slug, initial }: { lang: Lang;
               <Copy size={14} /> {copied ? "✓" : t(lang, "db_copy")}
             </button>
             <a
-              className="btn btn-sm bg-[#25D366] text-white hover:bg-[#1ebe5b]"
+              className="btn btn-sm bg-[#128C7E] text-white hover:bg-[#0e6f64]"
               href={`https://wa.me/?text=${encodeURIComponent(`${t(lang, "ap_bookTitle")}: ${bookingUrl}`)}`}
               target="_blank"
               rel="noopener noreferrer"

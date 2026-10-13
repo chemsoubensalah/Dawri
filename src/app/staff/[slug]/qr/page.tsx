@@ -38,7 +38,7 @@ export default async function QrPoster({ params }: { params: Promise<{ slug: str
       </div>
 
       {/* ورقة A4 */}
-      <article className="mx-auto aspect-[210/297] w-full max-w-[720px] overflow-hidden rounded-3xl bg-white shadow-(--shadow-lift) ring-1 ring-slate-200 print:max-w-none print:rounded-none print:shadow-none print:ring-0">
+      <article className="mx-auto aspect-[210/297] w-full max-sm:aspect-auto max-w-[720px] overflow-hidden rounded-3xl bg-white shadow-(--shadow-lift) ring-1 ring-slate-200 print:max-w-none print:rounded-none print:shadow-none print:ring-0">
         <div className="flex h-full flex-col">
           <header className="bg-gradient-to-br from-brand-600 to-brand-800 px-[6%] py-[5%] text-center text-white">
             <div className="flex items-center justify-center gap-3">
@@ -51,7 +51,7 @@ export default async function QrPoster({ params }: { params: Promise<{ slug: str
 
           <div className="flex flex-1 flex-col items-center justify-center gap-[4%] px-[7%] py-[4%]">
             <div className="text-center">
-              <p className="text-[clamp(1.3rem,3.8vw,2.2rem)] leading-tight font-bold text-ink" dir="rtl">{t("ar", "posterTitle")}</p>
+              <p className="text-[clamp(1.3rem,3.8vw,2.2rem)] leading-tight font-bold text-balance text-ink" dir="rtl">{t("ar", "posterTitle")}</p>
               <p className="mt-1 text-[clamp(1rem,2.6vw,1.5rem)] font-semibold text-slate-500" dir="ltr">{t("fr", "posterTitle")}</p>
             </div>
             <div className="w-[52%] rounded-[1.5rem] bg-white p-4 shadow-[0_0_0_6px_var(--color-brand-50),0_0_0_8px_var(--color-brand-200)]" dangerouslySetInnerHTML={{ __html: svg }} />
@@ -59,8 +59,8 @@ export default async function QrPoster({ params }: { params: Promise<{ slug: str
               {steps.map(([icon, k], i) => (
                 <li key={i} className="rounded-2xl bg-slate-50 p-3">
                   <span className="mx-auto inline-flex size-12 items-center justify-center rounded-xl bg-brand-100 text-brand-700">{icon}</span>
-                  <p className="mt-2 text-sm leading-snug font-bold text-ink" dir="rtl">{t("ar", k)}</p>
-                  <p className="mt-1 text-xs leading-snug text-slate-500" dir="ltr">{t("fr", k)}</p>
+                  <p className="mt-2 text-sm leading-snug font-bold text-balance text-ink" dir="rtl">{t("ar", k)}</p>
+                  <p className="mt-1 text-xs leading-snug text-balance text-slate-500" dir="ltr">{t("fr", k)}</p>
                 </li>
               ))}
             </ol>
@@ -68,15 +68,16 @@ export default async function QrPoster({ params }: { params: Promise<{ slug: str
 
           <footer className="mx-[6%] mb-[5%] flex items-center gap-4 rounded-2xl bg-ink px-5 py-4 text-white">
             <UserCheck size={30} className="shrink-0 text-brand-300" />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 text-center">
               <p className="font-bold" dir="rtl">{t("ar", "posterArrived")}</p>
               <p className="text-sm text-slate-300" dir="ltr">{t("fr", "posterArrived")}</p>
             </div>
             <Smartphone size={26} className="shrink-0 text-slate-400" />
           </footer>
-          <p className="mb-[3%] text-center text-xs text-slate-500" dir="rtl">
-            {t("ar", "noSmartphone")} · <span dir="ltr">{t("fr", "noSmartphone")}</span>
-          </p>
+          <div className="mb-[3%] text-center text-xs text-slate-500">
+            <p dir="rtl">{t("ar", "noSmartphone")}</p>
+            <p dir="ltr">{t("fr", "noSmartphone")}</p>
+          </div>
         </div>
       </article>
 

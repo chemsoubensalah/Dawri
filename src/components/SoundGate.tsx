@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Volume2 } from "lucide-react";
+import { Volume2, VolumeX } from "lucide-react";
 import type { Lang } from "@/lib/domain/types";
 import { t } from "@/lib/i18n";
 import { audioReady, isMuted, playSound, setMuted, unlockAudio } from "@/lib/client";
@@ -75,7 +75,7 @@ export default function SoundGate({
       {part === "toggle" && (
         <button
           type="button"
-          className="rounded-full px-3 py-1 text-sm font-semibold text-slate-600 ring-1 ring-slate-300 hover:bg-white"
+          className="inline-flex size-9 items-center justify-center rounded-full text-slate-500 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-ink"
           onClick={() => {
             const m = !muted;
             setMuted(m);
@@ -87,7 +87,7 @@ export default function SoundGate({
           aria-pressed={!muted}
           data-testid="mute-toggle"
         >
-          {muted ? "🔇" : "🔊"}
+          {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
         </button>
       )}
     </>

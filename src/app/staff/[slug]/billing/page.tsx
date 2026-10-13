@@ -139,7 +139,7 @@ function ClinicCoverCard({
   const title = covers ? "cb_coveredTitle" : cs.active ? "cb_trialNoCoverTitle" : "cb_clinicExpiredTitle";
   const sub = covers ? "cb_coveredSub" : cs.active ? "cb_trialNoCoverSub" : active ? "cb_clinicExpiredOwnSub" : "cb_clinicExpiredSub";
   return (
-    <section className="card overflow-hidden" data-testid="clinic-cover">
+    <section className="card overflow-hidden p-0" data-testid="clinic-cover">
       <div className={`flex flex-wrap items-center justify-between gap-3 p-6 ${head}`}>
         <div className="flex min-w-0 items-center gap-3">
           <span className={`inline-flex size-12 shrink-0 items-center justify-center rounded-2xl text-white ${icon}`}>

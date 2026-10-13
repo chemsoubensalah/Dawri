@@ -138,8 +138,8 @@ export default function SettingsForm({
         save();
       }}
     >
-      <nav className="hidden lg:block">
-        <div className="sticky top-32 space-y-1">
+      <nav className="-mx-3 overflow-x-auto px-3 [scrollbar-width:none] lg:mx-0 lg:px-0">
+        <div className="flex gap-1.5 lg:sticky lg:top-32 lg:block lg:space-y-1">
           {(
             [
               ["profile", "se_profile"],
@@ -155,7 +155,7 @@ export default function SettingsForm({
               ["security", "se_security"],
             ] as [string, DictKey][]
           ).map(([id, k]) => (
-            <a key={id} href={`#${id}`} className="block rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-white hover:text-ink">
+            <a key={id} href={`#${id}`} className="block shrink-0 rounded-full bg-white px-3 py-2 text-sm font-semibold whitespace-nowrap text-slate-600 ring-1 ring-slate-200 hover:bg-white hover:text-ink lg:rounded-xl lg:bg-transparent lg:ring-0">
               {t(lang, k)}
             </a>
           ))}
@@ -284,7 +284,7 @@ export default function SettingsForm({
               <ExternalLink size={15} /> {t(lang, "se_preview")}
             </a>
           </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="radiogroup" aria-label={t(lang, "se_display")}>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-3" role="radiogroup" aria-label={t(lang, "se_display")}>
             {DISPLAY_STYLES.map((ds) => {
               const on = look.display === ds;
               const { Thumb } = LAYOUTS[ds];
@@ -304,7 +304,7 @@ export default function SettingsForm({
                   <div className="mt-2.5 flex items-start justify-between gap-2 px-1">
                     <div>
                       <div className="font-bold text-ink">{t(lang, `ds_${ds}` as DictKey)}</div>
-                      <div className="text-xs text-slate-500">{t(lang, `ds_${ds}Hint` as DictKey)}</div>
+                      <div className="hidden text-xs text-slate-500 sm:block">{t(lang, `ds_${ds}Hint` as DictKey)}</div>
                     </div>
                     <span
                       className={`mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full ${
@@ -327,6 +327,7 @@ export default function SettingsForm({
           <div className="divide-y divide-slate-100">
             {DAYS.map((d) => {
               const list = hours[d] ?? [];
+              const firstOpen = DAYS.find((x) => (hours[x] ?? []).length > 0) === d;
               const open = list.length > 0;
               return (
                 <div key={d} className="flex flex-wrap items-center gap-3 py-3">
@@ -341,10 +342,10 @@ export default function SettingsForm({
                   </label>
                   {!open && <span className="text-sm text-slate-400">{t(lang, "closed")}</span>}
                   {list.map(([a, b], i) => (
-                    <span key={i} className="flex items-center gap-1.5" dir="ltr">
-                      <input type="time" className="num rounded-xl border border-slate-200 px-2.5 py-1.5" value={a} onChange={(e) => setDay(d, list.map((x, j) => (j === i ? [e.target.value, x[1]] : x)))} />
+                    <span key={i} className="flex items-center gap-1.5">
+                      <input type="time" dir="ltr" className="num rounded-xl border border-slate-200 px-2.5 py-1.5" value={a} onChange={(e) => setDay(d, list.map((x, j) => (j === i ? [e.target.value, x[1]] : x)))} />
                       <span className="text-slate-400">–</span>
-                      <input type="time" className="num rounded-xl border border-slate-200 px-2.5 py-1.5" value={b} onChange={(e) => setDay(d, list.map((x, j) => (j === i ? [x[0], e.target.value] : x)))} />
+                      <input type="time" dir="ltr" className="num rounded-xl border border-slate-200 px-2.5 py-1.5" value={b} onChange={(e) => setDay(d, list.map((x, j) => (j === i ? [x[0], e.target.value] : x)))} />
                       {i > 0 && (
                         <button type="button" className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50" onClick={() => setDay(d, list.filter((_, j) => j !== i))} aria-label="×">
                           <Trash2 size={16} />
@@ -358,7 +359,7 @@ export default function SettingsForm({
                         <Plus size={15} /> {t(lang, "se_addPeriod")}
                       </button>
                     )}
-                    {open && (
+                    {open && firstOpen && (
                       <button type="button" className="btn-ghost btn-sm text-slate-500" onClick={() => copyToAll(d)}>
                         {t(lang, "se_copyAll")}
                       </button>
@@ -424,7 +425,7 @@ export default function SettingsForm({
           <AssistantPin lang={lang} slug={slug} />
         </Section>
 
-        <div className="sticky bottom-3 z-20 flex items-center justify-end gap-3 rounded-2xl bg-white/90 p-3 shadow-(--shadow-lift) ring-1 ring-slate-200 backdrop-blur">
+        <div className="sticky bottom-3 z-20 ms-auto flex w-fit max-w-full items-center justify-end gap-3 rounded-2xl bg-white/90 p-2 shadow-(--shadow-lift) ring-1 ring-slate-200 backdrop-blur">
           {msg && <p className={`me-auto text-sm font-semibold ${msg.ok ? "text-brand-700" : "text-rose-700"}`} role="status">{msg.text}</p>}
           <button className="btn-primary px-8" disabled={busy}>
             <Save size={18} /> {t(lang, "save")}

@@ -28,7 +28,7 @@ export function Logo({ size = 36, sub = true, invert = false }: { size?: number;
       <span className="leading-none">
         <span className={`block text-xl font-bold tracking-tight ${invert ? "text-white" : "text-ink"}`}>دوري</span>
         {sub && (
-          <span className={`block text-[11px] font-medium tracking-[0.18em] ${invert ? "text-brand-200" : "text-brand-700"}`}>
+          <span className={`mt-1 block text-[11px] font-medium tracking-[0.18em] ${invert ? "text-brand-200" : "text-brand-700"}`}>
             DAWRI
           </span>
         )}
@@ -114,7 +114,7 @@ export function Empty({ icon, title, sub }: { icon: ReactNode; title: string; su
     <div className="flex flex-col items-center gap-2 py-8 text-center">
       <span className="text-slate-300">{icon}</span>
       <div className="font-semibold text-slate-500">{title}</div>
-      {sub && <div className="max-w-xs text-sm text-slate-400">{sub}</div>}
+      {sub && <div className="max-w-xs text-sm text-slate-500">{sub}</div>}
     </div>
   );
 }

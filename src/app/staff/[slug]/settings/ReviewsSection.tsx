@@ -91,7 +91,7 @@ export default function ReviewsSection({ lang, slug }: { lang: Lang; slug: strin
         <a href="/doctors" target="_blank" rel="noopener" className="btn-ghost btn-sm">
           <ExternalLink size={15} /> {t(lang, "rv_seeDir")}
         </a>
-        <button type="button" className="btn-secondary btn-sm" onClick={save} disabled={busy || !dirty} data-testid="rv-save">
+        <button type="button" className="btn-primary btn-sm" onClick={save} disabled={busy || !dirty} data-testid="rv-save">
           <Save size={15} /> {t(lang, "save")}
         </button>
       </div>

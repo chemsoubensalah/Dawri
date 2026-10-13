@@ -68,11 +68,11 @@ export default function StaffFrame({
               </span>
             )}
             {actions}
-            <LangSwitch lang={lang} className="hidden sm:inline-flex" />
+            <LangSwitch lang={lang} />
             <LogoutButton slug={slug} label={t(lang, "logout")} />
           </div>
         </div>
-        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 pt-2 sm:px-4" aria-label={t(lang, "nav_space")}>
+        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 pt-2 [scrollbar-width:none] sm:px-4" aria-label={t(lang, "nav_space")}>
           {TABS.filter((tab) => role !== "assistant" || (tab.key !== "settings" && tab.key !== "billing")).map((tab) => {
             const on = tab.key === active;
             return (
@@ -81,16 +81,18 @@ export default function StaffFrame({
                 href={tab.href(slug)}
                 target={tab.external ? "_blank" : undefined}
                 aria-current={on ? "page" : undefined}
+                aria-label={t(lang, tab.label)}
+                title={t(lang, tab.label)}
                 className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 pt-1.5 pb-2.5 text-sm font-semibold transition ${
                   on ? "border-brand-600 text-brand-700" : "border-transparent text-slate-500 hover:text-ink"
                 }`}
               >
                 {tab.icon}
-                {t(lang, tab.label)}
+                {/* على الهاتف: التبويب الحالي باسمه، والبقيّة أيقونات فقط كي تظهر كلّها */}
+                <span className={on ? "" : "max-sm:sr-only"}>{t(lang, tab.label)}</span>
               </Link>
             );
           })}
-          <LangSwitch lang={lang} className="my-1 ms-auto shrink-0 sm:hidden" />
         </nav>
       </header>
       <main className="mx-auto max-w-6xl px-3 py-5 sm:px-5 sm:py-7">{children}</main>

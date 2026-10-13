@@ -503,7 +503,7 @@ export default function SmsSection({ lang, slug }: { lang: Lang; slug: string })
           )}
 
           <div className="flex flex-wrap items-center gap-3">
-            <button type="button" className="btn-primary" onClick={save} disabled={busy !== null}>
+            <button type="button" className="btn-primary btn-sm" onClick={save} disabled={busy !== null}>
               <Save size={18} /> {busy === "save" ? "…" : t(lang, "sg_save")}
             </button>
             {msgLine(msg)}

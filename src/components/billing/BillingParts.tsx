@@ -159,7 +159,7 @@ export function ManualPaymentCard({
           href={`https://wa.me/${manual.whatsapp}?text=${encodeURIComponent(`${waText} ${reference}`)}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="btn mt-4 bg-[#25D366] text-white hover:bg-[#1ebe5b]"
+          className="btn mt-4 bg-[#128C7E] text-white hover:bg-[#0e6f64]"
         >
           <MessageCircle size={18} /> {t(lang, "bl_sendReceipt")}
         </a>

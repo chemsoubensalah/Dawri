@@ -248,7 +248,7 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
             )}
 
             <button
-              className="btn relative mt-5 h-16 w-full bg-brand-500 text-2xl text-white shadow-(--shadow-brand) hover:bg-brand-400 focus-visible:ring-brand-300"
+              className="btn relative mt-5 h-16 w-full bg-brand-600 text-2xl text-white shadow-(--shadow-brand) hover:bg-brand-700 focus-visible:ring-brand-300"
               onClick={next}
               disabled={busy || !canNext}
               data-testid="next"
@@ -265,7 +265,7 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
             {cur && (
               <div className="relative mt-4 grid grid-cols-3 gap-2">
                 <button
-                  className="btn btn-sm h-11 bg-amber-500/90 text-white hover:bg-amber-500"
+                  className="btn btn-sm h-14 flex-col gap-0.5 bg-amber-400 px-1 text-xs leading-tight whitespace-nowrap text-amber-950 hover:bg-amber-300 sm:h-11 sm:flex-row sm:gap-1.5 sm:text-sm"
                   onClick={() => setConfirm({ kind: "noshow", id: cur.id, number: cur.number })}
                   disabled={busy}
                   data-testid="no-show"
@@ -273,14 +273,14 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
                   <UserRoundX size={16} /> {t(lang, "db_absent")}
                 </button>
                 <button
-                  className="btn btn-sm h-11 bg-white/10 text-white ring-1 ring-white/15 hover:bg-white/20"
+                  className="btn btn-sm h-14 flex-col gap-0.5 bg-white/10 px-1 text-xs leading-tight whitespace-nowrap text-white ring-1 ring-white/15 hover:bg-white/20 sm:h-11 sm:flex-row sm:gap-1.5 sm:text-sm"
                   onClick={() => act({ action: "arrived", ticketId: cur.id })}
                   disabled={busy || cur.arrived}
                 >
                   <UserCheck size={16} /> {t(lang, "markArrived")}
                 </button>
                 <button
-                  className="btn btn-sm h-11 bg-white/10 text-white ring-1 ring-white/15 hover:bg-white/20"
+                  className="btn btn-sm h-14 flex-col gap-0.5 bg-white/10 px-1 text-xs leading-tight whitespace-nowrap text-white ring-1 ring-white/15 hover:bg-white/20 sm:h-11 sm:flex-row sm:gap-1.5 sm:text-sm"
                   onClick={() => act({ action: "recall" }, () => t(lang, "db_recalled"))}
                   disabled={busy}
                 >
@@ -293,7 +293,7 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
                 {msg.text}
               </p>
             )}
-            <p className="relative mt-3 hidden items-center justify-center gap-1.5 text-xs text-slate-500 lg:flex">
+            <p className="relative mt-3 hidden items-center justify-center gap-1.5 text-xs text-slate-400 lg:flex">
               <Keyboard size={13} /> {t(lang, "db_shortcuts")}
             </p>
           </section>
@@ -329,12 +329,12 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
                       </span>
                     </span>
                     {r.eta !== null && (
-                      <span className="num hidden text-xs whitespace-nowrap text-slate-400 sm:inline">≈ {t(lang, "sp_min", { n: r.eta })}</span>
+                      <span className="num hidden text-xs whitespace-nowrap text-slate-500 sm:inline">≈ {t(lang, "sp_min", { n: r.eta })}</span>
                     )}
-                    <span className="flex shrink-0 gap-1">
+                    <span className="flex shrink-0 gap-2">
                       {!r.arrived && (
                         <button
-                          className="inline-flex size-9 items-center justify-center rounded-xl text-brand-700 ring-1 ring-brand-200 hover:bg-brand-50"
+                          className="inline-flex size-10 items-center justify-center rounded-xl text-brand-700 ring-1 ring-brand-200 hover:bg-brand-50"
                           onClick={() => act({ action: "arrived", ticketId: r.id })}
                           disabled={busy}
                           title={t(lang, "markArrived")}
@@ -344,7 +344,7 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
                         </button>
                       )}
                       <button
-                        className="inline-flex size-9 items-center justify-center rounded-xl text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50"
+                        className="inline-flex size-10 items-center justify-center rounded-xl text-rose-600 ring-1 ring-rose-200 hover:bg-rose-50"
                         onClick={() => setConfirm({ kind: "cancel", id: r.id, number: r.number })}
                         disabled={busy}
                         title={t(lang, "cancel")}
@@ -442,7 +442,7 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
               </button>
             </div>
             <a
-              className="btn btn-sm w-full bg-[#25D366] text-white hover:bg-[#1ebe5b]"
+              className="btn btn-sm w-full bg-[#128C7E] text-white hover:bg-[#0e6f64]"
               href={`https://wa.me/?text=${encodeURIComponent(`${t(lang, "db_waShare")} ${patientUrl}`)}`}
               target="_blank"
               rel="noopener noreferrer"

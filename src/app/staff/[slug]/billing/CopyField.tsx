@@ -21,8 +21,8 @@ export default function CopyField({ label, value, copy, copied }: { label: strin
       <label className="label" htmlFor="ref-link">{label}</label>
       <div className="flex gap-2">
         <input id="ref-link" readOnly dir="ltr" className="input min-w-0 flex-1 text-start" value={value} onFocus={(e) => e.currentTarget.select()} />
-        <button type="button" className="btn btn-secondary shrink-0" onClick={onCopy}>
-          {done ? <Check size={18} /> : <Copy size={18} />} {done ? copied : copy}
+        <button type="button" className="btn btn-secondary shrink-0 max-sm:px-3" onClick={onCopy} aria-label={done ? copied : copy}>
+          {done ? <Check size={18} /> : <Copy size={18} />} <span className="max-sm:sr-only">{done ? copied : copy}</span>
         </button>
       </div>
     </div>
