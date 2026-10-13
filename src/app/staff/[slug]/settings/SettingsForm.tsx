@@ -13,6 +13,7 @@ import { WILAYAS } from "@/lib/domain/wilayas";
 import ReviewsSection from "./ReviewsSection";
 import BookingSection from "./BookingSection";
 import AssistantPin from "./AssistantPin";
+import ReportSection from "./ReportSection";
 
 // نبدأ الأسبوع بالسبت كما في الجزائر
 const DAYS = ["6", "0", "1", "2", "3", "4", "5"];
@@ -146,6 +147,7 @@ export default function SettingsForm({
               ["hours", "hours"],
               ["booking", "ap_se_title"],
               ["rules", "se_rules"],
+              ["report", "gr_reportNav"],
               ["alerts", "se_alerts"],
               ["sms", "sg_nav"],
               ["security", "se_security"],
@@ -383,6 +385,7 @@ export default function SettingsForm({
             ))}
           </div>
         </Section>
+        <ReportSection lang={lang} slug={slug} />
 
         <Section id="alerts" icon={<BellRing size={20} />} title={t(lang, "se_alerts")} sub={t(lang, "se_alertsSub")}>
           <div className="grid gap-3 sm:grid-cols-2">

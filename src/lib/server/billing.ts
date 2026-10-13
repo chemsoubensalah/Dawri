@@ -11,6 +11,7 @@ import { priceNumber, yearPriceNumber } from "../pricing";
 import { now as clockNow } from "./clock";
 import { getDb } from "./db";
 import * as repo from "./repo";
+import { rewardReferrerOnPayment } from "./referral";
 
 export function chargilyConfig() {
   const secret = process.env.CHARGILY_SECRET_KEY ?? "";
@@ -110,6 +111,7 @@ export async function handleChargilyEvent(event: { type?: string; data?: { id?: 
         throw new Error(`chargily amount mismatch for ${id}`);
       }
       const until = await repo.extendSubscription(q, p.shopId, p.months, now);
+      await rewardReferrerOnPayment(q, p.shopId, now); // «ادعُ زميلاً»: أوّل دفعة فقط
       return { ...p, until };
     });
     return { ok: true, extended: Boolean(paid) };
@@ -127,6 +129,8 @@ export async function recordManualPayment(shopId: string, months: number, amount
   const now = clockNow();
   return db.tx(async (q) => {
     await repo.insertPayment(q, { shopId, provider: "manual", checkoutId: null, amount, months, status: "paid", note, now });
-    return repo.extendSubscription(q, shopId, months, now);
+    const until = await repo.extendSubscription(q, shopId, months, now);
+    if (amount > 0) await rewardReferrerOnPayment(q, shopId, now); // «ادعُ زميلاً»: دفعة حقيقية فقط
+    return until;
   });
 }

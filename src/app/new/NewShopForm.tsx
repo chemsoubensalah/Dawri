@@ -24,7 +24,7 @@ function suggestSlug(name: string) {
     .slice(0, 30);
 }
 
-export default function NewShopForm({ lang, needsCode }: { lang: Lang; needsCode: boolean }) {
+export default function NewShopForm({ lang, needsCode, refCode = null }: { lang: Lang; needsCode: boolean; refCode?: string | null }) {
   const [name, setName] = useState("");
   const [doctorName, setDoctorName] = useState("");
   const [email, setEmail] = useState("");
@@ -41,7 +41,7 @@ export default function NewShopForm({ lang, needsCode }: { lang: Lang; needsCode
     setBusy(true);
     setError("");
     try {
-      const r = await api<{ slug: string }>("/api/shops", { name, slug, kind, pin, lang, signupCode, doctorName, email });
+      const r = await api<{ slug: string }>("/api/shops", { name, slug, kind, pin, lang, signupCode, doctorName, email, ref: refCode ?? undefined });
       try {
         const list = JSON.parse(localStorage.getItem("dawri:staffShops") ?? "[]") as string[];
         localStorage.setItem("dawri:staffShops", JSON.stringify([r.slug, ...list.filter((x) => x !== r.slug)].slice(0, 5)));
@@ -55,6 +55,7 @@ export default function NewShopForm({ lang, needsCode }: { lang: Lang; needsCode
 
   return (
     <form onSubmit={submit} className="card mt-6 space-y-5 p-6">
+      {refCode && <p className="rounded-2xl bg-brand-50 p-3 text-sm font-semibold text-brand-800 ring-1 ring-brand-200">{t(lang, "gr_refInvited")}</p>}
       <div>
         <label className="label" htmlFor="name">{t(lang, "shopName")}</label>
         <input

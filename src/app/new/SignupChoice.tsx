@@ -17,7 +17,7 @@ function suggestSlug(name: string) {
 }
 
 /** «طبيب واحد» أو «عيادة بعدّة أطبّاء». */
-export default function SignupChoice({ lang, needsCode }: { lang: Lang; needsCode: boolean }) {
+export default function SignupChoice({ lang, needsCode, refCode = null }: { lang: Lang; needsCode: boolean; refCode?: string | null }) {
   const [mode, setMode] = useState<"single" | "clinic">("single");
   const opt = (m: typeof mode, Icon: typeof Stethoscope, title: string, sub: string) => (
     <button
@@ -44,7 +44,7 @@ export default function SignupChoice({ lang, needsCode }: { lang: Lang; needsCod
         {opt("single", Stethoscope, t(lang, "cl_single"), t(lang, "cl_singleSub"))}
         {opt("clinic", Building2, t(lang, "cl_multi"), t(lang, "cl_multiSub"))}
       </div>
-      {mode === "single" ? <NewShopForm lang={lang} needsCode={needsCode} /> : <NewClinicForm lang={lang} needsCode={needsCode} />}
+      {mode === "single" ? <NewShopForm lang={lang} needsCode={needsCode} refCode={refCode} /> : <NewClinicForm lang={lang} needsCode={needsCode} />}
     </>
   );
 }
