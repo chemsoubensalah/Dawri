@@ -46,6 +46,8 @@ import { getDb, type Q } from "./db";
 import { getNotifier, type Notification } from "./notify";
 import * as repo from "./repo";
 import { getMailer } from "./email";
+import { applyReferral } from "./referral";
+import { sendDailyReports } from "./report";
 import { getSms } from "./sms";
 import {
   alertsMessage,
@@ -229,6 +231,7 @@ export async function createShop(input: {
   signupCode?: unknown;
   doctorName?: unknown;
   email?: unknown;
+  ref?: unknown;
 }) {
   const required = process.env.SIGNUP_CODE;
   if (required && !(typeof input.signupCode === "string" && safeEqual(input.signupCode, required))) {
@@ -247,7 +250,7 @@ export async function createShop(input: {
   if (await repo.getShopBySlug(db, slug)) throw new DomainError("slug_taken", 409);
   const now = clockNow();
   try {
-    const shop = await repo.insertShop(db, {
+    let shop = await repo.insertShop(db, {
       slug,
       name,
       kind,
@@ -259,6 +262,9 @@ export async function createShop(input: {
       trialEndsAt: new Date(now.getTime() + 60 * DAY_MS), // مجّاني أوّل شهرين
       ownerEmail,
     });
+    // «ادعُ زميلاً»: رمز صالح ← 30 يوماً إضافية للتجربة (الرمز السيّئ يُتجاهل بصمت)
+    const refUntil = await applyReferral(db, shop, input.ref).catch((e) => (console.error("[referral]", e), null));
+    if (refUntil) shop = { ...shop, trialEndsAt: refUntil };
     if (typeof input.doctorName === "string" && input.doctorName.trim()) {
       const profile = cleanProfile({ ...shop.profile, doctorName: input.doctorName });
       await repo.updateShop(db, shop.id, { profile });
@@ -1032,5 +1038,7 @@ export async function runCron() {
   await repo.purgeWa(db, new Date(now.getTime() - 2 * DAY_MS));
   // صفحات دفع Chargily تنتهي بعد 30 دقيقة: ما بقي معلّقاً بعد ساعة = لم يكتمل
   await repo.expireStalePayments(db, new Date(now.getTime() - 3600_000));
-  return { stale, ...purged };
+  // التقرير اليومي للأطبّاء: لا يُفشل المهامّ الدورية أبداً
+  const reports = await sendDailyReports().catch((e) => (console.error("[report]", e), null));
+  return { stale, ...purged, reports };
 }

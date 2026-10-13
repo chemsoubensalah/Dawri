@@ -48,7 +48,7 @@ export function privacyContent(lang: Lang) {
         { h: "4. Partage", p: ["Vos données ne sont jamais vendues ni utilisées pour de la publicité. Elles sont visibles uniquement par le cabinet concerné. Les messages (SMS, WhatsApp, e-mail) passent par des prestataires techniques qui ne les utilisent que pour l'envoi."] },
         { h: "5. Hébergement et sécurité", p: ["Les données sont hébergées chez des prestataires cloud (base de données Supabase et serveurs Vercel, région Europe — Francfort). Accès chiffré (HTTPS), base fermée à tout accès direct, codes des cabinets stockés sous forme chiffrée (hachage)."] },
         { h: "6. Vos droits", p: [`Vous pouvez demander l'accès, la rectification ou la suppression de vos données auprès du cabinet, ou nous contacter : ${c}. Vous pouvez aussi saisir l'Autorité nationale de protection des données à caractère personnel (ANPDP).`] },
-        { h: "7. Données des cabinets", p: ["Pour chaque cabinet : nom, médecin, spécialité, adresse, téléphone, e-mail de récupération et code secret (haché). L'e-mail sert uniquement à récupérer le code oublié et aux informations de service — jamais de publicité."] },
+        { h: "7. Données des cabinets", p: ["Pour chaque cabinet : nom, médecin, spécialité, adresse, téléphone, e-mail de récupération et code secret (haché). L'e-mail sert uniquement à récupérer le code oublié et aux informations de service (dont le rapport quotidien, désactivable, qui ne contient que des chiffres, jamais de noms de patients) — jamais de publicité. Le parrainage enregistre seulement quel cabinet a invité quel cabinet."] },
       ] satisfies LegalSection[],
     };
   }
@@ -84,7 +84,7 @@ export function privacyContent(lang: Lang) {
       { h: "4. المشاركة", p: ["لا نبيع معطياتك أبداً ولا نستعملها للإعلانات. لا يراها إلّا العيادة المعنية. الرسائل (SMS، واتساب، بريد) تمرّ عبر مزوّدين تقنيين لا يستعملونها إلّا للإرسال."] },
       { h: "5. الاستضافة والأمان", p: ["المعطيات مستضافة لدى مزوّدي خدمات سحابية (قاعدة بيانات Supabase وخوادم Vercel، منطقة أوروبا — فرانكفورت). الاتّصال مشفّر (HTTPS)، وقاعدة البيانات مغلقة أمام أيّ وصول مباشر، ورموز العيادات محفوظة مشفّرة (بصمة)."] },
       { h: "6. حقوقك", p: [`يمكنك طلب الاطّلاع على معطياتك أو تصحيحها أو حذفها لدى العيادة، أو التواصل معنا: ${c}. ويمكنك أيضاً اللجوء إلى السلطة الوطنية لحماية المعطيات ذات الطابع الشخصي (ANPDP).`] },
-      { h: "7. معطيات العيادات", p: ["لكلّ عيادة: الاسم، الطبيب، التخصّص، العنوان، الهاتف، بريد الاستعادة، والرمز السرّي (مشفّراً). البريد يُستعمل فقط لاستعادة الرمز المنسيّ ولرسائل الخدمة — لا إعلانات أبداً."] },
+      { h: "7. معطيات العيادات", p: ["لكلّ عيادة: الاسم، الطبيب، التخصّص، العنوان، الهاتف، بريد الاستعادة، والرمز السرّي (مشفّراً). البريد يُستعمل فقط لاستعادة الرمز المنسيّ ولرسائل الخدمة (ومنها التقرير اليومي، ويمكن إيقافه، وفيه أعداد فقط بلا أسماء مرضى) — لا إعلانات أبداً. برنامج الدعوة يسجّل فقط أيّ عيادة دعت أيّ عيادة."] },
     ] satisfies LegalSection[],
   };
 }

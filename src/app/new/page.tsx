@@ -4,12 +4,14 @@ import LangSwitch from "@/components/LangSwitch";
 import { Logo } from "@/components/ui";
 import { t, type DictKey } from "@/lib/i18n";
 import { getLang } from "@/lib/server/http";
+import { normalizeRefCode } from "@/lib/server/referral";
 import NewShopForm from "./NewShopForm";
 
 export const metadata = { title: "عيادة جديدة" };
 
-export default async function NewShop() {
+export default async function NewShop({ searchParams }: { searchParams: Promise<{ ref?: string | string[] }> }) {
   const lang = await getLang();
+  const refCode = normalizeRefCode((await searchParams).ref);
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[1fr_1.1fr]">
       <aside className="relative hidden overflow-hidden bg-ink p-10 text-white lg:flex lg:flex-col lg:justify-between">
@@ -36,7 +38,7 @@ export default async function NewShop() {
         <div className="mx-auto w-full max-w-lg flex-1 px-4 pb-12">
           <h2 className="text-3xl font-bold">{t(lang, "newTitle")}</h2>
           <p className="mt-1 text-slate-600">{t(lang, "nw_sub")}</p>
-          <NewShopForm lang={lang} needsCode={Boolean(process.env.SIGNUP_CODE)} />
+          <NewShopForm lang={lang} needsCode={Boolean(process.env.SIGNUP_CODE)} refCode={refCode} />
           <p className="mt-6 text-center text-sm text-slate-600">
             {t(lang, "nw_haveClinic")}{" "}
             <Link href="/login" className="font-semibold text-brand-700 hover:underline">{t(lang, "l_login")}</Link>

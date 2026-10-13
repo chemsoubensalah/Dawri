@@ -10,6 +10,7 @@ import { getLang, ownerShop } from "@/lib/server/http";
 import * as repo from "@/lib/server/repo";
 import { isSubscriptionActive } from "@/lib/server/service";
 import PayButton from "./PayButton";
+import ReferralCard from "./ReferralCard";
 
 export const metadata = { title: "الاشتراك", robots: { index: false } };
 
@@ -123,6 +124,8 @@ export default async function BillingPage({
             {chargilyConfig().test && <Chip tone="amber">TEST</Chip>}
           </p>
         )}
+
+        <ReferralCard lang={lang} shopId={shop.id} />
 
         {/* ——— دفع يدوي ——— */}
         {(manual.ccp || manual.rip || manual.whatsapp) && (

@@ -8,6 +8,7 @@ import { LAYOUTS } from "@/app/d/[slug]/layouts";
 import { errorText, t, type DictKey } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
 import type { ChannelStatus } from "@/lib/server/channels";
+import ReportSection from "./ReportSection";
 
 // نبدأ الأسبوع بالسبت كما في الجزائر
 const DAYS = ["6", "0", "1", "2", "3", "4", "5"];
@@ -139,6 +140,7 @@ export default function SettingsForm({
               ["look", "se_look"],
               ["hours", "hours"],
               ["rules", "se_rules"],
+              ["report", "gr_reportNav"],
               ["alerts", "se_alerts"],
               ["security", "se_security"],
             ] as [string, DictKey][]
@@ -361,6 +363,7 @@ export default function SettingsForm({
             ))}
           </div>
         </Section>
+        <ReportSection lang={lang} slug={slug} />
 
         <Section id="alerts" icon={<BellRing size={20} />} title={t(lang, "se_alerts")} sub={t(lang, "se_alertsSub")}>
           <div className="grid gap-3 sm:grid-cols-2">
