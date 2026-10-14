@@ -5,7 +5,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPgDb, createPgliteDb, migrate, setDb, type Db } from "@/lib/server/db";
 import { setClock } from "@/lib/server/clock";
 import * as svc from "@/lib/server/service";
-import { recordManualPayment } from "@/lib/server/billing";
+import { adminSetPaymentAmount, recordManualPayment, recordManualClinicPayment } from "@/lib/server/billing";
+import * as repo from "@/lib/server/repo";
+import * as crepo from "@/lib/server/clinicsRepo";
 import { adminStats, classifyDevice, classifyPath, classifySource, isBot, recordVisit, visitorId } from "@/lib/server/analytics";
 
 let db: Db;
@@ -74,6 +76,8 @@ describe("التصنيف", () => {
 describe("الإحصائيات", () => {
   it("تعدّ الزوّار والمرضى والأطبّاء والمداخيل", async () => {
     const shop = await svc.createShop({ name: "عيادة الإحصاء", slug: "stats-doc", pin: "4321", email: "stats@example.com" });
+    // created_at تضعه قاعدة البيانات (الوقت الحقيقي): نثبّته على ساعة الاختبار كي لا يتعلّق الاختبار بتاريخ اليوم
+    await db.query("update shops set created_at = $2 where id = $1", [shop.id, clock]);
     const base = { referrer: "", qr: false, ownHost: "dawri.app" };
     // زائر 1: صفحتان في الصفحة نفسها (زائر واحد، مشاهدتان) + صفحة أخرى
     await recordVisit({ ...base, path: "/s/stats-doc", ip: "41.1.1.1", ua: PHONE_UA, qr: true });
@@ -125,5 +129,66 @@ describe("الإحصائيات", () => {
     const later = await adminStats(7);
     expect(later.kpi.patients).toBe(0);
     expect(later.prev.patients).toBe(3);
+  });
+});
+
+describe("الهدايا (تفعيل مجاني) لا تُحسب في المداخيل", () => {
+  it("هدية بـ 0 دج: الاشتراك يمتدّ، المداخيل لا تتغيّر، والطبيب «هدية» لا «يدفع»", async () => {
+    clock = new Date("2026-11-02T09:30:00Z");
+    const shop = await svc.createShop({ name: "عيادة الهدية", slug: "gift-doc", pin: "4321", email: "gift@example.com" });
+    const before = (await adminStats(7)).kpi.revenue;
+    const until = await recordManualPayment(shop.id, 12, 0, "هدية");
+    expect(until!.getTime()).toBeGreaterThan(clock.getTime() + 300 * 86_400_000);
+    expect((await adminStats(7)).kpi.revenue).toBe(before);
+    const row = (await repo.listShopsAdmin(db, clock)).find((x) => x.id === shop.id)!;
+    expect(row.hasPaid).toBe(false);
+    expect(row.paidUntil!.getTime()).toBeGreaterThan(clock.getTime());
+  });
+
+  it("تصحيح دفعة سُجّلت بالخطأ (9000 ← 0): تُحذف من المداخيل والمدّة تبقى", async () => {
+    clock = new Date("2026-11-03T09:30:00Z");
+    const shop = await svc.createShop({ name: "عيادة الخطأ", slug: "oops-doc", pin: "4321", email: "oops@example.com" });
+    const base = (await adminStats(7)).kpi.revenue;
+    const until = await recordManualPayment(shop.id, 12, 9000, null);
+    expect((await adminStats(7)).kpi.revenue).toBe(base + 9000);
+    expect((await repo.listShopsAdmin(db, clock)).find((x) => x.id === shop.id)!.hasPaid).toBe(true);
+
+    const pay = (await repo.listRecentPaymentsAdmin(db, 50)).find((p) => p.shopId === shop.id)!;
+    expect(pay).toMatchObject({ amount: 9000, months: 12, payerName: "عيادة الخطأ", payerSlug: "oops-doc" });
+    expect(await adminSetPaymentAmount(pay.id, 0, "هدية (صُحّحت)")).toEqual({ id: pay.id, amount: 0 });
+
+    expect((await adminStats(7)).kpi.revenue).toBe(base);
+    const row = (await repo.listShopsAdmin(db, clock)).find((x) => x.id === shop.id)!;
+    expect(row.hasPaid).toBe(false);
+    expect(row.paidUntil!.getTime()).toBe(until!.getTime());
+    expect((await repo.listRecentPaymentsAdmin(db, 50)).find((p) => p.id === pay.id)!.note).toBe("هدية (صُحّحت)");
+  });
+
+  it("التصحيح يرفض: مبلغ سالب أو غير صحيح، دفعة غير موجودة، دفعة غير يدوية", async () => {
+    const shop = await svc.createShop({ name: "عيادة التحقّق", slug: "check-doc", pin: "4321", email: "check@example.com" });
+    await recordManualPayment(shop.id, 1, 1000, null);
+    const pay = (await repo.listRecentPaymentsAdmin(db, 50)).find((p) => p.shopId === shop.id)!;
+    await expect(adminSetPaymentAmount(pay.id, -5, null)).rejects.toThrow("invalid_plan");
+    await expect(adminSetPaymentAmount(pay.id, 1.5, null)).rejects.toThrow("invalid_plan");
+    await expect(adminSetPaymentAmount(pay.id, "abc", null)).rejects.toThrow("invalid_plan");
+    await expect(adminSetPaymentAmount(99999999, 0, null)).rejects.toThrow("not_found");
+    await expect(adminSetPaymentAmount("x", 0, null)).rejects.toThrow("not_found");
+    await expect(recordManualPayment(shop.id, 1, -1000, null)).rejects.toThrow("invalid_plan");
+    // دفعة Chargily لا تُعدَّل من هنا
+    await db.query("insert into payments (shop_id, provider, checkout_id, amount, months, status, paid_at) values ($1,'chargily','chk_1',1000,1,'paid',now())", [shop.id]);
+    const chg = (await repo.listRecentPaymentsAdmin(db, 50)).find((p) => p.checkoutId === "chk_1")!;
+    await expect(adminSetPaymentAmount(chg.id, 0, null)).rejects.toThrow("not_found");
+  });
+
+  it("عيادة متعدّدة الأطبّاء: هدية = «هدية»، دفعة = «تدفع»", async () => {
+    const { createClinic } = await import("@/lib/server/clinics");
+    const { clinic } = await createClinic({ name: "عيادة الأمل", slug: "amal-clinic", email: "amal@example.com", pin: "7777", doctor: { doctorName: "سليم" } });
+    await recordManualClinicPayment(clinic.id, 12, 0, "هدية");
+    let row = (await crepo.listClinicsAdmin(db)).find((c) => c.id === clinic.id)!;
+    expect(row.hasPaid).toBe(false);
+    await recordManualClinicPayment(clinic.id, 1, 2000, null);
+    row = (await crepo.listClinicsAdmin(db)).find((c) => c.id === clinic.id)!;
+    expect(row.hasPaid).toBe(true);
+    expect((await repo.listRecentPaymentsAdmin(db, 50)).find((p) => p.clinicId === clinic.id && p.amount === 2000)).toMatchObject({ payerName: "عيادة الأمل", payerSlug: "amal-clinic" });
   });
 });

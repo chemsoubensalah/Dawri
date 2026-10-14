@@ -208,10 +208,11 @@ export async function listClinicPayments(q: Q, clinicId: string): Promise<Paymen
 }
 
 /** لوحة المؤسّس: كلّ العيادات متعدّدة الأطبّاء مع عدد أطبّائها. */
-export async function listClinicsAdmin(q: Q): Promise<(Clinic & { doctors: number })[]> {
+export async function listClinicsAdmin(q: Q): Promise<(Clinic & { doctors: number; hasPaid: boolean })[]> {
   const rows = await q.query(
-    `select c.*, (select count(*)::int from shops s where s.clinic_id = c.id) as doctors
+    `select c.*, (select count(*)::int from shops s where s.clinic_id = c.id) as doctors,
+            exists (select 1 from payments p where p.clinic_id = c.id and p.status = 'paid' and p.amount > 0) as has_paid
        from clinics c order by c.created_at desc limit 500`,
   );
-  return rows.map((r) => ({ ...rowToClinic(r), doctors: Number(r.doctors) }));
+  return rows.map((r) => ({ ...rowToClinic(r), doctors: Number(r.doctors), hasPaid: r.has_paid === true }));
 }

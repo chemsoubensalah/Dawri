@@ -28,20 +28,30 @@ export default function AdminLogin() {
   );
 }
 
-/** تفعيل يدوي: طابور طبيب واحد (shopId) أو عيادة متعدّدة الأطبّاء (clinicId) — المبلغ الافتراضي حسب خطّتها. */
+/**
+ * تفعيل يدوي: طابور طبيب واحد (shopId) أو عيادة متعدّدة الأطبّاء (clinicId).
+ * نوعان واضحان: «دفع فعلاً» (المبلغ يُحسب في المداخيل) أو «هدية مجانية» (0 دج — لا يُحسب).
+ */
 export function ExtendForm({ shopId, clinicId, price, yearPrice }: { shopId?: string; clinicId?: string; price: number; yearPrice: number }) {
   const [months, setMonths] = useState(1);
+  const [kind, setKind] = useState<"paid" | "gift">("paid");
   const [amount, setAmount] = useState(price);
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState("");
+  const sum = kind === "gift" ? 0 : Math.max(0, Math.round(amount || 0));
   return (
     <form
       className="flex flex-wrap items-center gap-1.5"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (!confirm(`+${months} ?`)) return;
+        const q =
+          kind === "gift"
+            ? `هدية مجانية: +${months} شهر بـ 0 دج (لا تُحسب في المداخيل). متابعة؟`
+            : `دفعة حقيقية: ${sum.toLocaleString("fr-DZ")} دج مقابل +${months} شهر (تُحسب في المداخيل). متابعة؟`;
+        if (!confirm(q)) return;
         try {
-          await api("/api/admin/extend", clinicId ? { clinicId, months, amount, note } : { shopId, months, amount, note });
+          const n = kind === "gift" ? note.trim() || "هدية" : note;
+          await api("/api/admin/extend", clinicId ? { clinicId, months, amount: sum, note: n } : { shopId, months, amount: sum, note: n });
           location.reload();
         } catch {
           setMsg("✗");
@@ -53,11 +63,46 @@ export function ExtendForm({ shopId, clinicId, price, yearPrice }: { shopId?: st
           <option key={m} value={m}>+{m} شهر</option>
         ))}
       </select>
-      <input className="num w-24 rounded-lg border border-slate-200 px-2 py-1" type="number" value={amount} onChange={(e) => setAmount(Number(e.target.value))} />
+      <select className="rounded-lg border border-slate-200 px-2 py-1" value={kind} onChange={(e) => setKind(e.target.value as "paid" | "gift")} aria-label="نوع التفعيل" data-testid="extend-kind">
+        <option value="paid">دفع فعلاً</option>
+        <option value="gift">هدية مجانية</option>
+      </select>
+      {kind === "paid" ? (
+        <input className="num w-24 rounded-lg border border-slate-200 px-2 py-1" type="number" min={0} value={amount} onChange={(e) => setAmount(Number(e.target.value))} aria-label="المبلغ (دج)" />
+      ) : (
+        <span className="num w-24 rounded-lg bg-violet-50 px-2 py-1 text-center text-violet-700">0 دج</span>
+      )}
       <input className="w-28 rounded-lg border border-slate-200 px-2 py-1" placeholder="ملاحظة" value={note} onChange={(e) => setNote(e.target.value)} />
       <button className="btn-primary btn-sm">تفعيل</button>
       {msg && <span className="text-rose-700">{msg}</span>}
     </form>
+  );
+}
+
+/** سجلّ الدفعات: تصحيح دفعة سُجّلت بمبلغ خطأ (مثلاً هدية سُجّلت بسعر السنة) ← 0 دج. */
+export function MakeFreeButton({ id, amount }: { id: number; amount: number }) {
+  const [busy, setBusy] = useState(false);
+  if (amount === 0) return <span className="text-xs text-violet-700">هدية</span>;
+  return (
+    <button
+      type="button"
+      className="text-xs text-slate-500 underline hover:text-violet-700 disabled:opacity-50"
+      disabled={busy}
+      data-testid="make-free"
+      onClick={async () => {
+        if (!confirm(`جعل هذه الدفعة مجانية (0 دج بدل ${amount.toLocaleString("fr-DZ")} دج)؟ تُحذف من المداخيل، ومدّة الاشتراك لا تتغيّر.`)) return;
+        setBusy(true);
+        try {
+          await api("/api/admin/payment", { id, amount: 0, note: "هدية (صُحّحت)" });
+          location.reload();
+        } catch {
+          alert("✗");
+          setBusy(false);
+        }
+      }}
+    >
+      اجعلها مجانية
+    </button>
   );
 }
 

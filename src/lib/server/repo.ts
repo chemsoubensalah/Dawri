@@ -683,6 +683,31 @@ export async function insertPayment(
   return rowToPayment(rows[0]);
 }
 
+/** لوحة المؤسّس: آخر الدفعات المؤكَّدة مع اسم الدافع (طابور أو عيادة). */
+export async function listRecentPaymentsAdmin(q: Q, limit = 50) {
+  const rows = await q.query(
+    `select p.*, coalesce(s.name, c.name) as payer_name, coalesce(s.slug, c.slug) as payer_slug
+       from payments p
+       left join shops s on s.id = p.shop_id
+       left join clinics c on c.id = p.clinic_id
+      where p.status = 'paid'
+      order by coalesce(p.paid_at, p.created_at) desc, p.id desc
+      limit $1`,
+    [limit],
+  );
+  return rows.map((r) => ({ ...rowToPayment(r), payerName: r.payer_name == null ? null : String(r.payer_name), payerSlug: r.payer_slug == null ? null : String(r.payer_slug) }));
+}
+
+/** تصحيح مبلغ دفعة يدوية (مثلاً: تفعيل مجاني سُجّل بالخطأ بسعر السنة). لا يغيّر مدّة الاشتراك. */
+export async function setManualPaymentAmount(q: Q, id: number, amount: number, note: string | null): Promise<Payment | null> {
+  const rows = await q.query(
+    `update payments set amount = $2, note = coalesce($3, note)
+      where id = $1 and provider = 'manual' and status = 'paid' returning *`,
+    [id, amount, note],
+  );
+  return rows[0] ? rowToPayment(rows[0]) : null;
+}
+
 /** يعلّم الدفع «مدفوعاً» مرّة واحدة فقط؛ يُرجع الصفّ إن تغيّر الآن. */
 export async function markPaymentPaid(q: Q, checkoutId: string, now: Date): Promise<Payment | null> {
   const rows = await q.query(
@@ -714,11 +739,13 @@ export async function extendSubscription(q: Q, shopId: string, months: number, n
 
 export async function listShopsAdmin(q: Q, since: Date) {
   const rows = await q.query(
-    `select ${SHOP_COLS}, (select count(*)::int from tickets t where t.shop_id = s.id and t.created_at >= $1) as tickets_30d
+    `select ${SHOP_COLS}, (select count(*)::int from tickets t where t.shop_id = s.id and t.created_at >= $1) as tickets_30d,
+            exists (select 1 from payments p where p.shop_id = s.id and p.status = 'paid' and p.amount > 0) as has_paid
      from ${SHOP_FROM} order by s.created_at desc limit 500`,
     [since],
   );
-  return rows.map((r) => ({ ...rowToShop(r), tickets30d: Number(r.tickets_30d) }));
+  // hasPaid: دفع مالاً فعلاً مرّة على الأقلّ (التفعيل المجاني بـ 0 دج لا يُحسب «دافعاً»)
+  return rows.map((r) => ({ ...rowToShop(r), tickets30d: Number(r.tickets_30d), hasPaid: r.has_paid === true }));
 }
 
 // ————————————————————————— استعادة الرمز السرّي —————————————————————————

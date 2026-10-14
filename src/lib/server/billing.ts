@@ -198,6 +198,7 @@ export async function handleChargilyEvent(event: { type?: string; data?: { id?: 
 /** تفعيل يدوي (بعد تحويل بريدي) — من لوحة الإدارة. */
 export async function recordManualPayment(shopId: string, months: number, amount: number, note: string | null) {
   if (!Number.isInteger(months) || months < 1 || months > 24) throw new DomainError("invalid_plan");
+  if (!Number.isInteger(amount) || amount < 0) throw new DomainError("invalid_plan");
   const db = await getDb();
   const now = clockNow();
   return db.tx(async (q) => {
@@ -206,6 +207,22 @@ export async function recordManualPayment(shopId: string, months: number, amount
     if (amount > 0) await rewardReferrerOnPayment(q, shopId, now); // «ادعُ زميلاً»: دفعة حقيقية فقط
     return until;
   });
+}
+
+/**
+ * لوحة المؤسّس: تصحيح مبلغ دفعة يدوية مسجّلة (مثلاً تفعيل مجاني سُجّل بسعر السنة).
+ * يغيّر المداخيل فقط — مدّة الاشتراك تبقى كما هي، ومكافأة «ادعُ زميلاً» إن مُنحت لا تُسحب.
+ */
+export async function adminSetPaymentAmount(id: unknown, amount: unknown, note: unknown) {
+  const pid = Number(id);
+  const amt = Number(amount);
+  if (!Number.isSafeInteger(pid) || pid < 1) throw new DomainError("not_found", 404);
+  if (!Number.isInteger(amt) || amt < 0 || amt > 10_000_000) throw new DomainError("invalid_plan");
+  const n = typeof note === "string" && note.trim() ? note.trim().slice(0, 200) : null;
+  const db = await getDb();
+  const p = await repo.setManualPaymentAmount(db, pid, amt, n);
+  if (!p) throw new DomainError("not_found", 404);
+  return { id: p.id, amount: p.amount };
 }
 
 /** تفعيل يدوي لعيادة متعدّدة الأطبّاء (تحويل بريدي) — من لوحة الإدارة. بلا مكافأة إحالة. */

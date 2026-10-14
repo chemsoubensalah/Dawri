@@ -10,7 +10,7 @@ import { paymentReference } from "@/lib/server/billing";
 import { coveredByClinic, isSubscriptionActive, subscriptionStatus } from "@/lib/domain/subscription";
 import { clinicPriceNumber, clinicYearPriceNumber, priceNumber, yearPriceNumber } from "@/lib/pricing";
 import { adminStats } from "@/lib/server/analytics";
-import AdminLogin, { ExtendForm, ResetPinButton, TestEmail } from "./AdminClient";
+import AdminLogin, { ExtendForm, MakeFreeButton, ResetPinButton, TestEmail } from "./AdminClient";
 import StatsView from "./StatsView";
 
 export const metadata = { title: "Admin", robots: { index: false } };
@@ -26,15 +26,22 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   if (!(await isAdmin())) return <AdminLogin />;
   const now = clockNow();
   const db = await getDb();
-  const [shops, clinics] = await Promise.all([repo.listShopsAdmin(db, new Date(now.getTime() - 30 * 86_400_000)), crepo.listClinicsAdmin(db)]);
+  const [shops, clinics, payments] = await Promise.all([
+    repo.listShopsAdmin(db, new Date(now.getTime() - 30 * 86_400_000)),
+    crepo.listClinicsAdmin(db),
+    tab === "accounts" ? repo.listRecentPaymentsAdmin(db, 50) : Promise.resolve([]),
+  ]);
   const fmt = new Intl.DateTimeFormat("fr-DZ", { day: "2-digit", month: "2-digit", year: "numeric" });
   // نشطة = الاشتراك الفعلي (الخاصّ أو اشتراك العيادة متعدّدة الأطبّاء)
   const active = shops.filter((s) => isSubscriptionActive(s, now)).length;
-  const paying =
-    shops.filter((s) => s.paidUntil && s.paidUntil > now).length + clinics.filter((c) => c.paidUntil && c.paidUntil > now).length;
+  // «تدفع» = اشتراك مفعّل ودفعت مالاً فعلاً؛ التفعيل المجاني (0 دج) يُعدّ «هدية»
+  const paidNow = (x: { paidUntil: Date | null; hasPaid: boolean }) => Boolean(x.paidUntil && x.paidUntil > now && x.hasPaid);
+  const giftNow = (x: { paidUntil: Date | null; hasPaid: boolean }) => Boolean(x.paidUntil && x.paidUntil > now && !x.hasPaid);
+  const paying = shops.filter(paidNow).length + clinics.filter(paidNow).length;
   const stats = tab === "stats" ? await adminStats(range) : null;
   const subs = [
-    { key: "paid", label: "يدفع", n: shops.filter((s) => s.paidUntil && s.paidUntil > now).length },
+    { key: "paid", label: "يدفع", n: shops.filter(paidNow).length },
+    { key: "gift", label: "مفعّل مجاناً (هدية)", n: shops.filter(giftNow).length },
     { key: "clinic", label: "مشمول باشتراك عيادة", n: shops.filter((s) => !(s.paidUntil && s.paidUntil > now) && coveredByClinic(s, now)).length },
     { key: "trial", label: "فترة تجربة", n: shops.filter((s) => isSubscriptionActive(s, now) && !(s.paidUntil && s.paidUntil > now) && !coveredByClinic(s, now)).length },
     { key: "expired", label: "منتهٍ", n: shops.filter((s) => !isSubscriptionActive(s, now)).length },
@@ -114,8 +121,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                         </td>
                         <td className="num p-3">{c.doctors} / {MAX_DOCTORS}</td>
                         <td className="p-3">
-                          <Chip tone={st.paidUntil ? "green" : st.trial ? "violet" : "rose"}>
-                            {st.paidUntil ? `مدفوع حتى ${fmt.format(st.paidUntil)}` : st.trial ? `تجربة حتى ${fmt.format(st.until)}` : "منتهٍ"}
+                          <Chip tone={st.paidUntil ? (c.hasPaid ? "green" : "violet") : st.trial ? "violet" : "rose"}>
+                            {st.paidUntil ? `${c.hasPaid ? "مدفوع" : "هدية"} حتى ${fmt.format(st.paidUntil)}` : st.trial ? `تجربة حتى ${fmt.format(st.until)}` : "منتهٍ"}
                           </Chip>
                         </td>
                         <td className="p-3">
@@ -142,6 +149,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               <tbody>
                 {shops.map((s) => {
                   const paid = s.paidUntil && s.paidUntil > now;
+                  const gift = paid && !s.hasPaid;
                   const trial = !paid && s.trialEndsAt > now;
                   const viaClinic = !paid && coveredByClinic(s, now);
                   return (
@@ -160,9 +168,9 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                       </td>
                       <td className="num p-3 text-slate-600">{fmt.format(s.createdAt)}</td>
                       <td className="p-3">
-                        <Chip tone={paid ? "green" : viaClinic ? "green" : trial ? "violet" : "rose"}>
+                        <Chip tone={gift ? "violet" : paid ? "green" : viaClinic ? "green" : trial ? "violet" : "rose"}>
                           {paid
-                            ? `مدفوع حتى ${fmt.format(s.paidUntil!)}`
+                            ? `${gift ? "هدية" : "مدفوع"} حتى ${fmt.format(s.paidUntil!)}`
                             : viaClinic
                               ? `مشمول بالعيادة حتى ${fmt.format(s.clinicUntil!)}`
                               : trial
@@ -185,6 +193,45 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               </tbody>
             </table>
           </section>
+            <section className="card overflow-x-auto p-0" data-testid="admin-payments">
+              <h2 className="p-4 pb-1 font-bold">آخر الدفعات · Paiements</h2>
+              <p className="px-4 pb-3 text-xs text-slate-500">
+                كلّ تفعيل يدوي يظهر هنا. إن سجّلت هدية بمبلغ بالخطأ، اضغط «اجعلها مجانية» فتُحذف من المداخيل (المدّة لا تتغيّر).
+              </p>
+              {payments.length === 0 ? (
+                <p className="p-4 pt-0 text-sm text-slate-500">لا دفعات بعد.</p>
+              ) : (
+                <table className="w-full min-w-[720px] text-sm">
+                  <thead className="bg-slate-50 text-slate-500">
+                    <tr>
+                      <th className="p-3 text-start">التاريخ</th>
+                      <th className="p-3 text-start">العيادة</th>
+                      <th className="p-3 text-start">المدّة</th>
+                      <th className="p-3 text-start">المبلغ</th>
+                      <th className="p-3 text-start">الطريقة</th>
+                      <th className="p-3 text-start">ملاحظة</th>
+                      <th className="p-3 text-start"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((p) => (
+                      <tr key={p.id} className="border-t border-slate-100" data-testid="admin-payment">
+                        <td className="num p-3 text-slate-600">{fmt.format(p.paidAt ?? p.createdAt)}</td>
+                        <td className="p-3">
+                          <div className="font-semibold">{p.payerName ?? "—"}</div>
+                          {p.payerSlug && <div className="text-xs text-slate-500" dir="ltr">{p.clinicId ? "/c/" : "/s/"}{p.payerSlug}</div>}
+                        </td>
+                        <td className="num p-3">+{p.months} شهر</td>
+                        <td className="num p-3 font-bold">{p.amount === 0 ? <span className="text-violet-700">0 دج</span> : `${p.amount.toLocaleString("fr-DZ")} دج`}</td>
+                        <td className="p-3 text-slate-600">{p.provider === "manual" ? "يدوي" : "Chargily"}</td>
+                        <td className="max-w-48 truncate p-3 text-slate-500">{p.note ?? ""}</td>
+                        <td className="p-3">{p.provider === "manual" && <MakeFreeButton id={p.id} amount={p.amount} />}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
           </>
         )}
       </div>
