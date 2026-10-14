@@ -464,11 +464,11 @@ describe("فلاتر SQL المشتركة (الدليل + التقارير)", ()
 
 describe("listClinicsAdmin", () => {
   it("يعرض العيادة بعدد أطبّائها وحالة اشتراكها", async () => {
-    const list = await crepo.listClinicsAdmin(db);
+    const list = await crepo.listClinicsAdmin(db, clock);
     const row = list.find((c) => c.id === clinic.id)!;
     expect(row.doctors).toBe(1);
     expect(row.trialEndsAt.getTime()).toBe(clinic.trialEndsAt.getTime());
-    const shops = await repo.listShopsAdmin(db, new Date(0));
+    const shops = await repo.listShopsAdmin(db, new Date(0), clock);
     const s = shops.find((x) => x.id === doctor.id)!;
     expect(s.clinicUntil!.getTime()).toBe(clinic.trialEndsAt.getTime());
   });

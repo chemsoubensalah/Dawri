@@ -27,8 +27,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   const now = clockNow();
   const db = await getDb();
   const [shops, clinics, payments] = await Promise.all([
-    repo.listShopsAdmin(db, new Date(now.getTime() - 30 * 86_400_000)),
-    crepo.listClinicsAdmin(db),
+    repo.listShopsAdmin(db, new Date(now.getTime() - 30 * 86_400_000), now),
+    crepo.listClinicsAdmin(db, now),
     tab === "accounts" ? repo.listRecentPaymentsAdmin(db, 50) : Promise.resolve([]),
   ]);
   const fmt = new Intl.DateTimeFormat("fr-DZ", { day: "2-digit", month: "2-digit", year: "numeric" });

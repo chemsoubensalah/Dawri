@@ -180,10 +180,12 @@ export async function handleChargilyEvent(event: { type?: string; data?: { id?: 
       if (p.clinicId) {
         // اشتراك العيادة: لا مكافأة «ادعُ زميلاً» (الإحالات مرتبطة بطابور طبيب، لا بعيادة)
         const until = await crepo.extendClinicSubscription(q, p.clinicId, p.months, now);
+        await repo.setPaymentPeriodEnd(q, p.id, until);
         return { ...p, until };
       }
       if (!p.shopId) throw new Error(`payment ${p.id} has no payer`);
       const until = await repo.extendSubscription(q, p.shopId, p.months, now);
+      await repo.setPaymentPeriodEnd(q, p.id, until);
       await rewardReferrerOnPayment(q, p.shopId, now); // «ادعُ زميلاً»: أوّل دفعة فقط
       return { ...p, until };
     });
@@ -202,8 +204,9 @@ export async function recordManualPayment(shopId: string, months: number, amount
   const db = await getDb();
   const now = clockNow();
   return db.tx(async (q) => {
-    await repo.insertPayment(q, { shopId, provider: "manual", checkoutId: null, amount, months, status: "paid", note, now });
+    const pay = await repo.insertPayment(q, { shopId, provider: "manual", checkoutId: null, amount, months, status: "paid", note, now });
     const until = await repo.extendSubscription(q, shopId, months, now);
+    await repo.setPaymentPeriodEnd(q, pay.id, until);
     if (amount > 0) await rewardReferrerOnPayment(q, shopId, now); // «ادعُ زميلاً»: دفعة حقيقية فقط
     return until;
   });
@@ -234,7 +237,9 @@ export async function recordManualClinicPayment(clinicId: string, months: number
   const now = clockNow();
   return db.tx(async (q) => {
     if (!(await crepo.getClinicById(q, clinicId))) throw new DomainError("clinic_not_found", 404);
-    await repo.insertPayment(q, { clinicId, provider: "manual", checkoutId: null, amount, months, status: "paid", note, now });
-    return crepo.extendClinicSubscription(q, clinicId, months, now);
+    const pay = await repo.insertPayment(q, { clinicId, provider: "manual", checkoutId: null, amount, months, status: "paid", note, now });
+    const until = await crepo.extendClinicSubscription(q, clinicId, months, now);
+    await repo.setPaymentPeriodEnd(q, pay.id, until);
+    return until;
   });
 }

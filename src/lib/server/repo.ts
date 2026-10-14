@@ -737,14 +737,27 @@ export async function extendSubscription(q: Q, shopId: string, months: number, n
   return rows[0] ? d(rows[0].paid_until) : null;
 }
 
-export async function listShopsAdmin(q: Q, since: Date) {
+/**
+ * شرط SQL: دفعة حقيقية (مبلغ > 0) ما زالت فترتها لم تنتهِ عند `now` — الاشتراك الحالي (أو القادم) مدفوع فعلاً.
+ * دفعة قديمة انتهت ثمّ هدية ← «هدية»؛ سنة مدفوعة ثمّ شهر هدية ← «مدفوع» طوال السنة ثمّ «هدية».
+ */
+export function realPaymentCoversSql(payerCol: "shop_id" | "clinic_id", payerRef: string, now: string): string {
+  return `exists (select 1 from payments p where p.${payerCol} = ${payerRef} and p.status = 'paid' and p.amount > 0
+            and coalesce(p.period_end, coalesce(p.paid_at, p.created_at) + make_interval(months => p.months)) > ${now})`;
+}
+
+export async function setPaymentPeriodEnd(q: Q, id: number, end: Date | null) {
+  if (end) await q.query("update payments set period_end = $2 where id = $1", [id, end]);
+}
+
+export async function listShopsAdmin(q: Q, since: Date, now: Date) {
   const rows = await q.query(
     `select ${SHOP_COLS}, (select count(*)::int from tickets t where t.shop_id = s.id and t.created_at >= $1) as tickets_30d,
-            exists (select 1 from payments p where p.shop_id = s.id and p.status = 'paid' and p.amount > 0) as has_paid
+            ${realPaymentCoversSql("shop_id", "s.id", "$2")} as has_paid
      from ${SHOP_FROM} order by s.created_at desc limit 500`,
-    [since],
+    [since, now],
   );
-  // hasPaid: دفع مالاً فعلاً مرّة على الأقلّ (التفعيل المجاني بـ 0 دج لا يُحسب «دافعاً»)
+  // hasPaid: فترة الاشتراك الحالية/القادمة مدفوعة بمال حقيقي (التفعيل المجاني بـ 0 دج = «هدية»)
   return rows.map((r) => ({ ...rowToShop(r), tickets30d: Number(r.tickets_30d), hasPaid: r.has_paid === true }));
 }
 

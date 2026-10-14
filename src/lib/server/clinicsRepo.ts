@@ -3,7 +3,7 @@
  */
 import { readLook, type ShopLook } from "../domain/types";
 import type { Q, Row } from "./db";
-import { rowToPayment, rowToShop, SHOP_COLS, SHOP_FROM, type Payment } from "./repo";
+import { realPaymentCoversSql, rowToPayment, rowToShop, SHOP_COLS, SHOP_FROM, type Payment } from "./repo";
 import type { Shop } from "../domain/types";
 
 export interface Clinic {
@@ -208,11 +208,12 @@ export async function listClinicPayments(q: Q, clinicId: string): Promise<Paymen
 }
 
 /** لوحة المؤسّس: كلّ العيادات متعدّدة الأطبّاء مع عدد أطبّائها. */
-export async function listClinicsAdmin(q: Q): Promise<(Clinic & { doctors: number; hasPaid: boolean })[]> {
+export async function listClinicsAdmin(q: Q, now: Date): Promise<(Clinic & { doctors: number; hasPaid: boolean })[]> {
   const rows = await q.query(
     `select c.*, (select count(*)::int from shops s where s.clinic_id = c.id) as doctors,
-            exists (select 1 from payments p where p.clinic_id = c.id and p.status = 'paid' and p.amount > 0) as has_paid
+            ${realPaymentCoversSql("clinic_id", "c.id", "$1")} as has_paid
        from clinics c order by c.created_at desc limit 500`,
+    [now],
   );
   return rows.map((r) => ({ ...rowToClinic(r), doctors: Number(r.doctors), hasPaid: r.has_paid === true }));
 }
