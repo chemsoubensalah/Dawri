@@ -55,7 +55,7 @@ export function clinicYearPriceDzd(): string {
   return formatDzd(clinicYearPriceNumber());
 }
 
-/** نسبة التوفير في السنوي مقارنةً بـ 12 شهراً (مثلاً 25). */
+/** نسبة التوفير في السنوي مقارنةً بـ 12 شهراً (مثلاً 17 لـ 1000 / 10000). */
 export function yearSavePct(month: number, year: number): number {
   return Math.max(0, Math.round((1 - year / (month * 12)) * 100));
 }

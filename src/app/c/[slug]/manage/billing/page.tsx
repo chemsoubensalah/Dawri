@@ -8,6 +8,7 @@ import { contactLine } from "@/lib/legal";
 import type { DictKey } from "@/lib/i18n";
 import { dirOf, t, tn } from "@/lib/i18n";
 import { themeVars } from "@/lib/theme";
+import { TRIAL_DAYS } from "@/lib/pricing";
 import { chargilyConfig, manualPayment, paymentReference, plans } from "@/lib/server/billing";
 import { clinicBySlug, managerClinic } from "@/lib/server/clinicHttp";
 import { MAX_DOCTORS, clinicSubscription } from "@/lib/server/clinics";
@@ -43,7 +44,9 @@ export default async function ClinicBillingPage({
   const fmt = dateFmt(lang);
   const cfg = chargilyConfig();
   const Back = lang === "ar" ? ArrowRight : ArrowLeft;
-  const trialProgress = Math.min(1, Math.max(0, 1 - sub.daysLeft / 60));
+  // مدّة تجربة هذه العيادة نفسها: 30 يوماً للجديدة، 60 للعيادات القديمة (الهجرة 014)
+  const trialTotalDays = Math.max(TRIAL_DAYS, Math.round((clinic.trialEndsAt.getTime() - clinic.createdAt.getTime()) / 86_400_000));
+  const trialProgress = Math.min(1, Math.max(0, 1 - sub.daysLeft / trialTotalDays));
   const ref = paymentReference("clinic", clinic.slug);
 
   return (

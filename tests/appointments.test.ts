@@ -573,8 +573,8 @@ describe("الوصول: موعد ← تذكرة ذات أولوية", () => {
     const r = await book("2026-10-12", "09:00");
     await expect(ap.appointmentAction(r.appointmentId, { action: "checkin" })).rejects.toThrow("ap_checkin_early");
     await expect(ap.staffAppointmentAction(await fresh(), { action: "checkin", id: r.appointmentId })).rejects.toThrow("ap_checkin_early");
-    const r2 = await book("2026-12-10", "09:00");
-    at("2026-12-10", "08:30"); // انتهت التجربة (شهران) على 08:00
+    const r2 = await book("2026-11-10", "09:00");
+    at("2026-11-10", "08:30"); // انتهت التجربة (شهر) على 08:00
     await expect(ap.appointmentAction(r2.appointmentId, { action: "checkin" })).rejects.toThrow("subscription");
   });
 });
@@ -608,10 +608,10 @@ describe("السكرتيرة", () => {
 
   it("اشتراك منتهٍ: لا موعد جديد ولا «حضر» من المكتب، والإلغاء يبقى ممكناً", async () => {
     await enable({ daysAhead: 60 });
-    const a = await desk({ day: "2026-12-10", time: "09:00" });
-    const b = await desk({ day: "2026-12-10", time: "10:00" });
-    at("2026-12-10", "08:30"); // انتهت التجربة (شهران) على 08:00
-    const e = await desk({ day: "2026-12-10", time: "11:00" }).catch((x) => x);
+    const a = await desk({ day: "2026-11-10", time: "09:00" });
+    const b = await desk({ day: "2026-11-10", time: "10:00" });
+    at("2026-11-10", "08:30"); // انتهت التجربة (شهر) على 08:00
+    const e = await desk({ day: "2026-11-10", time: "11:00" }).catch((x) => x);
     expect(e).toMatchObject({ code: "subscription", status: 409 });
     await expect(ap.staffAppointmentAction(await fresh(), { action: "checkin", id: a.id })).rejects.toThrow("subscription");
     const rows = await db.query<{ n: number }>("select count(*)::int n from tickets where shop_id = $1", [shop.id]);

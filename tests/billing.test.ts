@@ -18,7 +18,7 @@ beforeAll(async () => {
   delete process.env.DATABASE_URL;
   process.env.CHARGILY_SECRET_KEY = "test_sk_secret123";
   process.env.NEXT_PUBLIC_PRICE_DZD = "1000";
-  process.env.NEXT_PUBLIC_PRICE_YEAR_DZD = "9000";
+  process.env.NEXT_PUBLIC_PRICE_YEAR_DZD = "10000";
   db = await createPgliteDb();
   await migrate(db);
   setDb(db);
@@ -54,7 +54,7 @@ describe("Chargily", () => {
   it("السنوي بسعر مخفّض", () => {
     expect(plans()).toEqual([
       { months: 1, amount: 1000 },
-      { months: 12, amount: 9000 },
+      { months: 12, amount: 10000 },
     ]);
   });
 
@@ -82,7 +82,7 @@ describe("Chargily", () => {
     const ok = await webhook(new Request("https://x", { method: "POST", body: raw, headers: { signature: sign(raw) } }));
     expect(ok.status).toBe(200);
     const after = (await repo.getShopById(db, shop.id))!;
-    // التجربة تنتهي بعد 60 يوماً ← الشهر المدفوع يبدأ بعدها
+    // التجربة تنتهي بعد TRIAL_DAYS ← الشهر المدفوع يبدأ بعدها
     const expected = new Date(shop.trialEndsAt);
     expected.setUTCMonth(expected.getUTCMonth() + 1);
     expect(Math.abs(after.paidUntil!.getTime() - expected.getTime())).toBeLessThan(3 * 86_400_000);

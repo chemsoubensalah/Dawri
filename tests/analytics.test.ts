@@ -145,16 +145,16 @@ describe("الهدايا (تفعيل مجاني) لا تُحسب في المدا
     expect(row.paidUntil!.getTime()).toBeGreaterThan(clock.getTime());
   });
 
-  it("تصحيح دفعة سُجّلت بالخطأ (9000 ← 0): تُحذف من المداخيل والمدّة تبقى", async () => {
+  it("تصحيح دفعة سُجّلت بالخطأ (10000 ← 0): تُحذف من المداخيل والمدّة تبقى", async () => {
     clock = new Date("2026-11-03T09:30:00Z");
     const shop = await svc.createShop({ name: "عيادة الخطأ", slug: "oops-doc", pin: "4321", email: "oops@example.com" });
     const base = (await adminStats(7)).kpi.revenue;
-    const until = await recordManualPayment(shop.id, 12, 9000, null);
-    expect((await adminStats(7)).kpi.revenue).toBe(base + 9000);
+    const until = await recordManualPayment(shop.id, 12, 10000, null);
+    expect((await adminStats(7)).kpi.revenue).toBe(base + 10000);
     expect((await repo.listShopsAdmin(db, clock, clock)).find((x) => x.id === shop.id)!.hasPaid).toBe(true);
 
     const pay = (await repo.listRecentPaymentsAdmin(db, 50)).find((p) => p.shopId === shop.id)!;
-    expect(pay).toMatchObject({ amount: 9000, months: 12, payerName: "عيادة الخطأ", payerSlug: "oops-doc" });
+    expect(pay).toMatchObject({ amount: 10000, months: 12, payerName: "عيادة الخطأ", payerSlug: "oops-doc" });
     expect(await adminSetPaymentAmount(pay.id, 0, "هدية (صُحّحت)")).toEqual({ id: pay.id, amount: 0 });
 
     expect((await adminStats(7)).kpi.revenue).toBe(base);
@@ -199,7 +199,7 @@ describe("الهدايا (تفعيل مجاني) لا تُحسب في المدا
     clock = new Date("2026-11-10T09:00:00Z");
     const b = await svc.createShop({ name: "عيادة ب", slug: "period-b", pin: "4321", email: "pb@example.com" });
     await db.query("update shops set trial_ends_at = $2 where id = $1", [b.id, clock]);
-    await recordManualPayment(b.id, 12, 9000, null);
+    await recordManualPayment(b.id, 12, 10000, null);
     await recordManualPayment(b.id, 1, 0, "هدية");
     clock = new Date(clock.getTime() + 300 * DAY);
     expect(await hasPaid(b.id)).toBe(true);

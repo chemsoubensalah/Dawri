@@ -10,6 +10,7 @@ import * as repo from "@/lib/server/repo";
 import { readSession } from "@/lib/server/auth";
 import { sentMail, setMailer } from "@/lib/server/email";
 import type { Shop } from "@/lib/domain/types";
+import { TRIAL_DAYS } from "@/lib/pricing";
 
 let db: Db;
 let clock = new Date("2026-10-11T07:00:00Z"); // الأحد 08:00 بتوقيت الجزائر
@@ -253,7 +254,7 @@ describe("أخذ رقم", () => {
   });
 
   it("انتهاء الاشتراك يوقف الأرقام الجديدة", async () => {
-    advance(61 * 24 * 60);
+    advance((TRIAL_DAYS + 1) * 24 * 60);
     await expect(svc.requestCode(shop.slug, { name: "x x", phone: newPhone() })).rejects.toThrow("subscription");
   });
 });

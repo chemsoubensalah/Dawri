@@ -9,6 +9,7 @@ import type { Lang, Shop } from "@/lib/domain/types";
 import { coveredByClinic, isSubscriptionActive, subscriptionStatus } from "@/lib/domain/subscription";
 import { t, tn, drTitle } from "@/lib/i18n";
 import { chargilyConfig, manualPayment, paymentReference, plans } from "@/lib/server/billing";
+import { TRIAL_DAYS } from "@/lib/pricing";
 import { now as clockNow } from "@/lib/server/clock";
 import { getDb } from "@/lib/server/db";
 import { getLang, ownerShop, staffRole } from "@/lib/server/http";
@@ -45,7 +46,9 @@ export default async function BillingPage({
   const paidUntil = shop.paidUntil && shop.paidUntil > now ? shop.paidUntil : null;
   const inTrial = !paidUntil && shop.trialEndsAt > now;
   const trialDaysLeft = Math.max(0, Math.ceil((shop.trialEndsAt.getTime() - now.getTime()) / DAY));
-  const trialProgress = Math.min(1, Math.max(0, 1 - trialDaysLeft / 60));
+  // مدّة تجربة هذا الحساب نفسه: 30 يوماً للجديد، أطول للمدعوّ أو للحسابات القديمة (60)
+  const trialTotalDays = Math.max(TRIAL_DAYS, Math.round((shop.trialEndsAt.getTime() - shop.createdAt.getTime()) / DAY));
+  const trialProgress = Math.min(1, Math.max(0, 1 - trialDaysLeft / trialTotalDays));
   const cfg = chargilyConfig();
   const ref = paymentReference("cabinet", shop.slug);
 

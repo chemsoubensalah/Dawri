@@ -243,7 +243,7 @@ describe("الاشتراك الفعلي (الخاصّ أو العيادة)", () 
     await db.query("update shops set created_at = $2 where id = $1", [solo.id, new Date(Date.now() - 90 * DAY)]);
     await expireShop(solo.id);
     expect(await blocker(solo.slug)).toBe("subscription");
-    // ينشئ عيادة جديدة (تجربة 60 يوماً) وينضمّ إليها برمزه
+    // ينشئ عيادة جديدة (تجربة TRIAL_DAYS) وينضمّ إليها برمزه
     const fresh2 = await clinics.createClinic({
       name: `مركز التحايل ${n}`,
       slug: `cb-trick-${n}`,

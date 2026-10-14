@@ -122,7 +122,9 @@ TEST_DATABASE_URL=postgres://… npx vitest run tests/service.test.ts   # على
 ### 4) الدفع
 - **Chargily Pay** (البطاقة الذهبية و CIB): أنشئ حساباً على chargily.com، ضع `CHARGILY_SECRET_KEY` (مفتاح `test_sk_…` للتجربة أوّلاً). Chargily لا يدعم الاقتطاع الشهري التلقائي، لذا كلّ دفعة = شهر أو سنة (السنوي بسعر 10 أشهر). يُفعَّل الاشتراك **فقط** عند وصول إشعار الدفع الموقَّع إلى `/api/billing/chargily`. للحساب الحقيقي: توثيق الحساب والتطبيق لدى Chargily (اسألهم عن الوثائق المقبولة: سجلّ تجاري أو بطاقة مقاول ذاتي).
 - **تحويل بريدي** (بريدي موب / CCP): ضع `BILLING_RIP`/`BILLING_CCP`/`BILLING_HOLDER`/`SUPPORT_WHATSAPP`. يرسل الطبيب الوصل على واتساب، وتفعّل أنت من `/admin`.
-- **السعر**: `NEXT_PUBLIC_PRICE_DZD` (افتراضياً 2500 دج). برامج العيادات في الجزائر تُباع غالباً بين 1500 و3000 دج شهرياً.
+- **الأسعار** (أوّل شهر مجّاني لكلّ حساب جديد، بلا عمولة):
+  - طبيب واحد: `NEXT_PUBLIC_PRICE_DZD` (افتراضياً 1000 دج شهرياً) و`NEXT_PUBLIC_PRICE_YEAR_DZD` (افتراضياً 10000 دج سنوياً).
+  - عيادة متعدّدة الأطبّاء: `NEXT_PUBLIC_CLINIC_PRICE_DZD` (2000 دج) و`NEXT_PUBLIC_CLINIC_PRICE_YEAR_DZD` (20000 دج).
 
 ### 5) تنبيهات الهاتف (Web Push) — اختياري
 `npx web-push generate-vapid-keys` ← `NEXT_PUBLIC_VAPID_PUBLIC_KEY` و`VAPID_PRIVATE_KEY`. تعمل على أندرويد/كروم بلا تثبيت، وعلى آيفون بعد «إضافة إلى الشاشة الرئيسية».
