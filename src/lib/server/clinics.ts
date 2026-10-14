@@ -15,7 +15,7 @@ import * as repo from "./repo";
 import * as crepo from "./clinicsRepo";
 import type { Clinic } from "./clinicsRepo";
 import { createShop } from "./service";
-import { MAX_DOCTORS } from "../pricing";
+import { MAX_DOCTORS, TRIAL_DAYS } from "../pricing";
 import { clinicCoverUntil, isSubscriptionActive, ownUntil, subscriptionStatus, subscriptionUntil } from "../domain/subscription";
 
 export type { Clinic };
@@ -114,7 +114,7 @@ export async function createClinic(input: {
       ownerEmail: email,
       pinHash: hashPin(input.pin),
       look: { theme: "emerald", custom: null, display: "night" },
-      trialEndsAt: new Date(clockNow().getTime() + 60 * DAY_MS), // مجّاني أوّل شهرين، كالطبيب الواحد
+      trialEndsAt: new Date(clockNow().getTime() + TRIAL_DAYS * DAY_MS), // أوّل شهر مجّاني، كالطبيب الواحد
     });
   } catch (e) {
     if ((e as { code?: string }).code === "23505") throw new DomainError("slug_taken", 409);

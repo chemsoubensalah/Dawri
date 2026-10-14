@@ -5,6 +5,7 @@ import { readLook, type ShopLook } from "../domain/types";
 import type { Q, Row } from "./db";
 import { realPaymentCoversSql, rowToPayment, rowToShop, SHOP_COLS, SHOP_FROM, type Payment } from "./repo";
 import type { Shop } from "../domain/types";
+import { TRIAL_DAYS } from "../pricing";
 
 export interface Clinic {
   id: string;
@@ -58,8 +59,8 @@ export async function insertClinic(
 ): Promise<Clinic> {
   const rows = await q.query(
     `insert into clinics (slug, name, owner_email, pin_hash, look, trial_ends_at)
-     values ($1,$2,$3,$4,$5, coalesce($6::timestamptz, now() + interval '60 days')) returning *`,
-    [c.slug, c.name, c.ownerEmail, c.pinHash, JSON.stringify(c.look), c.trialEndsAt ?? null],
+     values ($1,$2,$3,$4,$5, coalesce($6::timestamptz, now() + make_interval(days => $7))) returning *`,
+    [c.slug, c.name, c.ownerEmail, c.pinHash, JSON.stringify(c.look), c.trialEndsAt ?? null, TRIAL_DAYS],
   );
   return rowToClinic(rows[0]);
 }

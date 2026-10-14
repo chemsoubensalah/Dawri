@@ -1,9 +1,9 @@
 /**
  * الأسعار المعروضة (بالدينار). خطّتان منفصلتان:
- * - عيادة طبيب واحد (cabinet): شهري NEXT_PUBLIC_PRICE_DZD (1000)، سنوي NEXT_PUBLIC_PRICE_YEAR_DZD (9000).
+ * - عيادة طبيب واحد (cabinet): شهري NEXT_PUBLIC_PRICE_DZD (1000)، سنوي NEXT_PUBLIC_PRICE_YEAR_DZD (10000).
  * - عيادة متعدّدة الأطبّاء (clinique، حتى MAX_DOCTORS أطبّاء باشتراك واحد):
- *   شهري NEXT_PUBLIC_CLINIC_PRICE_DZD (2000)، سنوي NEXT_PUBLIC_CLINIC_PRICE_YEAR_DZD (18000).
- * كلاهما: شهران مجّاناً، بلا عمولة.
+ *   شهري NEXT_PUBLIC_CLINIC_PRICE_DZD (2000)، سنوي NEXT_PUBLIC_CLINIC_PRICE_YEAR_DZD (20000).
+ * كلاهما: شهر مجّاني (TRIAL_DAYS)، بلا عمولة.
  */
 function envPrice(v: string | undefined, fallback: number): number {
   const n = Number(v ?? fallback);
@@ -11,6 +11,9 @@ function envPrice(v: string | undefined, fallback: number): number {
 }
 
 export type PlanKind = "cabinet" | "clinic";
+
+/** مدّة التجربة المجّانية لكلّ حساب جديد (طبيب واحد أو عيادة). المصدر الوحيد للرقم. */
+export const TRIAL_DAYS = 30;
 
 /** حدّ أطبّاء خطّة العيادة (شاشة القاعة مصمّمة حتى 8). المصدر الوحيد للرقم في النصوص والواجهة. */
 export const MAX_DOCTORS = 8;
@@ -20,7 +23,7 @@ export function priceNumber(): number {
 }
 
 export function yearPriceNumber(): number {
-  return envPrice(process.env.NEXT_PUBLIC_PRICE_YEAR_DZD, 9000);
+  return envPrice(process.env.NEXT_PUBLIC_PRICE_YEAR_DZD, 10000);
 }
 
 export function clinicPriceNumber(): number {
@@ -28,7 +31,7 @@ export function clinicPriceNumber(): number {
 }
 
 export function clinicYearPriceNumber(): number {
-  return envPrice(process.env.NEXT_PUBLIC_CLINIC_PRICE_YEAR_DZD, 18000);
+  return envPrice(process.env.NEXT_PUBLIC_CLINIC_PRICE_YEAR_DZD, 20000);
 }
 
 /** «1 000 DA» — مسافة بين الآلاف */

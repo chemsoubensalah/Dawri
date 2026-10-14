@@ -126,18 +126,18 @@ async function blocker(slug: string): Promise<string | null> {
 }
 
 describe("الأسعار والخطط", () => {
-  it("العيادة أغلى: 2000 / 18000 افتراضياً، والطبيب الواحد 1000 / 9000", () => {
+  it("العيادة أغلى: 2000 / 20000 افتراضياً، والطبيب الواحد 1000 / 10000", () => {
     expect(plans()).toEqual([
       { months: 1, amount: 1000 },
-      { months: 12, amount: 9000 },
+      { months: 12, amount: 10000 },
     ]);
     expect(plans("clinic")).toEqual([
       { months: 1, amount: 2000 },
-      { months: 12, amount: 18000 },
+      { months: 12, amount: 20000 },
     ]);
     expect(clinicPriceNumber()).toBeGreaterThan(priceNumber());
     expect(defaultAmount("clinic", 3)).toBe(6000);
-    expect(defaultAmount("clinic", 12)).toBe(18000);
+    expect(defaultAmount("clinic", 12)).toBe(20000);
     expect(clinicPriceDzd()).toBe("2 000 DA");
   });
 
@@ -165,8 +165,8 @@ describe("الأسعار والخطط", () => {
 });
 
 describe("الاشتراك الفعلي (الخاصّ أو العيادة)", () => {
-  it("عيادة جديدة: تجربة 60 يوماً من ساعة التطبيق، والطبيب مشمول", async () => {
-    expect(clinic.trialEndsAt.getTime() - clock.getTime()).toBe(60 * DAY);
+  it("عيادة جديدة: تجربة 30 يوماً من ساعة التطبيق، والطبيب مشمول", async () => {
+    expect(clinic.trialEndsAt.getTime() - clock.getTime()).toBe(30 * DAY);
     expect(clinic.paidUntil).toBeNull();
     const d = await fresh(doctor);
     expect(d.clinicId).toBe(clinic.id);
@@ -272,7 +272,7 @@ describe("الاشتراك الفعلي (الخاصّ أو العيادة)", () 
   it("لوحة المدير: حالة اشتراك العيادة + نهاية فعلية لكلّ طبيب", async () => {
     await expireShop(doctor.id);
     const v = await clinics.managerView(await freshClinic());
-    expect(v.subscription).toMatchObject({ active: true, trial: true, paidUntil: null, daysLeft: 60 });
+    expect(v.subscription).toMatchObject({ active: true, trial: true, paidUntil: null, daysLeft: 30 });
     const doc = v.doctors.find((x) => x.slug === doctor.slug)!;
     expect(doc.subscription.active).toBe(true);
     expect(doc.subscription.until).toBe(clinic.trialEndsAt.toISOString());
@@ -309,7 +309,7 @@ describe("دفع العيادة (Chargily)", () => {
     const r = await createClinicCheckout(await freshClinic(), 12, "fr", "https://dawri.example");
     expect(r.url).toMatch(/^https:\/\/pay\.chargily\.dz\//);
     expect(requests[0].body).toMatchObject({
-      amount: 18000,
+      amount: 20000,
       currency: "dzd",
       locale: "fr",
       success_url: `https://dawri.example/c/${clinic.slug}/manage/billing?paid=1`,
@@ -319,7 +319,7 @@ describe("دفع العيادة (Chargily)", () => {
     });
     const ps = await crepo.listClinicPayments(db, clinic.id);
     expect(ps).toHaveLength(1);
-    expect(ps[0]).toMatchObject({ status: "pending", months: 12, amount: 18000, clinicId: clinic.id, shopId: null });
+    expect(ps[0]).toMatchObject({ status: "pending", months: 12, amount: 20000, clinicId: clinic.id, shopId: null });
     expect(await repo.listPayments(db, doctor.id)).toHaveLength(0);
     await expect(createClinicCheckout(clinic, 3, "fr", "https://dawri.example")).rejects.toMatchObject({ code: "invalid_plan" });
   });

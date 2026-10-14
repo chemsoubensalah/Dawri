@@ -50,19 +50,19 @@ export const ar = {
 
   // ——— ادعُ زميلاً ———
   gr_refTitle: "ادعُ زميلاً: شهر مجّاني لكما",
-  gr_refSub: "زميلك يحصل على 3 أشهر مجّانية بدل شهرين، وأنت تربح شهراً مجّانياً حين يدفع أوّل اشتراك له.",
+  gr_refSub: "زميلك يحصل على شهرين مجّانيين بدل شهر، وأنت تربح شهراً مجّانياً حين يدفع أوّل اشتراك له.",
   gr_refLink: "رابط دعوتك",
   gr_refCode: "رمزك",
   gr_refCopy: "نسخ",
   gr_refCopied: "نُسخ",
   gr_refWhatsapp: "أرسل عبر واتساب",
-  gr_refWaText: "السلام عليكم، أستعمل «دوري» لتنظيم طابور عيادتي: المرضى يأخذون رقمهم بالهاتف وينتظرون في بيوتهم. سجّل من هذا الرابط وتحصل على 3 أشهر مجّاناً:",
+  gr_refWaText: "السلام عليكم، أستعمل «دوري» لتنظيم طابور عيادتي: المرضى يأخذون رقمهم بالهاتف وينتظرون في بيوتهم. سجّل من هذا الرابط وتحصل على شهرين مجّاناً:",
   gr_refJoined: "انضمّوا",
   gr_refPaid: "اشتركوا",
   gr_refMonths: "أشهر ربحتها",
   gr_refCapped: "بلغت الحدّ: 12 شهراً مجّانياً في السنة. شكراً لك!",
   gr_refRules: "المكافأة عند أوّل دفعة للعيادة المدعوّة • 12 شهراً كحدّ أقصى في السنة.",
-  gr_refInvited: "دعوة من زميل: 3 أشهر مجّاناً بدل شهرين 🎁",
+  gr_refInvited: "دعوة من زميل: شهران مجّاناً بدل شهر 🎁",
 };
 
 export const fr: Record<keyof typeof ar, string> = {
@@ -110,17 +110,17 @@ export const fr: Record<keyof typeof ar, string> = {
   gr_mPrivacy: "Uniquement des chiffres — aucun nom ni donnée médicale.",
 
   gr_refTitle: "Parrainez un confrère : un mois offert à chacun",
-  gr_refSub: "Votre confrère obtient 3 mois gratuits au lieu de 2, et vous gagnez un mois offert dès son premier paiement.",
+  gr_refSub: "Votre confrère obtient 2 mois gratuits au lieu de 1, et vous gagnez un mois offert dès son premier paiement.",
   gr_refLink: "Votre lien de parrainage",
   gr_refCode: "Votre code",
   gr_refCopy: "Copier",
   gr_refCopied: "Copié",
   gr_refWhatsapp: "Envoyer par WhatsApp",
-  gr_refWaText: "Bonjour, j'utilise « Dawri » pour la file d'attente de mon cabinet : les patients prennent leur numéro par téléphone et attendent chez eux. Inscrivez-vous avec ce lien et obtenez 3 mois gratuits :",
+  gr_refWaText: "Bonjour, j'utilise « Dawri » pour la file d'attente de mon cabinet : les patients prennent leur numéro par téléphone et attendent chez eux. Inscrivez-vous avec ce lien et obtenez 2 mois gratuits :",
   gr_refJoined: "Inscrits",
   gr_refPaid: "Abonnés",
   gr_refMonths: "Mois gagnés",
   gr_refCapped: "Plafond atteint : 12 mois offerts par an. Merci !",
   gr_refRules: "Récompense au premier paiement du cabinet parrainé • 12 mois maximum par an.",
-  gr_refInvited: "Invitation d'un confrère : 3 mois gratuits au lieu de 2 🎁",
+  gr_refInvited: "Invitation d'un confrère : 2 mois gratuits au lieu de 1 🎁",
 };

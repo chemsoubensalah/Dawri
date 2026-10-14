@@ -8,6 +8,7 @@ import { formatPhone, normalizePhone } from "../domain/phone";
 import { isWilaya } from "../domain/wilayas";
 import { publicRating } from "./reviews";
 import { getTvMessages } from "./tvmessages";
+import { TRIAL_DAYS } from "../pricing";
 import {
   averageServiceMinutes,
   currentTicket,
@@ -267,7 +268,7 @@ export async function createShop(input: {
       hours: DEFAULT_HOURS,
       settings: DEFAULT_SETTINGS,
       defaultLang: langOf(input.lang, "ar"),
-      trialEndsAt: new Date(now.getTime() + 60 * DAY_MS), // مجّاني أوّل شهرين
+      trialEndsAt: new Date(now.getTime() + TRIAL_DAYS * DAY_MS), // أوّل شهر مجّاني
       ownerEmail,
     });
     // «ادعُ زميلاً»: رمز صالح ← 30 يوماً إضافية للتجربة (الرمز السيّئ يُتجاهل بصمت).

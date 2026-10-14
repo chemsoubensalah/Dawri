@@ -75,9 +75,9 @@ async function next(mode: "next" | "no_show_next" = "next") {
 }
 
 describe("إنشاء المحلّ والدخول", () => {
-  it("فترة مجّانية لشهرين، ورمز السكرتيرة مشفّر", async () => {
+  it("فترة مجّانية لشهر، ورمز السكرتيرة مشفّر", async () => {
     const days = (shop.trialEndsAt.getTime() - clock.getTime()) / 86_400_000;
-    expect(days).toBe(60);
+    expect(days).toBe(30);
     expect(shop.pinHash).not.toContain("4321");
     await expect(svc.createShop({ name: "x y", slug: shop.slug, kind: "doctor", pin: "1234", email: "x@example.com" })).rejects.toThrow(
       "slug_taken",

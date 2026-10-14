@@ -20,6 +20,7 @@ import {
 } from "@/lib/server/report";
 import { ensureReferralCode, referralStats } from "@/lib/server/referral";
 import type { Shop } from "@/lib/domain/types";
+import { TRIAL_DAYS } from "@/lib/pricing";
 
 let db: Db;
 let clock = new Date("2026-10-11T07:00:00Z");
@@ -80,6 +81,13 @@ async function newShop(email: string | null = "", ref?: string): Promise<Shop> {
   if (email !== null) return shop;
   await db.query("update shops set owner_email = null where id = $1", [shop.id]);
   return { ...shop, ownerEmail: null };
+}
+
+/** طابور باشتراك سارٍ لسنة: لاختبارات التقرير التي تقدّم الساعة أبعد من مدّة التجربة. */
+async function activeShop(): Promise<Shop> {
+  const shop = await newShop();
+  await db.query("update shops set trial_ends_at = $2 where id = $1", [shop.id, new Date(clock.getTime() + 365 * DAY)]);
+  return (await repo.getShopById(db, shop.id))!;
 }
 
 /** يُدخل تذكرة مباشرة بتواريخ محدّدة (UTC). */
@@ -231,7 +239,7 @@ describe("التقرير اليومي — الاستئناف والمهلة", ()
   });
 
   it("كلّ تشغيل يغطّي آخر 3 أيّام بلا إرسال ناجح (يوم فات لا يضيع)", async () => {
-    const s = await newShop();
+    const s = await activeShop();
     for (const d of ["2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09"]) await seed(s, d, 1, served(d));
     // تقرير 11-09 أُرسل؛ 11-06 أقدم من النافذة
     await db.query("insert into report_log (shop_id, day, claimed_at, sent_at) values ($1, '2026-11-09', $2, $2)", [
@@ -251,7 +259,7 @@ describe("التقرير اليومي — الاستئناف والمهلة", ()
   it("إرسال متوازٍ محدود، ويتوقّف عند نفاد المهلة ثمّ يُستكمل في التشغيل التالي", async () => {
     const shops: Shop[] = [];
     for (let i = 0; i < 8; i++) {
-      const s = await newShop();
+      const s = await activeShop();
       await seed(s, "2026-11-14", 1, served("2026-11-14"));
       shops.push(s);
     }
@@ -270,7 +278,7 @@ describe("التقرير اليومي — الاستئناف والمهلة", ()
   });
 
   it("runCron: فشل خطوة لا يُلغي ما بعدها، ويُعاد في errors", async () => {
-    const s = await newShop();
+    const s = await activeShop();
     await seed(s, "2026-11-20", 1, served("2026-11-20"));
     clock = new Date("2026-11-21T02:00:00Z");
     await db.exec("alter table wa_inbound rename to wa_inbound_broken");
@@ -303,14 +311,14 @@ describe("التقرير اليومي — الاستئناف والمهلة", ()
 });
 
 describe("ادعُ زميلاً", () => {
-  it("رمز صالح: 90 يوماً للمدعوّ؛ مكافأة الداعي عند أوّل دفعة فقط", async () => {
+  it("رمز صالح: شهر إضافي للمدعوّ؛ مكافأة الداعي عند أوّل دفعة فقط", async () => {
     const a = await newShop();
     const code = await ensureReferralCode(db, a.id);
     expect(code).toMatch(/^[A-Z0-9]{7}$/);
     expect(await ensureReferralCode(db, a.id)).toBe(code);
 
     const b = await newShop(null, code.toLowerCase());
-    expect(b.trialEndsAt.getTime() - clock.getTime()).toBe(90 * DAY);
+    expect(b.trialEndsAt.getTime() - clock.getTime()).toBe((TRIAL_DAYS + 30) * DAY);
     expect((await repo.getShopById(db, b.id))!.trialEndsAt.getTime()).toBe(b.trialEndsAt.getTime());
 
     const before = (await repo.getShopById(db, a.id))!;
@@ -335,14 +343,14 @@ describe("ادعُ زميلاً", () => {
 
   it("رمز غير صالح يُتجاهل، والدعوة الذاتية مرفوضة، وحدّ 12 في السنة", async () => {
     const x = await newShop(null, "NOPE99");
-    expect(x.trialEndsAt.getTime() - clock.getTime()).toBe(60 * DAY);
+    expect(x.trialEndsAt.getTime() - clock.getTime()).toBe(TRIAL_DAYS * DAY);
     const y = await newShop(null, "<script>");
-    expect(y.trialEndsAt.getTime() - clock.getTime()).toBe(60 * DAY);
+    expect(y.trialEndsAt.getTime() - clock.getTime()).toBe(TRIAL_DAYS * DAY);
 
     const a = await newShop("same@example.com");
     const code = await ensureReferralCode(db, a.id);
     const self = await newShop("SAME@example.com", code);
-    expect(self.trialEndsAt.getTime() - clock.getTime()).toBe(60 * DAY);
+    expect(self.trialEndsAt.getTime() - clock.getTime()).toBe(TRIAL_DAYS * DAY);
     expect((await referralStats(db, a.id, clock)).invited).toBe(0);
 
     const start = (await repo.getShopById(db, a.id))!.trialEndsAt.getTime();
@@ -388,9 +396,9 @@ describe("ادعُ زميلاً — ضدّ الاستغلال", () => {
     const a = await newShop("doc.tor@gmail.com");
     const code = await ensureReferralCode(db, a.id);
     const b = await newShop("D.octor+2@googlemail.com", code);
-    expect(trialDays(b)).toBe(60);
+    expect(trialDays(b)).toBe(TRIAL_DAYS);
     const c = await newShop("doc.tor+x@gmail.com", code);
-    expect(trialDays(c)).toBe(60);
+    expect(trialDays(c)).toBe(TRIAL_DAYS);
     expect(await invited(a)).toBe(0);
   });
 
@@ -399,7 +407,7 @@ describe("ادعُ زميلاً — ضدّ الاستغلال", () => {
     const code = await ensureReferralCode(db, a.id);
     await svc.updateSettings(a, { email: "second-owner@example.com" });
     const b = await newShop("first-owner@example.com", code);
-    expect(trialDays(b)).toBe(60);
+    expect(trialDays(b)).toBe(TRIAL_DAYS);
     expect(await invited(a)).toBe(0);
   });
 
@@ -408,7 +416,7 @@ describe("ادعُ زميلاً — ضدّ الاستغلال", () => {
     const code = await ensureReferralCode(db, a.id);
     await db.query("update shops set owner_email = null where id = $1", [a.id]);
     const b = await newShop("", code);
-    expect(trialDays(b)).toBe(60);
+    expect(trialDays(b)).toBe(TRIAL_DAYS);
     expect(await invited(a)).toBe(0);
   });
 
@@ -417,28 +425,29 @@ describe("ادعُ زميلاً — ضدّ الاستغلال", () => {
     const code = await ensureReferralCode(db, a.id);
     const first = await newShop("farm.er@gmail.com");
     const again = await newShop("farmer+2@gmail.com", code);
-    expect(trialDays(again)).toBe(60);
+    expect(trialDays(again)).toBe(TRIAL_DAYS);
     expect(await invited(a)).toBe(1); // الداعي يُكافأ إن دفعت فعلاً
     await db.query("delete from shops where id = $1", [first.id]);
     const third = await newShop("f.armer@gmail.com", code);
-    expect(trialDays(third)).toBe(60);
+    expect(trialDays(third)).toBe(TRIAL_DAYS);
     // بريد جديد تماماً: المكافأة كاملة
     const fresh = await newShop("brand-new-doctor@example.com", code);
-    expect(trialDays(fresh)).toBe(90);
+    expect(trialDays(fresh)).toBe(TRIAL_DAYS + 30);
   });
 
   it("الدعوة ومكافأتها ذرّيتان: فشل المكافأة لا يترك دعوة مسجّلة", async () => {
     const a = await newShop();
     const code = await ensureReferralCode(db, a.id);
-    // يُفشل تمديد التجربة (+30) ولا يمسّ إنشاء العيادة (60 يوماً)
-    await db.exec(`alter table shops add constraint test_no_bonus check (trial_ends_at < '2027-01-01'::timestamptz) not valid`);
+    // يُفشل تمديد التجربة (+30) ولا يمسّ إنشاء العيادة (TRIAL_DAYS): حدّ بين نهاية التجربة ونهاية التجربة + المكافأة
+    const limit = new Date(clock.getTime() + (TRIAL_DAYS + 15) * DAY).toISOString();
+    await db.exec(`alter table shops add constraint test_no_bonus check (trial_ends_at < '${limit}'::timestamptz) not valid`);
     let b: Shop;
     try {
       b = await newShop("", code);
     } finally {
       await db.exec("alter table shops drop constraint test_no_bonus");
     }
-    expect(trialDays(b)).toBe(60);
+    expect(trialDays(b)).toBe(TRIAL_DAYS);
     const rows = await db.query<{ n: number }>("select count(*)::int as n from referrals where referred_shop_id = $1", [b.id]);
     expect(rows[0].n).toBe(0);
     expect(await invited(a)).toBe(0);

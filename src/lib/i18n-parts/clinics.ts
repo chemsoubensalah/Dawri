@@ -39,7 +39,7 @@ export const ar = {
   cl_room: "المكتب",
   cl_roomPh: "مثال: مكتب 2",
   cl_create: "إنشاء العيادة",
-  cl_trialNote: "شهران مجّاناً للعيادة كلّها. ثمّ اشتراك واحد للعيادة يغطّي حتى {max} أطبّاء — تضيف من تشاء متى تشاء.",
+  cl_trialNote: "شهر مجّاني للعيادة كلّها. ثمّ اشتراك واحد للعيادة يغطّي حتى {max} أطبّاء — تضيف من تشاء متى تشاء.",
   // الدخول
   cl_loginManager: "مدير عيادة بعدّة أطبّاء؟",
   cl_managerLogin: "دخول مدير العيادة",
@@ -151,7 +151,7 @@ export const fr: Record<keyof typeof ar, string> = {
   cl_room: "Bureau",
   cl_roomPh: "Ex. : Bureau 2",
   cl_create: "Créer le centre",
-  cl_trialNote: "2 mois offerts pour tout le centre. Ensuite un seul abonnement couvre jusqu'à {max} médecins — ajoutez-en quand vous voulez.",
+  cl_trialNote: "1 mois offert pour tout le centre. Ensuite un seul abonnement couvre jusqu'à {max} médecins — ajoutez-en quand vous voulez.",
   cl_loginManager: "Gestionnaire d'un centre à plusieurs médecins ?",
   cl_managerLogin: "Connexion du gestionnaire",
   cl_managerLoginHint: "Médecin ou secrétaire ? Connectez-vous depuis le lien de votre file /staff/…",

@@ -39,6 +39,7 @@ import {
   yearPriceDzd,
   yearPriceNumber,
   yearSavePct,
+  TRIAL_DAYS,
 } from "@/lib/pricing";
 import type { Lang } from "@/lib/domain/types";
 
@@ -275,7 +276,7 @@ export default async function Home() {
           <div className="mt-10 grid grid-cols-2 gap-3 rounded-[2rem] bg-ink p-5 text-center text-white sm:grid-cols-4 sm:p-7">
             {[
               ["0", "why_st1"],
-              ["60", "why_st2"],
+              [String(TRIAL_DAYS), "why_st2"],
               [String(priceNumber()), "why_st3"],
               ["ع + Fr", "why_st4"],
             ].map(([v, k]) => (
