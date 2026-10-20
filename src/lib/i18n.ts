@@ -109,7 +109,7 @@ const arCore = {
   backToShop: "صفحة المحلّ",
 
   // السكرتيرة
-  staffLogin: "دخول السكرتيرة",
+  staffLogin: "دخول الطبيب أو السكرتيرة",
   enterPin: "أدخل الرمز",
   login: "دخول",
   logout: "خروج",
@@ -743,7 +743,7 @@ const frCore: typeof arCore = {
   ticketNotFound: "Ticket introuvable.",
   backToShop: "Page du cabinet",
 
-  staffLogin: "Accès secrétaire",
+  staffLogin: "Accès médecin ou secrétaire",
   enterPin: "Entrez le code",
   login: "Entrer",
   logout: "Quitter",
