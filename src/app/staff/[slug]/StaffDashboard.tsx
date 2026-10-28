@@ -13,7 +13,9 @@ import TodayAppointments, { ApptBadge } from "./appointments/TodayAppointments";
 type Row = StaffState["waiting"][number];
 type Confirm = { kind: "noshow"; id: string; number: number } | { kind: "cancel"; id: string; number: number } | null;
 
-export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; slug: string; initial: StaffState }) {
+/** canManage: الطبيب أو مدير العيادة. السكرتيرة لا ترى روابط الاشتراك والإعدادات (لا تستطيع فتحها). */
+export default function StaffDashboard({ lang, slug, initial, canManage = true }: { lang: Lang; slug: string; initial: StaffState; canManage?: boolean }) {
+  const billingLink = (children: React.ReactNode) => (canManage ? <a href={`/staff/${slug}/billing`}>{children}</a> : children);
   const [s, setS] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -152,17 +154,15 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
         {s.blocker === "outside_hours" && !s.closed && <Chip tone="amber">{t(lang, "outsideHours")}</Chip>}
         {s.shop.clinic?.covers ? (
           // مشمول باشتراك العيادة متعدّدة الأطبّاء: لا عدّاد تجربة خاصّ
-          <a href={`/staff/${slug}/billing`}>
-            <Chip tone="green">{t(lang, "cb_dbCovered")}</Chip>
-          </a>
+          billingLink(<Chip tone="green">{t(lang, "cb_dbCovered")}</Chip>)
         ) : (
           !(s.shop.paidUntil && new Date(s.shop.paidUntil) > new Date(s.serverTime)) &&
           s.shop.active && (
-            <a href={`/staff/${slug}/billing`}>
+            billingLink(
               <Chip tone="violet">
                 {tn(lang, "db_trialLeft", Math.max(0, Math.ceil((new Date(s.shop.until).getTime() - new Date(s.serverTime).getTime()) / 86_400_000)))}
-              </Chip>
-            </a>
+              </Chip>,
+            )
           )
         )}
         <span className="ms-auto flex items-center gap-2">
@@ -176,11 +176,14 @@ export default function StaffDashboard({ lang, slug, initial }: { lang: Lang; sl
       </div>
 
       {!s.shop.active && (
-        <a href={`/staff/${slug}/billing`} className="flex items-center gap-3 rounded-2xl bg-rose-50 p-4 font-semibold text-rose-800 ring-1 ring-rose-200">
+        <a
+          href={canManage ? `/staff/${slug}/billing` : undefined}
+          className="flex items-center gap-3 rounded-2xl bg-rose-50 p-4 font-semibold text-rose-800 ring-1 ring-rose-200"
+        >
           <ShieldAlert size={20} /> {s.shop.clinic ? t(lang, "cb_dbClinicExpired", { name: s.shop.clinic.name }) : t(lang, "subscriptionExpired")}
         </a>
       )}
-      {!s.shop.hasEmail && (
+      {!s.shop.hasEmail && canManage && (
         <a
           href={`/staff/${slug}/settings#security`}
           className="flex items-center gap-3 rounded-2xl bg-amber-50 p-3.5 text-sm font-semibold text-amber-900 ring-1 ring-amber-200"

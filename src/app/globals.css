@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* شاشات التلفاز القصيرة (1280×720، 1366×768): تصاميم الشاشة تتراصّ عموديّاً كي يظهر كلّ شيء */
+@custom-variant short (@media (min-width: 1024px) and (max-height: 820px));
+
 @theme {
   /* هويّة «دوري»: أخضر طبّي هادئ + كحلي للنصوص */
   --color-brand-50: #ecfdf5;

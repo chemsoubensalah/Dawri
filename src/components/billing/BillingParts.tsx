@@ -187,8 +187,8 @@ export function PaymentHistory({ lang, payments }: { lang: Lang; payments: Payme
                   <td className="py-2.5">{p.months === 12 ? t(lang, "bl_yearly") : t(lang, "bl_nMonths", { n: p.months })}</td>
                   <td className="py-2.5" dir="ltr">{money(p.amount)}</td>
                   <td className="py-2.5 text-end">
-                    <Chip tone={p.status === "paid" ? "green" : p.status === "failed" ? "rose" : "slate"}>
-                      {t(lang, p.status === "paid" ? "bl_paid" : p.status === "failed" ? "bl_failedSt" : "bl_pending")}
+                    <Chip tone={p.status === "paid" ? (p.amount === 0 ? "violet" : "green") : p.status === "failed" ? "rose" : "slate"}>
+                      {t(lang, p.status === "paid" ? (p.amount === 0 ? "bl_gift" : "bl_paid") : p.status === "failed" ? "bl_failedSt" : "bl_pending")}
                     </Chip>
                   </td>
                 </tr>

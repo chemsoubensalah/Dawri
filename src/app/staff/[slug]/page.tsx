@@ -24,7 +24,7 @@ export default async function StaffPage({ params }: { params: Promise<{ slug: st
   const lang = await getLang(shop.defaultLang);
   return (
     <StaffFrame role={access?.role} lang={lang} slug={shop.slug} name={shop.name} doctor={drTitle(lang, shop.kind, shop.profile.doctorName)} look={shop.look} active="queue">
-      <StaffDashboard lang={lang} slug={shop.slug} initial={await staffState(shop)} />
+      <StaffDashboard lang={lang} slug={shop.slug} initial={await staffState(shop)} canManage={access?.role !== "assistant"} />
     </StaffFrame>
   );
 }
