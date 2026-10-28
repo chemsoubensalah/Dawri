@@ -153,9 +153,12 @@ export default async function Home() {
           </div>
           <div className="flex items-center gap-2">
             <LangSwitch lang={lang} />
-            <Link href="/login" className="btn-ghost btn-sm hidden sm:inline-flex">{t(lang, "l_login")}</Link>
-            <Link href="/login" aria-label={t(lang, "l_login")} className="btn-ghost btn-sm px-2 sm:hidden"><LogIn size={18} /></Link>
-            <Link href="/new" className="btn-primary btn-sm">{t(lang, "l_startFree")}</Link>
+            {/* زرّ الدخول ظاهر دائماً (بنصّ) — على الهاتف يأخذ مكان «ابدأ مجّاناً» الموجود أصلاً في أعلى الصفحة */}
+            <Link href="/login" className="btn-secondary btn-sm gap-1.5" data-testid="home-login">
+              <LogIn size={16} className="rtl:-scale-x-100" /> <span className="sm:hidden">{t(lang, "l_loginShort")}</span>
+              <span className="hidden sm:inline">{t(lang, "l_login")}</span>
+            </Link>
+            <Link href="/new" className="btn-primary btn-sm hidden sm:inline-flex">{t(lang, "l_startFree")}</Link>
           </div>
         </nav>
       </header>
@@ -181,6 +184,12 @@ export default async function Home() {
                 <a href="#how" className="btn-secondary w-full px-6 text-lg sm:w-auto">{t(lang, "l_ctaHow")}</a>
               )}
             </div>
+            <p className="mt-4 text-sm text-slate-600">
+              {t(lang, "l_haveAccount")}{" "}
+              <Link href="/login" className="inline-flex items-center gap-1 font-semibold text-brand-700 underline underline-offset-4 hover:text-brand-800">
+                {t(lang, "l_loginCta")} <Arrow size={14} />
+              </Link>
+            </p>
             <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-slate-600">
               {(["l_trust1", "l_trust2", "l_trust3"] as DictKey[]).map((k, i) => (
                 <li key={k} className="flex items-center gap-1.5">
