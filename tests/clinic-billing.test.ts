@@ -29,7 +29,7 @@ import {
 } from "@/lib/server/billing";
 import { POST as webhook } from "@/app/api/billing/chargily/route";
 import { coveredByClinic, isSubscriptionActive, subscriptionUntil } from "@/lib/domain/subscription";
-import { clinicPriceDzd, clinicPriceNumber, clinicYearPriceNumber, priceNumber } from "@/lib/pricing";
+import { clinicPriceDzd, clinicPriceNumber, clinicYearPriceNumber, priceNumber, yearPriceNumber, yearSavePct } from "@/lib/pricing";
 import type { Shop } from "@/lib/domain/types";
 import type { Clinic } from "@/lib/server/clinicsRepo";
 
@@ -126,19 +126,21 @@ async function blocker(slug: string): Promise<string | null> {
 }
 
 describe("الأسعار والخطط", () => {
-  it("العيادة أغلى: 2000 / 20000 افتراضياً، والطبيب الواحد 1000 / 10000", () => {
+  it("العيادة أغلى: 9000 / 90000 افتراضياً، والطبيب الواحد 1000 / 10000", () => {
     expect(plans()).toEqual([
       { months: 1, amount: 1000 },
       { months: 12, amount: 10000 },
     ]);
     expect(plans("clinic")).toEqual([
-      { months: 1, amount: 2000 },
-      { months: 12, amount: 20000 },
+      { months: 1, amount: 9000 },
+      { months: 12, amount: 90000 },
     ]);
     expect(clinicPriceNumber()).toBeGreaterThan(priceNumber());
-    expect(defaultAmount("clinic", 3)).toBe(6000);
-    expect(defaultAmount("clinic", 12)).toBe(20000);
-    expect(clinicPriceDzd()).toBe("2 000 DA");
+    expect(defaultAmount("clinic", 3)).toBe(27000);
+    expect(defaultAmount("clinic", 12)).toBe(90000);
+    expect(clinicPriceDzd()).toBe("9 000 DA");
+    // نفس خصم السنوي في الخطّتين (≈ 17 %)
+    expect(yearSavePct(clinicPriceNumber(), clinicYearPriceNumber())).toBe(yearSavePct(priceNumber(), yearPriceNumber()));
   });
 
   it("من المتغيّرات NEXT_PUBLIC_CLINIC_PRICE_DZD / _YEAR_DZD", () => {
@@ -157,7 +159,7 @@ describe("الأسعار والخطط", () => {
     }
     process.env.NEXT_PUBLIC_CLINIC_PRICE_DZD = "abc";
     try {
-      expect(clinicPriceNumber()).toBe(2000);
+      expect(clinicPriceNumber()).toBe(9000);
     } finally {
       delete process.env.NEXT_PUBLIC_CLINIC_PRICE_DZD;
     }
@@ -309,7 +311,7 @@ describe("دفع العيادة (Chargily)", () => {
     const r = await createClinicCheckout(await freshClinic(), 12, "fr", "https://dawri.example");
     expect(r.url).toMatch(/^https:\/\/pay\.chargily\.dz\//);
     expect(requests[0].body).toMatchObject({
-      amount: 20000,
+      amount: 90000,
       currency: "dzd",
       locale: "fr",
       success_url: `https://dawri.example/c/${clinic.slug}/manage/billing?paid=1`,
@@ -319,7 +321,7 @@ describe("دفع العيادة (Chargily)", () => {
     });
     const ps = await crepo.listClinicPayments(db, clinic.id);
     expect(ps).toHaveLength(1);
-    expect(ps[0]).toMatchObject({ status: "pending", months: 12, amount: 20000, clinicId: clinic.id, shopId: null });
+    expect(ps[0]).toMatchObject({ status: "pending", months: 12, amount: 90000, clinicId: clinic.id, shopId: null });
     expect(await repo.listPayments(db, doctor.id)).toHaveLength(0);
     await expect(createClinicCheckout(clinic, 3, "fr", "https://dawri.example")).rejects.toMatchObject({ code: "invalid_plan" });
   });
@@ -332,7 +334,7 @@ describe("دفع العيادة (Chargily)", () => {
   it("checkout.paid: يمدّد العيادة بعد نهاية تجربتها، مرّة واحدة فقط (متكرّر-الآمن)", async () => {
     await createClinicCheckout(await freshClinic(), 1, "ar", "https://dawri.example");
     const id = `01clk${checkoutSeq}`;
-    const raw = paidEvent(id, 2000);
+    const raw = paidEvent(id, 9000);
     const res = await webhook(new Request("https://x", { method: "POST", body: raw, headers: { signature: sign(raw) } }));
     expect(res.status).toBe(200);
     const after = await freshClinic();
@@ -361,7 +363,7 @@ describe("دفع العيادة (Chargily)", () => {
     await expireClinic(clinic.id);
     expect(await blocker(doctor.slug)).toBe("subscription");
     await createClinicCheckout(await freshClinic(), 1, "ar", "https://dawri.example");
-    expect(await handleChargilyEvent(JSON.parse(paidEvent(`01clk${checkoutSeq}`, 2000)))).toEqual({ ok: true, extended: true });
+    expect(await handleChargilyEvent(JSON.parse(paidEvent(`01clk${checkoutSeq}`, 9000)))).toEqual({ ok: true, extended: true });
     const expected = new Date(clock);
     expected.setUTCMonth(expected.getUTCMonth() + 1);
     expect((await freshClinic()).paidUntil!.getTime()).toBe(expected.getTime());
