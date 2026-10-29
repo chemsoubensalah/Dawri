@@ -145,12 +145,12 @@ export function bucketOf(grid: string[], time: string, slotMin: number): string 
   return null;
 }
 
-export type DayState = "open" | "closed" | "full" | "over";
+export type DayState = "open" | "closed" | "off" | "full" | "over";
 
 export interface DayAvailability {
   day: string;
   weekday: number;
-  /** open = فيه أوقات متاحة، closed = لا عمل، full = اكتمل، over = انتهت أوقات اليوم */
+  /** open = فيه أوقات متاحة، closed = لا عمل، off = يوم عطلة، full = اكتمل، over = انتهت أوقات اليوم */
   state: DayState;
   /** المواعيد النشطة المحجوزة في هذا اليوم */
   booked: number;
@@ -180,6 +180,8 @@ export function availability(o: {
   mode: "online" | "desk";
   closedToday?: boolean;
   onlyDay?: string;
+  /** أيّام العطل: لا أوقات فيها (src/lib/domain/daysoff.ts) */
+  daysOff?: readonly { day: string }[];
 }): DayAvailability[] {
   const s = o.settings;
   const hours = bookingHours(s, o.shopHours);
@@ -196,7 +198,8 @@ export function availability(o: {
   for (let i = 0; i <= s.daysAhead; i++) {
     const day = addDays(lt.day, i);
     if (o.onlyDay && day !== o.onlyDay) continue;
-    const grid = daySlots(hours, day, s.slotMin);
+    const off = Boolean(o.daysOff?.some((x) => x.day === day));
+    const grid = off ? [] : daySlots(hours, day, s.slotMin);
     const counts = byDay.get(day) ?? [];
     const perBucket = new Map<string, number>();
     let booked = 0;
@@ -215,7 +218,9 @@ export function availability(o: {
     const slots = grid
       .filter(bookable)
       .map((t) => ({ time: t, left: dayFull ? 0 : Math.max(0, s.perSlot - (perBucket.get(t) ?? 0)) }));
-    const state: DayState = !grid.length
+    const state: DayState = off
+      ? "off"
+      : !grid.length
       ? "closed"
       : dayFull
         ? "full"

@@ -6,6 +6,7 @@
  */
 import { dayKey, isWithinHours, minutesBetween, nextOpeningToday } from "../domain/time";
 import { DomainError, type Lang, type Shop, type ShopKind } from "../domain/types";
+import { isDayOff } from "../domain/daysoff";
 import { isLang } from "../i18n";
 import { hashPin, isValidPin, safeEqual, signClinicSession, verifyPin } from "./auth";
 import { now as clockNow } from "./clock";
@@ -250,7 +251,7 @@ function liveDoctors(rows: Awaited<ReturnType<typeof crepo.clinicLive>>, now: Da
     let status: DoctorStatus = "open";
     let resumesAt: string | null = null;
     if (!active) status = "inactive";
-    else if (live.closed) status = "closed";
+    else if (live.closed || isDayOff(shop.daysOff, dayKey(now))) status = "closed";
     else if (!isWithinHours(shop.hours, now)) {
       const next = nextOpeningToday(shop.hours, now);
       resumesAt = next?.at ?? null;

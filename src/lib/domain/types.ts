@@ -196,6 +196,15 @@ export interface Shop {
   clinicUntil?: Date | null;
   clinicName?: string | null;
   clinicSlug?: string | null;
+  /** أيّام العطل: لا أرقام ولا مواعيد (020_days_off) — src/lib/domain/daysoff.ts */
+  daysOff: DayOff[];
+}
+
+export interface DayOff {
+  /** "YYYY-MM-DD" بتوقيت الجزائر */
+  day: string;
+  /** اسم يختاره الطبيب (عيد الفطر، إجازة…) */
+  label: string | null;
 }
 
 export interface ShopProfile {

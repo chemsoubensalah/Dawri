@@ -169,7 +169,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
               <b className="num text-xl" dir="ltr">{view.resumesAt}</b>
             </p>
           ) : (
-            <p className="mt-1 text-sm text-slate-600">{t(lang, view.blocker === "queue_closed" ? "sp_closedHint" : "sp_comeBack")}</p>
+            <p className="mt-1 text-sm text-slate-600">{t(lang, view.blocker === "queue_closed" ? "sp_closedHint" : view.blocker === "day_off" ? "sp_dayOffHint" : "sp_comeBack")}</p>
           )}
           {/* من أخذ رقماً اليوم ثمّ أُغلق الطابور يستطيع استرجاع تذكرته */}
           <button type="button" className="mt-3 text-sm font-semibold text-brand-700 hover:underline" onClick={() => setRecover(true)}>

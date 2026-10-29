@@ -47,7 +47,7 @@ export function DayPills({
         const on = d.day === value;
         const disabled = d.state !== "open";
         const date = new Date(`${d.day}T12:00:00Z`);
-        const reason = d.state === "closed" ? t(lang, "ap_dayClosed") : d.state === "full" ? t(lang, "ap_dayFull") : d.state === "over" ? t(lang, "ap_dayOver") : null;
+        const reason = d.state === "closed" ? t(lang, "ap_dayClosed") : d.state === "off" ? t(lang, "ap_dayOff") : d.state === "full" ? t(lang, "ap_dayFull") : d.state === "over" ? t(lang, "ap_dayOver") : null;
         return (
           <button
             type="button"

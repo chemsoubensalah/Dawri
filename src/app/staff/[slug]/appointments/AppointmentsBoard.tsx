@@ -149,7 +149,7 @@ export default function AppointmentsBoard({ lang, slug, initial }: { lang: Lang;
             return (
               <div key={d.day} className="flex items-center gap-3 rounded-2xl bg-white/70 px-4 py-2.5 text-sm ring-1 ring-slate-200/70">
                 <span className="font-semibold text-slate-600">{title}</span>
-                <span className="ms-auto text-xs text-slate-400">{d.state === "closed" ? t(lang, "ap_dayClosed") : t(lang, "ap_dayEmpty")}</span>
+                <span className="ms-auto text-xs text-slate-400">{d.state === "closed" ? t(lang, "ap_dayClosed") : d.state === "off" ? t(lang, "ap_dayOff") : t(lang, "ap_dayEmpty")}</span>
               </div>
             );
           }

@@ -1,5 +1,6 @@
 import * as appointments from "./i18n-parts/appointments";
 import * as clinics from "./i18n-parts/clinics";
+import * as daysoff from "./i18n-parts/daysoff";
 import * as growth from "./i18n-parts/growth";
 import * as plans from "./i18n-parts/plans";
 import * as reviews from "./i18n-parts/reviews";
@@ -661,6 +662,7 @@ const ar = {
   ...plans.ar,
   ...tv.ar,
   ...why.ar,
+  ...daysoff.ar,
 };
 
 export type Dict = typeof ar;
@@ -1308,6 +1310,7 @@ const fr: Dict = {
   ...plans.fr,
   ...tv.fr,
   ...why.fr,
+  ...daysoff.fr,
 };
 
 export const dicts: Record<Lang, Dict> = { ar, fr };

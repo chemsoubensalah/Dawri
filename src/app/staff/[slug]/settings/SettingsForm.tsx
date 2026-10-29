@@ -13,6 +13,7 @@ import { WILAYAS } from "@/lib/domain/wilayas";
 import ReviewsSection from "./ReviewsSection";
 import TvMessagesSection from "./TvMessagesSection";
 import BookingSection from "./BookingSection";
+import DaysOffSection from "./DaysOffSection";
 import AssistantPin from "./AssistantPin";
 import ReportSection from "./ReportSection";
 
@@ -147,6 +148,7 @@ export default function SettingsForm({
               ["reviews", "rv_se"],
               ["tv", "tv_se"],
               ["hours", "hours"],
+              ["daysoff", "do_nav"],
               ["booking", "ap_se_title"],
               ["rules", "se_rules"],
               ["report", "gr_reportNav"],
@@ -370,6 +372,7 @@ export default function SettingsForm({
             })}
           </div>
         </Section>
+        <DaysOffSection lang={lang} slug={slug} />
         <BookingSection lang={lang} slug={slug} />
 
         <Section id="rules" icon={<ListChecks size={20} />} title={t(lang, "se_rules")} sub={t(lang, "se_rulesSub")}>

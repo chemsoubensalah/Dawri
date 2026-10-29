@@ -2,6 +2,7 @@
 import {
   DEFAULT_SETTINGS,
   OPEN_STATUSES,
+  type DayOff,
   readLook,
   type Lang,
   type Shop,
@@ -52,6 +53,7 @@ export function rowToShop(r: Row): Shop {
     clinicUntil: r.clinic_id == null ? null : d(r.clinic_until),
     clinicName: r.clinic_id == null ? null : ((r.clinic_name as string | null) ?? null),
     clinicSlug: r.clinic_id == null ? null : ((r.clinic_slug as string | null) ?? null),
+    daysOff: r.days_off == null ? [] : json<DayOff[]>(r.days_off),
   };
 }
 
@@ -156,7 +158,7 @@ export async function insertShop(
 export async function updateShop(
   q: Q,
   id: string,
-  patch: Partial<Pick<Shop, "name" | "hours" | "settings" | "defaultLang" | "pinHash" | "doorCode" | "profile" | "look" | "ownerEmail">> & {
+  patch: Partial<Pick<Shop, "name" | "hours" | "settings" | "defaultLang" | "pinHash" | "doorCode" | "profile" | "look" | "ownerEmail" | "daysOff">> & {
     bumpSession?: boolean;
   },
 ) {
@@ -182,6 +184,7 @@ export async function updateShop(
   }
   if (patch.look !== undefined) set("look", JSON.stringify(patch.look));
   if (patch.ownerEmail !== undefined) set("owner_email", patch.ownerEmail);
+  if (patch.daysOff !== undefined) set("days_off", JSON.stringify(patch.daysOff));
   if (patch.bumpSession) sets.push("session_version = session_version + 1");
   if (!sets.length) return;
   params.push(id);

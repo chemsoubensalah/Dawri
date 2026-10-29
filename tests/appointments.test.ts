@@ -15,7 +15,9 @@ import * as gate from "@/lib/server/smsgate";
 import { sentSms } from "@/lib/server/sms";
 import { claimRate, clientIp, ipBucket, IP_LIMITS, rateCount } from "@/lib/server/ratelimit";
 import { estimateWaitMinutes, initialFlags, lineup, nextEligible, peopleAhead, planNext } from "@/lib/domain/queue";
-import { availability, checkinWindow, daySlots, DEFAULT_BOOKING, slotInstant } from "@/lib/domain/appointments";
+import { addDays, availability, checkinWindow, daySlots, DEFAULT_BOOKING, slotInstant } from "@/lib/domain/appointments";
+import { cleanDaysOff, dayRange, upcomingFixedHolidays } from "@/lib/domain/daysoff";
+import { daysOffView, saveDaysOff } from "@/lib/server/daysoff";
 import { buildIcs, foldLine } from "@/lib/ics";
 import { DEFAULT_SETTINGS, DomainError, type Shop, type Ticket } from "@/lib/domain/types";
 
@@ -55,7 +57,7 @@ afterAll(async () => {
 let shop: Shop;
 let n = 0;
 let phoneSeq = 10;
-const newPhone = () => `06600000${String(phoneSeq++).padStart(2, "0")}`;
+const newPhone = () => `0660${String(phoneSeq++).padStart(6, "0")}`;
 
 beforeEach(async () => {
   clock = new Date("2026-10-11T07:00:00Z");
@@ -778,5 +780,60 @@ describe("الخصوصية والتقويم", () => {
     expect(folded.split("\r\n ").join("")).toBe(long);
     const ics = buildIcs({ uid: "x", now: T0, start: T0, end: T0, summary: "a", alarm: "b" });
     expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
+  });
+});
+
+describe("أيّام العطل", () => {
+  it("قواعد صافية: تنظيف القائمة، الأعياد الوطنية القادمة، الفترات", () => {
+    const today = "2026-10-29";
+    expect(
+      cleanDaysOff(
+        [{ day: "2026-11-01", label: " عيد  الثورة " }, { day: "2026-10-01", label: null }, { day: "2026-11-01", label: "x" }, { day: "2026-10-30" }],
+        today,
+      ),
+    ).toEqual([
+      { day: "2026-10-30", label: null },
+      { day: "2026-11-01", label: "عيد الثورة" },
+    ]);
+    for (const bad of ["x", [{ day: "2026-02-30" }], [{ day: "2029-01-01" }], [{ day: "2026-11-02", label: 5 }], [{ day: "2026-11-02", label: "x".repeat(61) }]]) {
+      expect(() => cleanDaysOff(bad, today), JSON.stringify(bad)).toThrow("invalid_settings");
+    }
+    expect(upcomingFixedHolidays(today).map((h) => h.day)).toEqual(["2026-11-01", "2027-01-01", "2027-01-12", "2027-05-01", "2027-07-05"]);
+    expect(upcomingFixedHolidays("2026-11-01")[0]).toEqual({ day: "2026-11-01", key: "do_h_revolution" });
+    expect(dayRange("2026-12-30", "2027-01-02")).toEqual(["2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02"]);
+    const days = availability({ settings: DEFAULT_BOOKING, shopHours: (shop as Shop).hours, now: clock, counts: [], mode: "desk", daysOff: [{ day: "2026-10-12" }] });
+    expect(days.find((d) => d.day === "2026-10-12")).toMatchObject({ state: "off", slots: [] });
+  });
+
+  it("يوم عطلة: لا أرقام ولا حجز، والعيادة «مغلقة»؛ المواعيد المحجوزة قبلها يُنبَّه إليها", async () => {
+    await enable();
+    process.env.PHONE_VERIFICATION = "off";
+    await ap.bookOnline(shop.slug, { name: "سميرة", phone: newPhone(), day: "2026-10-12", time: "09:00" });
+    const v = await saveDaysOff(await fresh(), [
+      { day: "2026-10-12", label: null },
+      { day: "2026-10-11", label: "عطلة" },
+    ]);
+    expect(v.items).toEqual([
+      { day: "2026-10-11", label: "عطلة", booked: 0 },
+      { day: "2026-10-12", label: null, booked: 1 },
+    ]);
+    // الطابور: لا أرقام اليوم
+    await expect(svc.requestCode(shop.slug, { name: "x x", phone: newPhone() })).rejects.toThrow("day_off");
+    await expect(svc.takeTicket(shop.slug, { name: "x x", phone: newPhone() })).rejects.toThrow("day_off");
+    const pub = (await svc.publicShop(shop.slug)).view;
+    expect(pub).toMatchObject({ blocker: "day_off", hoursToday: [] });
+    expect((await svc.staffState(await fresh())).blocker).toBe("day_off");
+    // الحجز: الغد عطلة، وبعده مفتوح
+    const days = (await ap.publicAvailability(shop.slug)).days;
+    expect(days.find((d) => d.day === "2026-10-12")).toMatchObject({ state: "off", slots: [] });
+    expect(days.find((d) => d.day === "2026-10-13")?.state).toBe("open");
+    await expect(ap.bookOnline(shop.slug, { name: "سميرة", phone: newPhone(), day: "2026-10-12", time: "10:00" })).rejects.toThrow("ap_slot_unavailable");
+    expect((await ap.deskAvailability(await fresh())).days.find((d) => d.day === "2026-10-12")?.state).toBe("off");
+    // اليوم التالي: العطلة الماضية لا تظهر وتُحذف عند الحفظ
+    advance(24 * 60);
+    expect((await daysOffView(await fresh())).items.map((d) => d.day)).toEqual(["2026-10-12"]);
+    expect((await saveDaysOff(await fresh(), [{ day: "2026-10-11" }])).items).toEqual([]);
+    await expect(svc.requestCode(shop.slug, { name: "x x", phone: newPhone() })).resolves.toBeTruthy();
+    await expect(saveDaysOff(await fresh(), Array.from({ length: 121 }, (_, i) => ({ day: addDays("2026-10-12", i) })))).rejects.toThrow("days_off_too_many");
   });
 });

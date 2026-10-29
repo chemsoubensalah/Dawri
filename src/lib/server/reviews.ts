@@ -9,6 +9,7 @@ import { averageServiceMinutes, currentTicket, lineup, planTick, project } from 
 import { DomainError, type Shop, type ShopKind, type ShopProfile, type ShopSettings, type Ticket } from "../domain/types";
 import { dayKey, isWithinHours, localTime, minutesBetween, nextOpeningToday } from "../domain/time";
 import { isWilaya } from "../domain/wilayas";
+import { isDayOff } from "../domain/daysoff";
 import { isSubscriptionActive } from "../domain/subscription";
 import { now as clockNow } from "./clock";
 import { getDb, type Q, type Row } from "./db";
@@ -298,7 +299,7 @@ export async function directory(input: { q?: unknown; wilaya?: unknown; page?: u
     const rating = ratingPublic ? ratings.get(shop.id) ?? null : null;
     let status: LiveStatus;
     let opensAt: string | null = null;
-    if (l?.closed) status = "closed";
+    if (l?.closed || isDayOff(shop.daysOff, day)) status = "closed";
     else if (isWithinHours(shop.hours, now)) status = "open";
     else {
       const next = nextOpeningToday(shop.hours, now);

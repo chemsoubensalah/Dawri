@@ -147,7 +147,7 @@ async function checkCode(q: Q, shop: Shop, phone: string, code: unknown, now: Da
 
 async function slotCheck(q: Q, shop: Shop, s: BookingSettings, day: string, time: string, now: Date, mode: "online" | "desk", closedToday: boolean) {
   const counts = await ar.activeCounts(q, shop.id, day, day);
-  const days = availability({ settings: s, shopHours: shop.hours, now, counts, mode, closedToday, onlyDay: day });
+  const days = availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode, closedToday, onlyDay: day });
   const v = slotVerdict(days, day, time);
   if (v === "invalid") throw new DomainError("ap_invalid_slot");
   if (v === "unavailable") throw new DomainError("ap_slot_unavailable", 409);
@@ -223,7 +223,7 @@ export async function bookingTeaser(shop: Shop): Promise<BookingTeaser | null> {
   if (!s.enabled || !isSubscriptionActive(shop, now) || (await verifyMode(shop.id)) === "unavailable") return null;
   const today = dayKey(now);
   const [counts, qd] = await Promise.all([ar.activeCounts(db, shop.id, today, addDays(today, s.daysAhead)), repo.getDay(db, shop.id, today)]);
-  const days = availability({ settings: s, shopHours: shop.hours, now, counts, mode: "online", closedToday: qd.closed });
+  const days = availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "online", closedToday: qd.closed });
   return { today, next: firstFree(days) };
 }
 
@@ -245,7 +245,7 @@ export async function publicAvailability(slug: string) {
     perSlot: settings.perSlot,
     minLeadMin: settings.minLeadMin,
     verify,
-    days: availability({ settings, shopHours: shop.hours, now, counts, mode: "online", closedToday: qd.closed }),
+    days: availability({ settings, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "online", closedToday: qd.closed }),
   };
 }
 
@@ -653,7 +653,7 @@ export async function staffAppointments(shop: Shop, scope: "today" | "upcoming")
   ]);
   const walkIns = new Map<string, number>();
   for (const tk of dayTickets) if (tk.phone && OPEN_STATUSES.includes(tk.status)) walkIns.set(tk.phone, tk.number);
-  const days = availability({ settings: s, shopHours: shop.hours, now, counts, mode: "desk" });
+  const days = availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "desk" });
   const none = new Map<string, number>();
   const items = rows.map((r) => staffRow(r, r.day === today ? walkIns : none));
   const todayItems = items.filter((x) => x.day === today);
@@ -702,7 +702,7 @@ export async function deskAvailability(shop: Shop) {
   const today = dayKey(now);
   const s = await ar.getSettings(db, shop.id);
   const counts = await ar.activeCounts(db, shop.id, today, addDays(today, s.daysAhead));
-  return { today, slotMin: s.slotMin, perSlot: s.perSlot, days: availability({ settings: s, shopHours: shop.hours, now, counts, mode: "desk" }) };
+  return { today, slotMin: s.slotMin, perSlot: s.perSlot, days: availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "desk" }) };
 }
 
 export type DeskAvailability = Awaited<ReturnType<typeof deskAvailability>>;

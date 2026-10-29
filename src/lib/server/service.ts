@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { dayKey, isValidHours, isWithinHours, localTime, minutesBetween, nextOpeningToday, DEFAULT_HOURS } from "../domain/time";
 import { formatPhone, normalizePhone } from "../domain/phone";
 import { isWilaya } from "../domain/wilayas";
+import { isDayOff } from "../domain/daysoff";
 import { publicRating } from "./reviews";
 import { getTvMessages } from "./tvmessages";
 import { TRIAL_DAYS } from "../pricing";
@@ -112,6 +113,7 @@ function langOf(v: unknown, fallback: Lang): Lang {
 /** لماذا لا يستطيع المريض أخذ رقم الآن؟ (issued = عدد الأرقام الموزّعة اليوم) */
 function ticketBlocker(shop: Shop, closed: boolean, now: Date, issued: number): string | null {
   if (!isSubscriptionActive(shop, now)) return "subscription";
+  if (isDayOff(shop.daysOff, dayKey(now))) return "day_off";
   if (closed) return "queue_closed";
   if (!isWithinHours(shop.hours, now)) {
     const next = nextOpeningToday(shop.hours, now);
@@ -313,7 +315,7 @@ export async function publicShop(slug: string) {
       blocker: ticketBlocker(shop, closed, now, tickets.length),
       /** وقت استئناف أخذ الأرقام اليوم (استراحة أو قبل الافتتاح) */
       resumesAt: nextOpeningToday(shop.hours, now)?.at ?? null,
-      hoursToday: shop.hours[String(lt.weekday)] ?? [],
+      hoursToday: isDayOff(shop.daysOff, lt.day) ? [] : (shop.hours[String(lt.weekday)] ?? []),
       currentNumber: cur?.number ?? null,
       waiting,
       avgServiceMin: Math.round(avg),
@@ -813,7 +815,7 @@ export async function staffState(shop: Shop) {
     closedAt: qd.closedAt?.toISOString() ?? null,
     closedBy: qd.closedBy,
     blocker: ticketBlocker(shop, closed, now, tickets.length),
-    hoursToday: shop.hours[String(lt.weekday)] ?? [],
+    hoursToday: isDayOff(shop.daysOff, lt.day) ? [] : (shop.hours[String(lt.weekday)] ?? []),
     current: cur
       ? { ...row(cur), minutes: cur.calledAt ? Math.floor(minutesBetween(cur.calledAt, now)) : 0 }
       : null,

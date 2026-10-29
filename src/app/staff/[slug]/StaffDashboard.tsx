@@ -184,6 +184,14 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
           </span>
         </Chip>
         {s.blocker === "outside_hours" && !s.closed && <Chip tone="amber">{t(lang, "outsideHours")}</Chip>}
+        {s.blocker === "day_off" &&
+          (canManage ? (
+            <a href={`/staff/${slug}/settings#daysoff`}>
+              <Chip tone="amber">{t(lang, "db_dayOffChip")}</Chip>
+            </a>
+          ) : (
+            <Chip tone="amber">{t(lang, "db_dayOffChip")}</Chip>
+          ))}
         {s.shop.clinic?.covers ? (
           // مشمول باشتراك العيادة متعدّدة الأطبّاء: لا عدّاد تجربة خاصّ
           billingLink(<Chip tone="green">{t(lang, "cb_dbCovered")}</Chip>)
