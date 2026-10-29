@@ -1,6 +1,7 @@
 import * as appointments from "./i18n-parts/appointments";
 import * as clinics from "./i18n-parts/clinics";
 import * as daysoff from "./i18n-parts/daysoff";
+import * as reasons from "./i18n-parts/reasons";
 import * as growth from "./i18n-parts/growth";
 import * as plans from "./i18n-parts/plans";
 import * as reviews from "./i18n-parts/reviews";
@@ -60,7 +61,7 @@ const arCore = {
   openMyTicket: "افتح تذكرتي",
   iArrived: "وصلت ✔",
   arrivedOk: "سجّلنا وصولك. شكراً!",
-  privacy: "نطلب اسمك ورقم هاتفك فقط. لا نطلب أيّ معلومات طبّية.",
+  privacy: "نطلب اسمك ورقم هاتفك وسبب الزيارة من قائمة قصيرة فقط — لا تفاصيل عن حالتك الصحّية.",
   noSmartphone: "بلا هاتف ذكي؟ اطلب من السكرتيرة أن تضيفك.",
 
   // صفحة التذكرة
@@ -293,7 +294,7 @@ const arCore = {
   l_pat2: "يعرف بدقّة كم شخصاً أمامه ومتى يأتي دوره",
   l_pat3: "ينتظر في البيت أو المقهى أو العمل، لا في القاعة",
   l_pat4: "تنبيه بالصوت وواتساب حين يقترب دوره",
-  l_pat5: "اسم ورقم هاتف فقط — لا معلومات طبّية أبداً",
+  l_pat5: "الاسم والهاتف وسبب الزيارة فقط — لا تفاصيل طبّية",
   l_nsTitle: "الغائبون؟ محسوبون",
   l_nsSub: "خمس قواعد تلقائية تجعل الطابور يتحرّك دائماً.",
   l_ns1: "«هل ما زلت قادماً؟»",
@@ -329,7 +330,7 @@ const arCore = {
   l_q4: "هل يعمل مع شبكة ضعيفة؟",
   l_a4: "نعم. الصفحات خفيفة جدّاً وتعمل على 3G، وتعيد المحاولة وحدها إن انقطعت الشبكة.",
   l_q5: "هل بيانات المرضى آمنة؟",
-  l_a5: "لا نطلب إلّا الاسم ورقم الهاتف — لا معلومات طبّية أبداً. سجلّ الغياب يُمحى تلقائياً بعد شهرين.",
+  l_a5: "لا نطلب إلّا الاسم ورقم الهاتف وسبب الزيارة من قائمة قصيرة — لا تفاصيل طبّية أبداً. سجلّ الغياب يُمحى تلقائياً بعد شهرين.",
   l_q6: "كيف أدفع الاشتراك؟",
   l_a6: "بعد الشهر المجّاني، تدفع شهرياً بالبطاقة الذهبية أو CIB أو بتحويل بريدي. بلا عقد ولا التزام.",
   l_finalTitle: "جاهز لقاعة انتظار هادئة؟",
@@ -663,6 +664,7 @@ const ar = {
   ...tv.ar,
   ...why.ar,
   ...daysoff.ar,
+  ...reasons.ar,
 };
 
 export type Dict = typeof ar;
@@ -716,7 +718,7 @@ const frCore: typeof arCore = {
   openMyTicket: "Ouvrir mon ticket",
   iArrived: "Je suis arrivé ✔",
   arrivedOk: "Arrivée enregistrée. Merci !",
-  privacy: "Nous demandons seulement votre nom et votre téléphone. Aucune information médicale.",
+  privacy: "Nous demandons seulement votre nom, votre téléphone et le motif de visite (liste courte) — aucun détail sur votre santé.",
   noSmartphone: "Pas de smartphone ? Demandez à la secrétaire de vous ajouter.",
 
   yourNumber: "Votre numéro",
@@ -942,7 +944,7 @@ const frCore: typeof arCore = {
   l_pat2: "Il sait exactement combien de personnes sont devant lui",
   l_pat3: "Il attend chez lui, au café ou au travail — pas en salle",
   l_pat4: "Alerte sonore et WhatsApp quand son tour approche",
-  l_pat5: "Nom et téléphone uniquement — aucune donnée médicale",
+  l_pat5: "Nom, téléphone et motif de visite — aucun détail médical",
   l_nsTitle: "Les absents ? C'est prévu",
   l_nsSub: "Cinq règles automatiques pour que la file avance toujours.",
   l_ns1: "« Venez-vous toujours ? »",
@@ -978,7 +980,7 @@ const frCore: typeof arCore = {
   l_q4: "Ça marche avec une connexion faible ?",
   l_a4: "Oui. Les pages sont très légères, fonctionnent en 3G et se reconnectent toutes seules.",
   l_q5: "Les données des patients sont-elles protégées ?",
-  l_a5: "Nous ne demandons que le nom et le téléphone — jamais de données médicales. L'historique d'absences est effacé après 2 mois.",
+  l_a5: "Nous ne demandons que le nom, le téléphone et le motif de visite (liste courte) — jamais de détails médicaux. L'historique d'absences est effacé après 2 mois.",
   l_q6: "Comment payer l'abonnement ?",
   l_a6: "Après le mois offert, paiement mensuel par carte Edahabia, CIB ou virement CCP. Sans engagement.",
   l_finalTitle: "Prêt pour une salle d'attente sereine ?",
@@ -1311,6 +1313,7 @@ const fr: Dict = {
   ...tv.fr,
   ...why.fr,
   ...daysoff.fr,
+  ...reasons.fr,
 };
 
 export const dicts: Record<Lang, Dict> = { ar, fr };
@@ -1358,4 +1361,11 @@ export function drTitle(lang: Lang, kind: string, name: string | null | undefine
   if (kind !== "doctor" && kind !== "dentist") return n;
   if (/^(د\s*\.|دكتور|الدكتور|الدكتورة|الطبيب|الطبيبة|dr\b|dr\.|docteur|pr\b|pr\.|professeur)/i.test(n)) return n;
   return lang === "ar" ? `د. ${n}` : `Dr ${n}`;
+}
+
+/** اسم سبب الزيارة (رمز مجهول ← «سبب آخر»). */
+export function reasonText(lang: Lang, r: string | null | undefined): string | null {
+  if (!r) return null;
+  const k = `vr_${r}` as DictKey;
+  return k in dicts[lang] ? t(lang, k) : t(lang, "vr_other");
 }

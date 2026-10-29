@@ -8,7 +8,7 @@ import SoundGate from "@/components/SoundGate";
 import ReviewCard from "./ReviewCard";
 import { Chip } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
-import { aheadText, errorText, t } from "@/lib/i18n";
+import { aheadText, errorText, reasonText, t } from "@/lib/i18n";
 import { api, ApiError, playSound, saveTicket, usePoll } from "@/lib/client";
 import type { TicketView } from "@/lib/server/service";
 
@@ -183,6 +183,11 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
               {v.number}
             </div>
             <div className="mt-2 text-lg font-semibold opacity-95">{v.name}</div>
+            {v.reason && (
+              <div className="mt-1 text-sm font-medium opacity-85" data-testid="ticket-reason">
+                {t(lang, "vr_label")}: {reasonText(lang, v.reason)}
+              </div>
+            )}
             {v.priority && <div className="mt-2 inline-flex rounded-full bg-white/20 px-3 py-0.5 text-sm font-bold" data-testid="ticket-priority">★ {t(lang, "ap_badge")}</div>}
           </div>
         </div>

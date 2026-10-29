@@ -108,7 +108,7 @@ describe("فهم رسائل المريض", () => {
 
 describe("التحقّق عبر واتساب (بديل SMS)", () => {
   it("رسالة المريض تُنشئ تذكرته وتربط تنبيهاته، ويصله ردّ برقمه", async () => {
-    const start = await svc.startWaVerification(shop.slug, { name: "أمين", phone: "0661111111" });
+    const start = await svc.startWaVerification(shop.slug, { name: "أمين", phone: "0661111111", reason: "followup" });
     expect(start.link).toMatch(/^https:\/\/wa\.me\/213550000000\?text=/);
     expect(decodeURIComponent(start.link)).toContain(start.code);
     expect((await svc.waVerificationStatus(shop.slug, start.id)).status).toBe("pending");
@@ -118,6 +118,7 @@ describe("التحقّق عبر واتساب (بديل SMS)", () => {
     expect(st.status).toBe("done");
     const ticket = (await repo.getTicket(db, st.ticketId!))!;
     expect(ticket.phone).toBe("+213661111111");
+    expect(ticket.reason).toBe("followup"); // السبب المختار في الصفحة يصل إلى التذكرة
     expect(ticket.waPhone).toBe("+213661111111");
     expect(ticket.waWindowUntil!.getTime()).toBeGreaterThan(clock.getTime());
     expect(texts().some((t) => t.includes("213661111111") && t.includes("*1*"))).toBe(true);

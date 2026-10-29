@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BellRing, CheckCircle2, Hourglass, KeyRound, Loader2, MessageCircle, Phone, QrCode, ShieldCheck, Ticket, User, Users } from "lucide-react";
 import ClinicCard from "@/components/ClinicCard";
+import ReasonPicker from "@/components/ReasonPicker";
+import { reasonsFor } from "@/lib/domain/reasons";
 import { Stat } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
@@ -28,6 +30,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
   const [mine, setMine] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [reason, setReason] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"form" | "code" | "wa">("form");
   const [wa, setWa] = useState<{ id: string; link: string; code: string; expired?: boolean } | null>(null);
@@ -86,11 +89,19 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
     router.push(`/t/${ticketId}`);
   };
 
+  // زرّ «عبر الرسالة» خارج إرسال النموذج: لا يمرّ بتحقّق المتصفّح
+  const missingReason = () => {
+    if (!reasonsFor(view.kind).length || reason) return false;
+    setError(errorText(lang, "invalid_reason"));
+    return true;
+  };
+
   const sendCode = () =>
+    !missingReason() &&
     run(async () => {
       const r = await api<{ verify: boolean; devCode?: string }>(`/api/s/${view.slug}/code`, { name, phone, lang });
       if (!r.verify) {
-        const tk = await api<{ ticketId: string }>(`/api/s/${view.slug}/tickets`, { name, phone, door, lang });
+        const tk = await api<{ ticketId: string }>(`/api/s/${view.slug}/tickets`, { name, phone, reason, door, lang });
         return finish(tk.ticketId);
       }
       setDevCode(r.devCode ?? null);
@@ -99,14 +110,14 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
 
   const startWa = () =>
     run(async () => {
-      const r = await api<{ id: string; link: string; code: string }>(`/api/s/${view.slug}/wa-verify`, { name, phone, lang, door });
+      const r = await api<{ id: string; link: string; code: string }>(`/api/s/${view.slug}/wa-verify`, { name, phone, reason, lang, door });
       setWa(r);
       setStep("wa");
     });
 
   const confirm = () =>
     run(async () => {
-      const tk = await api<{ ticketId: string }>(`/api/s/${view.slug}/tickets`, { name, phone, code, door, lang });
+      const tk = await api<{ ticketId: string }>(`/api/s/${view.slug}/tickets`, { name, phone, reason, code, door, lang });
       finish(tk.ticketId);
     });
 
@@ -228,6 +239,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
                   />
                 </div>
               </div>
+              <ReasonPicker lang={lang} kind={view.kind} value={reason} onChange={setReason} required />
               {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
               {view.waVerify && view.verifyPhone ? (
                 <>

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Ban, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, Mail, Phone, Plus, ShieldAlert, Smartphone, Timer, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
 import Dialog, { ConfirmDialog } from "@/components/Dialog";
+import ReasonPicker from "@/components/ReasonPicker";
 import SoundGate from "@/components/SoundGate";
 import { Avatar, Chip, Empty, LiveDot, Stat } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
@@ -9,6 +10,7 @@ import { errorText, t, tn } from "@/lib/i18n";
 import { api, ApiError, playSound, usePoll } from "@/lib/client";
 import type { StaffState } from "@/lib/server/service";
 import TodayAppointments, { ApptBadge } from "./appointments/TodayAppointments";
+import { ReasonChip } from "./appointments/parts";
 
 type Row = StaffState["waiting"][number];
 type Confirm = { kind: "noshow"; id: string; number: number } | { kind: "cancel"; id: string; number: number } | null;
@@ -24,6 +26,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   const [addName, setAddName] = useState("");
   const [addPhone, setAddPhone] = useState("");
   const [addPresent, setAddPresent] = useState(true);
+  const [addReason, setAddReason] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [newcomer, setNewcomer] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -144,6 +147,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
 
   const badges = (r: Row | NonNullable<StaffState["current"]>) => (
     <span className="flex flex-wrap gap-1">
+      <ReasonChip lang={lang} reason={r.reason} />
       {r.priority && <ApptBadge lang={lang} />}
       {r.arrived && (
         <Chip tone="green">
@@ -544,12 +548,13 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
           onSubmit={async (e) => {
             e.preventDefault();
             const ok = await act(
-              { action: "add", name: addName, phone: addPhone || undefined, present: addPresent },
+              { action: "add", name: addName, phone: addPhone || undefined, present: addPresent, reason: addReason },
               (r) => t(lang, "added", { n: r.number ?? "" }),
             );
             if (ok) {
               setAddName("");
               setAddPhone("");
+              setAddReason(null);
               setAddOpen(false);
             }
           }}
@@ -564,6 +569,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
             <input id="add-phone" className="input num text-start" dir="ltr" type="tel" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} placeholder="0550 12 34 56" />
             <p className="mt-1.5 text-xs text-slate-500">{t(lang, "db_addPhoneHint")}</p>
           </div>
+          <ReasonPicker lang={lang} kind={s.shop.kind} value={addReason} onChange={setAddReason} idPrefix="add-reason" />
           <label className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 text-slate-700">
             <input type="checkbox" className="size-5 accent-brand-600" checked={addPresent} onChange={(e) => setAddPresent(e.target.checked)} />
             {t(lang, "presentNow")}

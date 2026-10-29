@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, CalendarCheck2, CalendarDays, CalendarX2, Clock3, KeyRound, Phone, ShieldCheck, User } from "lucide-react";
 import ClinicCard from "@/components/ClinicCard";
+import ReasonPicker from "@/components/ReasonPicker";
 import { DayPills, TimeGrid } from "@/components/SlotPicker";
 import { fmtDay } from "@/lib/domain/appointments";
 import type { Lang, ShopKind, ShopProfile } from "@/lib/domain/types";
@@ -33,6 +34,7 @@ export default function BookClient({
   const [time, setTime] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [reason, setReason] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [devCode, setDevCode] = useState<string | null>(null);
@@ -106,7 +108,7 @@ export default function BookClient({
   }
 
   const doBook = async () => {
-    const r = await api<{ appointmentId: string; existing: boolean }>(`/api/s/${slug}/booking`, { name, phone, code, day, time, lang });
+    const r = await api<{ appointmentId: string; existing: boolean }>(`/api/s/${slug}/booking`, { name, phone, reason, code, day, time, lang });
     saveAppt(slug, { id: r.appointmentId, day: day!, time: time! });
     saveProfile(name, phone);
     try {
@@ -263,6 +265,7 @@ export default function BookClient({
                     />
                   </div>
                 </div>
+                <ReasonPicker lang={lang} kind={shop.kind} value={reason} onChange={setReason} required idPrefix="bk-reason" />
               </>
             ) : (
               <>

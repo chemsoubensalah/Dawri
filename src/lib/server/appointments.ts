@@ -55,6 +55,7 @@ import { getSms } from "./sms";
 import { clinicSendsCodes, codeSender } from "./smsgate";
 import { shortCode } from "./whatsapp";
 import { phoneCheckRequired } from "./verify";
+import { cleanReason } from "../domain/reasons";
 
 const DAY_MS = 86_400_000;
 /**
@@ -171,7 +172,7 @@ async function guardPhone(q: Q, shop: Shop, phone: string, now: Date) {
  */
 async function bookCore(
   shop: Shop,
-  input: { name: string; phone: string | null; day: string; time: string; lang: Lang; source: ApptSource },
+  input: { name: string; phone: string | null; day: string; time: string; lang: Lang; source: ApptSource; reason?: string | null },
   now: Date,
   /** رمز التحقّق: يُستهلك داخل المعاملة. وجوده = إثبات ملكية الهاتف */
   onCommit?: (q: Q) => Promise<void>,
@@ -304,7 +305,7 @@ export async function requestBookingCode(
 /** الخطوة 2: الحجز (الرمز يُستهلك فقط إن نجح الحجز). */
 export async function bookOnline(
   slug: string,
-  body: { name?: unknown; phone?: unknown; code?: unknown; day?: unknown; time?: unknown; lang?: unknown },
+  body: { name?: unknown; phone?: unknown; code?: unknown; day?: unknown; time?: unknown; lang?: unknown; reason?: unknown },
   client: { ip?: string | null } = {},
 ): Promise<{ appointmentId: string; existing: boolean }> {
   const db = await getDb();
@@ -312,13 +313,14 @@ export async function bookOnline(
   const { shop, settings } = await bookableShop(db, slug, now);
   const name = cleanName(body.name);
   const phone = requirePhone(body.phone);
+  const reason = cleanReason(shop.kind, body.reason);
   const { day, time } = slotInput(body, settings, now);
   const codeId = await checkCode(db, shop, phone, body.code, now);
   // بلا رمز (لا وسيلة تحقّق): حدّ لكلّ شبكة بدل الرمز
   if (codeId === null) await guardClientIp(db, client.ip, "booking", now);
   const r = await bookCore(
     shop,
-    { name, phone, day, time, lang: langOf(body.lang, shop.defaultLang), source: "online" },
+    { name, phone, day, time, reason, lang: langOf(body.lang, shop.defaultLang), source: "online" },
     now,
     codeId === null
       ? undefined
@@ -352,6 +354,7 @@ export async function appointmentView(id: string) {
     time: a.time,
     name: a.name,
     phone: maskPhone(a.phone),
+    reason: a.reason ?? null,
     lang: a.lang,
     status: a.status,
     ticket: ticket ? { id: ticket.id, number: ticket.number, status: ticket.status } : null,
@@ -519,6 +522,7 @@ async function createPriorityTicket(
     number,
     name: a.name,
     phone: a.phone,
+    reason: a.reason ?? null,
     lang: a.lang,
     source: "online",
     status: "waiting",
@@ -606,6 +610,7 @@ function staffRow(a: ar.StaffApptRow, walkIns: Map<string, number>) {
     time: a.time,
     name: a.name,
     phone: formatPhone(a.phone),
+    reason: a.reason ?? null,
     source: a.source,
     status: a.status,
     ticketNumber: a.ticketNumber,
@@ -702,14 +707,14 @@ export async function deskAvailability(shop: Shop) {
   const today = dayKey(now);
   const s = await ar.getSettings(db, shop.id);
   const counts = await ar.activeCounts(db, shop.id, today, addDays(today, s.daysAhead));
-  return { today, slotMin: s.slotMin, perSlot: s.perSlot, days: availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "desk" }) };
+  return { today, kind: shop.kind, slotMin: s.slotMin, perSlot: s.perSlot, days: availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "desk" }) };
 }
 
 export type DeskAvailability = Awaited<ReturnType<typeof deskAvailability>>;
 
 export async function staffAppointmentAction(
   shop: Shop,
-  body: { action?: unknown; id?: unknown; name?: unknown; phone?: unknown; day?: unknown; time?: unknown },
+  body: { action?: unknown; id?: unknown; name?: unknown; phone?: unknown; day?: unknown; time?: unknown; reason?: unknown },
 ): Promise<{ ok: true; id?: string; ticketId?: string; number?: number | null }> {
   const now = clockNow();
   // اشتراك منتهٍ: لا مواعيد جديدة ولا تذاكر من المكتب (كالحجز عبر الإنترنت وأخذ الأرقام)؛ الإلغاء يبقى ممكناً
@@ -723,7 +728,7 @@ export async function staffAppointmentAction(
       const phone = body.phone ? requirePhone(body.phone) : null;
       const s = await ar.getSettings(await getDb(), shop.id);
       const { day, time } = slotInput(body, s, now);
-      const r = await bookCore(shop, { name, phone, day, time, lang: shop.defaultLang, source: "desk" }, now);
+      const r = await bookCore(shop, { name, phone, day, time, reason: cleanReason(shop.kind, body.reason), lang: shop.defaultLang, source: "desk" }, now);
       return { ok: true, id: r.id };
     }
     case "checkin": {

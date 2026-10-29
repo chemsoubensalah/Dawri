@@ -7,6 +7,7 @@ import { dayKey, isValidHours, isWithinHours, localTime, minutesBetween, nextOpe
 import { formatPhone, normalizePhone } from "../domain/phone";
 import { isWilaya } from "../domain/wilayas";
 import { isDayOff } from "../domain/daysoff";
+import { cleanReason } from "../domain/reasons";
 import { publicRating } from "./reviews";
 import { getTvMessages } from "./tvmessages";
 import { TRIAL_DAYS } from "../pricing";
@@ -393,18 +394,19 @@ async function verifyCode(q: Q, shop: Shop, phone: string, code: unknown, now: D
 
 export async function takeTicket(
   slug: string,
-  body: { name?: unknown; phone?: unknown; code?: unknown; door?: unknown; lang?: unknown },
+  body: { name?: unknown; phone?: unknown; code?: unknown; door?: unknown; lang?: unknown; reason?: unknown },
   client: { ip?: string | null } = {},
 ): Promise<{ ticketId: string; existing: boolean }> {
   const db = await getDb();
   const shop = await shopOr404(db, slug);
   const name = cleanName(body.name);
   const phone = requirePhone(body.phone);
+  const reason = cleanReason(shop.kind, body.reason);
   const now = clockNow();
   if (await phoneCheckRequired(shop.id, { whatsapp: true })) await verifyCode(db, shop, phone, body.code, now);
   else if (!(await repo.findTicketByPhone(db, shop.id, dayKey(now), phone))) await guardClientIp(db, client.ip, "ticket", now);
   const atDoor = typeof body.door === "string" && safeEqual(body.door, shop.doorCode);
-  const { ticketId, existing } = await issueTicket(shop, { name, phone, lang: langOf(body.lang, shop.defaultLang), atDoor });
+  const { ticketId, existing } = await issueTicket(shop, { name, phone, reason, lang: langOf(body.lang, shop.defaultLang), atDoor });
   return { ticketId, existing };
 }
 
@@ -423,7 +425,7 @@ async function freshWaCode(q: Q, day: string): Promise<string> {
  */
 export async function issueTicket(
   shop: Shop,
-  o: { name: string; phone: string; lang: Lang; atDoor: boolean; wa?: { userId: string | null; phone: string | null; windowUntil: Date } },
+  o: { name: string; phone: string; reason?: string | null; lang: Lang; atDoor: boolean; wa?: { userId: string | null; phone: string | null; windowUntil: Date } },
 ): Promise<{ ticketId: string; existing: boolean; ticket: Ticket; tickets: Ticket[] }> {
   const { result, tickets } = await mutate(shop, async ({ q, now, day, closed, tickets }) => {
     const existing = tickets.find((t) => t.phone === o.phone);
@@ -451,6 +453,7 @@ export async function issueTicket(
       number,
       name: o.name,
       phone: o.phone,
+      reason: o.reason ?? null,
       lang: o.lang,
       source: "online",
       status: noShows >= shop.settings.noShowLimit ? "pending_approval" : "waiting",
@@ -471,13 +474,14 @@ export async function issueTicket(
 /** الخطوة 1: المريض يكتب اسمه (وهاتفه) ← نعطيه رابط wa.me برمز قصير. */
 export async function startWaVerification(
   slug: string,
-  body: { name?: unknown; phone?: unknown; lang?: unknown; door?: unknown },
+  body: { name?: unknown; phone?: unknown; lang?: unknown; door?: unknown; reason?: unknown },
 ) {
   if (!waConfig().enabled) throw new DomainError("wa_unavailable", 503);
   const db = await getDb();
   const shop = await shopOr404(db, slug);
   const name = cleanName(body.name);
   const phone = requirePhone(body.phone);
+  const reason = cleanReason(shop.kind, body.reason);
   const now = clockNow();
   const qd = await repo.getDay(db, shop.id, dayKey(now));
   const existing = await repo.findTicketByPhone(db, shop.id, dayKey(now), phone);
@@ -499,6 +503,7 @@ export async function startWaVerification(
         phone,
         lang,
         atDoor,
+        reason,
         now,
         expiresAt: new Date(now.getTime() + 20 * 60000),
       });
@@ -583,6 +588,7 @@ async function handleIntent(
         const r = await issueTicket(shop, {
           name: v.name,
           phone: c.who.phone,
+          reason: v.reason,
           lang,
           atDoor: v.atDoor,
           wa: { ...c.who, windowUntil: c.windowUntil },
@@ -656,6 +662,7 @@ export async function ticketView(id: string) {
     id: ticket.id,
     number: ticket.number,
     name: ticket.name,
+    reason: ticket.reason ?? null,
     status: found.day === today || !isOpen ? ticket.status : "expired",
     held: ticket.held,
     priority: Boolean(ticket.priority),
@@ -775,6 +782,7 @@ export async function staffState(shop: Shop) {
     asked: Boolean(t.confirmAskedAt) && !t.confirmedAt,
     held: t.held,
     priority: Boolean(t.priority), // صاحب موعد (شارة «موعد»)
+    reason: t.reason ?? null,
   });
   const pending = await Promise.all(
     tickets
@@ -838,7 +846,7 @@ export type StaffState = Awaited<ReturnType<typeof staffState>>;
 
 export async function staffAction(
   shop: Shop,
-  body: { action?: unknown; ticketId?: unknown; current?: unknown; name?: unknown; phone?: unknown; present?: unknown },
+  body: { action?: unknown; ticketId?: unknown; current?: unknown; name?: unknown; phone?: unknown; present?: unknown; reason?: unknown },
   by: repo.QueueDay["closedBy"] = null,
 ) {
   const action = body.action;
@@ -852,6 +860,7 @@ export async function staffAction(
   if (action === "add") {
     const name = cleanName(body.name);
     const phone = body.phone ? requirePhone(body.phone) : null;
+    const reason = cleanReason(shop.kind, body.reason);
     const present = body.present !== false;
     const { result } = await mutate(shop, async ({ q, now, day, tickets }) => {
       if (phone && tickets.some((t) => t.phone === phone)) throw new DomainError("already_has_ticket", 409);
@@ -863,6 +872,7 @@ export async function staffAction(
         number,
         name,
         phone,
+        reason,
         lang: shop.defaultLang,
         source: "desk",
         status: "waiting",

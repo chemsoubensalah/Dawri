@@ -17,6 +17,7 @@ export function rowToAppointment(r: Row): Appointment {
     lang: (r.lang === "fr" ? "fr" : "ar") as Lang,
     source: r.source as ApptSource,
     status: r.status as ApptStatus,
+    reason: (r.reason as string | null) ?? null,
     ticketId: r.ticket_id == null ? null : String(r.ticket_id),
     createdAt: d(r.created_at)!,
     cancelledAt: d(r.cancelled_at),
@@ -112,12 +113,12 @@ export async function countRecentOnline(q: Q, shopId: string, since: Date): Prom
 
 export async function insertAppointment(
   q: Q,
-  a: { shopId: string; day: string; time: string; name: string; phone: string | null; lang: Lang; source: ApptSource; now: Date },
+  a: { shopId: string; day: string; time: string; name: string; phone: string | null; lang: Lang; source: ApptSource; reason?: string | null; now: Date },
 ): Promise<Appointment> {
   const rows = await q.query(
-    `insert into appointments (shop_id, day, time, name, phone, lang, source, status, created_at)
-     values ($1,$2,$3,$4,$5,$6,$7,'booked',$8) returning *`,
-    [a.shopId, a.day, a.time, a.name, a.phone, a.lang, a.source, a.now],
+    `insert into appointments (shop_id, day, time, name, phone, lang, source, status, created_at, reason)
+     values ($1,$2,$3,$4,$5,$6,$7,'booked',$8,$9) returning *`,
+    [a.shopId, a.day, a.time, a.name, a.phone, a.lang, a.source, a.now, a.reason ?? null],
   );
   return rowToAppointment(rows[0]);
 }

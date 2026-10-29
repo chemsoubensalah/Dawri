@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { CalendarPlus, Loader2 } from "lucide-react";
 import Dialog from "@/components/Dialog";
+import ReasonPicker from "@/components/ReasonPicker";
 import { DayPills, TimeGrid } from "@/components/SlotPicker";
 import { fmtDay } from "@/lib/domain/appointments";
 import type { Lang } from "@/lib/domain/types";
@@ -30,6 +31,7 @@ export default function DeskBookDialog({
   const [time, setTime] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [reason, setReason] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -62,12 +64,14 @@ export default function DeskBookDialog({
         action: "book",
         name,
         phone: phone || undefined,
+        reason,
         day,
         time,
       });
       onBooked(r.state, `${t(lang, "ap_booked")} — ${fmtDay(lang, day)} ${time}`);
       setName("");
       setPhone("");
+      setReason(null);
       setTime(null);
       onClose();
     } catch (e) {
@@ -103,6 +107,11 @@ export default function DeskBookDialog({
             <label className="label" htmlFor="ap-phone">{t(lang, "phoneOptional")}</label>
             <input id="ap-phone" className="input num text-start" dir="ltr" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0550 12 34 56" />
           </div>
+          {av && (
+            <div className="sm:col-span-2">
+              <ReasonPicker lang={lang} kind={av.kind} value={reason} onChange={setReason} idPrefix="ap-reason" />
+            </div>
+          )}
         </div>
         {!av ? (
           <p className="flex items-center justify-center gap-2 py-6 text-slate-400">

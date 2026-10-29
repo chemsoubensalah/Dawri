@@ -97,6 +97,7 @@ export function rowToTicket(r: Row): Ticket {
     source: r.source as Ticket["source"],
     status: r.status as TicketStatus,
     held: Boolean(r.held),
+    reason: (r.reason as string | null) ?? null,
     priority: Boolean(r.priority),
     priorityAt: d(r.priority_at),
     createdAt: d(r.created_at)!,
@@ -315,8 +316,8 @@ export async function insertTicket(
 ): Promise<Ticket> {
   const rows = await q.query(
     `insert into tickets (shop_id, day, number, name, phone, lang, source, status, created_at,
-                          arrived_at, confirmed_at, notified_soon_at, wa_code)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *`,
+                          arrived_at, confirmed_at, notified_soon_at, wa_code, reason)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) returning *`,
     [
       t.shopId,
       t.day,
@@ -331,6 +332,7 @@ export async function insertTicket(
       t.confirmedAt ?? null,
       t.notifiedSoonAt ?? null,
       t.waCode ?? null,
+      t.reason ?? null,
     ],
   );
   return rowToTicket(rows[0]);
@@ -571,6 +573,8 @@ export interface WaVerification {
   phone: string;
   lang: string;
   atDoor: boolean;
+  /** سبب الزيارة المختار في الصفحة */
+  reason: string | null;
   expiresAt: Date;
   verifiedAt: Date | null;
   ticketId: string | null;
@@ -586,6 +590,7 @@ function rowToVerification(r: Row): WaVerification {
     phone: String(r.phone),
     lang: String(r.lang),
     atDoor: Boolean(r.at_door),
+    reason: (r.reason as string | null) ?? null,
     expiresAt: d(r.expires_at)!,
     verifiedAt: d(r.verified_at),
     ticketId: r.ticket_id == null ? null : String(r.ticket_id),
@@ -595,12 +600,12 @@ function rowToVerification(r: Row): WaVerification {
 
 export async function insertWaVerification(
   q: Q,
-  v: { shopId: string; code: string; name: string; phone: string; lang: string; atDoor: boolean; now: Date; expiresAt: Date },
+  v: { shopId: string; code: string; name: string; phone: string; lang: string; atDoor: boolean; reason?: string | null; now: Date; expiresAt: Date },
 ): Promise<WaVerification> {
   const rows = await q.query(
-    `insert into wa_verifications (shop_id, code, name, phone, lang, at_door, created_at, expires_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8) returning *`,
-    [v.shopId, v.code, v.name, v.phone, v.lang, v.atDoor, v.now, v.expiresAt],
+    `insert into wa_verifications (shop_id, code, name, phone, lang, at_door, created_at, expires_at, reason)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning *`,
+    [v.shopId, v.code, v.name, v.phone, v.lang, v.atDoor, v.now, v.expiresAt, v.reason ?? null],
   );
   return rowToVerification(rows[0]);
 }

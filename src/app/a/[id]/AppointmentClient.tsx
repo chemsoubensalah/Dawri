@@ -8,7 +8,7 @@ import { ConfirmDialog } from "@/components/Dialog";
 import { Chip } from "@/components/ui";
 import { daysBetween, fmtDay } from "@/lib/domain/appointments";
 import type { Lang } from "@/lib/domain/types";
-import { errorText, t, tn } from "@/lib/i18n";
+import { drTitle, errorText, reasonText, t, tn } from "@/lib/i18n";
 import { googleCalendarUrl } from "@/lib/ics";
 import { api, ApiError, playSound, saveTicket, unlockAudio, usePoll } from "@/lib/client";
 import { forgetAppt, saveAppt } from "@/lib/appointments-client";
@@ -23,6 +23,35 @@ function relative(lang: Lang, v: AppointmentView, nowMs: number): string {
   if (mins <= 0) return t(lang, "ap_isNow");
   const span = mins < 60 ? t(lang, "sp_min", { n: mins }) : t(lang, "sp_hmin", { h: Math.floor(mins / 60), m: String(mins % 60).padStart(2, "0") });
   return `${t(lang, "ap_today")} · ${t(lang, "ap_inTime", { t: span })}`;
+}
+
+/** ملخّص الموعد كاملاً (يصلح للقطة شاشة): الاسم، الهاتف، السبب، التاريخ والساعة، الطبيب والعنوان. */
+function AppointmentDetails({ lang, v }: { lang: Lang; v: AppointmentView }) {
+  const year = v.day.slice(0, 4) !== v.today.slice(0, 4) ? ` ${v.day.slice(0, 4)}` : "";
+  const rows: [string, React.ReactNode, string?][] = [
+    [t(lang, "ap_dtName"), v.name],
+    ...(v.phone ? [[t(lang, "ap_dtPhone"), <span key="p" dir="ltr" className="num">{v.phone}</span>] as [string, React.ReactNode]] : []),
+    ...(v.reason ? [[t(lang, "vr_label"), reasonText(lang, v.reason), "appt-reason"] as [string, React.ReactNode, string]] : []),
+    [t(lang, "ap_dtDate"), `${fmtDay(lang, v.day)}${year}`],
+    [t(lang, "ap_dtTime"), <span key="t" dir="ltr" className="num">{v.time}</span>],
+    [t(lang, "ap_dtDoctor"), drTitle(lang, v.shop.kind, v.shop.profile.doctorName) ?? v.shop.name],
+    ...(v.shop.profile.address ? [[t(lang, "ap_dtAddress"), v.shop.profile.address] as [string, React.ReactNode]] : []),
+  ];
+  return (
+    <section className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200/70" data-testid="appt-details">
+      <h2 className="mb-2 text-sm font-bold text-slate-700">{t(lang, "ap_details")}</h2>
+      <dl className="divide-y divide-slate-200/70 text-sm">
+        {rows.map(([k, val, id]) => (
+          <div key={k} className="flex items-start justify-between gap-4 py-2">
+            <dt className="shrink-0 text-slate-500">{k}</dt>
+            <dd className="min-w-0 text-end font-semibold text-ink" data-testid={id}>
+              {val}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
 }
 
 export default function AppointmentClient({ lang, initial, door }: { lang: Lang; initial: AppointmentView; door: string | null }) {
@@ -162,6 +191,7 @@ export default function AppointmentClient({ lang, initial, door }: { lang: Lang;
         </div>
 
         <div className="space-y-4 p-6">
+          <AppointmentDetails lang={lang} v={v} />
           {booked && v.canCheckin && (
             <div className="space-y-3 text-center">
               <p className="text-xl font-bold text-ink">{t(lang, "ap_checkinTitle")}</p>
@@ -249,7 +279,7 @@ export default function AppointmentClient({ lang, initial, door }: { lang: Lang;
 
       {booked && (
         <p className="flex items-start justify-center gap-2 text-center text-xs leading-relaxed text-slate-500">
-          <Bookmark size={14} className="mt-0.5 shrink-0" /> {t(lang, "ap_saveLink")}
+          <Bookmark size={14} className="mt-0.5 shrink-0" /> {t(lang, "ap_screenshot")}
         </p>
       )}
 

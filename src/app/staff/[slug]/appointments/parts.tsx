@@ -1,9 +1,9 @@
 "use client";
-import { CalendarCheck2, Globe, Phone, UserCheck, X } from "lucide-react";
+import { CalendarCheck2, Globe, Phone, Stethoscope, UserCheck, X } from "lucide-react";
 import { Chip } from "@/components/ui";
 import { parseHHMM } from "@/lib/domain/time";
 import type { Lang } from "@/lib/domain/types";
-import { t } from "@/lib/i18n";
+import { reasonText, t } from "@/lib/i18n";
 import type { StaffAppt } from "@/lib/server/appointments";
 
 /** شارة «موعد» على تذكرة صاحب الموعد في الطابور. */
@@ -11,6 +11,17 @@ export function ApptBadge({ lang }: { lang: Lang }) {
   return (
     <Chip tone="violet">
       <CalendarCheck2 size={12} /> {t(lang, "ap_badge")}
+    </Chip>
+  );
+}
+
+/** سبب الزيارة الذي اختاره المريض (طابور ومواعيد). */
+export function ReasonChip({ lang, reason }: { lang: Lang; reason: string | null | undefined }) {
+  const text = reasonText(lang, reason);
+  if (!text) return null;
+  return (
+    <Chip className="font-semibold">
+      <Stethoscope size={12} /> {text}
     </Chip>
   );
 }
@@ -70,6 +81,7 @@ export function ApptRow({
               {a.phone}
             </a>
           )}
+          <ReasonChip lang={lang} reason={a.reason} />
           <StatusChip lang={lang} a={a} late={late} />
           {a.walkIn !== null && <Chip tone="sky">{t(lang, "ap_walkIn", { n: a.walkIn })}</Chip>}
         </span>

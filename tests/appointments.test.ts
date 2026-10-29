@@ -17,6 +17,7 @@ import { claimRate, clientIp, ipBucket, IP_LIMITS, rateCount } from "@/lib/serve
 import { estimateWaitMinutes, initialFlags, lineup, nextEligible, peopleAhead, planNext } from "@/lib/domain/queue";
 import { addDays, availability, checkinWindow, daySlots, DEFAULT_BOOKING, slotInstant } from "@/lib/domain/appointments";
 import { cleanDaysOff, dayRange, upcomingFixedHolidays } from "@/lib/domain/daysoff";
+import { cleanReason, reasonsFor } from "@/lib/domain/reasons";
 import { daysOffView, saveDaysOff } from "@/lib/server/daysoff";
 import { buildIcs, foldLine } from "@/lib/ics";
 import { DEFAULT_SETTINGS, DomainError, type Shop, type Ticket } from "@/lib/domain/types";
@@ -835,5 +836,48 @@ describe("أيّام العطل", () => {
     expect((await saveDaysOff(await fresh(), [{ day: "2026-10-11" }])).items).toEqual([]);
     await expect(svc.requestCode(shop.slug, { name: "x x", phone: newPhone() })).resolves.toBeTruthy();
     await expect(saveDaysOff(await fresh(), Array.from({ length: 121 }, (_, i) => ({ day: addDays("2026-10-12", i) })))).rejects.toThrow("days_off_too_many");
+  });
+});
+
+describe("سبب الزيارة", () => {
+  it("قائمة ثابتة حسب نوع العيادة، بلا نصّ حرّ", () => {
+    expect(reasonsFor("doctor")).toContain("certificate");
+    expect(reasonsFor("lab")).toEqual(["sample", "pickup", "other"]);
+    expect(reasonsFor("barber")).toEqual([]);
+    expect(cleanReason("doctor", "consult")).toBe("consult");
+    expect(cleanReason("doctor", undefined)).toBeNull();
+    expect(cleanReason("doctor", "")).toBeNull();
+    for (const [kind, v] of [
+      ["doctor", "pickup"],
+      ["doctor", "ألم في الصدر"],
+      ["lab", "consult"],
+      ["barber", "other"],
+      ["doctor", 5],
+    ] as const) {
+      expect(() => cleanReason(kind, v), `${kind}:${v}`).toThrow("invalid_reason");
+    }
+  });
+
+  it("الرقم والموعد يحملان السبب: يراه الطاقم وصاحبه، وينتقل إلى تذكرة الوصول", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable();
+    const tk = await svc.takeTicket(shop.slug, { name: "سعاد", phone: newPhone(), reason: "results" });
+    expect((await svc.ticketView(tk.ticketId)).reason).toBe("results");
+    await expect(svc.takeTicket(shop.slug, { name: "x x", phone: newPhone(), reason: "diagnosis" })).rejects.toThrow("invalid_reason");
+    await svc.staffAction(await fresh(), { action: "add", name: "عمر", reason: "certificate" });
+    await svc.staffAction(await fresh(), { action: "add", name: "بلا سبب" });
+    expect(Object.fromEntries((await staffState()).waiting.map((w) => [w.name, w.reason]))).toEqual({ سعاد: "results", عمر: "certificate", "بلا سبب": null });
+
+    const r = await ap.bookOnline(shop.slug, { name: "مريم", phone: newPhone(), day: "2026-10-11", time: "10:00", reason: "followup" });
+    expect(await ap.appointmentView(r.appointmentId)).toMatchObject({ name: "مريم", reason: "followup", day: "2026-10-11", time: "10:00" });
+    const desk = await ap.staffAppointmentAction(await fresh(), { action: "book", name: "هاتفي", day: "2026-10-11", time: "11:00", reason: "prescription" });
+    const items = (await ap.staffAppointments(await fresh(), "today")).todayItems;
+    expect(items.find((a) => a.id === r.appointmentId)?.reason).toBe("followup");
+    expect(items.find((a) => a.id === desk.id)?.reason).toBe("prescription");
+    await expect(ap.bookOnline(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-11", time: "12:00", reason: "pickup" })).rejects.toThrow("invalid_reason");
+
+    at("2026-10-11", "09:30");
+    const c = await ap.appointmentAction(r.appointmentId, { action: "checkin" });
+    expect((await svc.ticketView(c.ticketId!)).reason).toBe("followup");
   });
 });

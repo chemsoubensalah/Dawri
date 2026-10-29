@@ -18,6 +18,8 @@ export interface Appointment {
   lang: Lang;
   source: ApptSource;
   status: ApptStatus;
+  /** سبب الزيارة (src/lib/domain/reasons.ts) */
+  reason?: string | null;
   ticketId: string | null;
   createdAt: Date;
   cancelledAt: Date | null;
