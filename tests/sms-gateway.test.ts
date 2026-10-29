@@ -15,7 +15,7 @@ import * as svc from "@/lib/server/service";
 import * as repo from "@/lib/server/repo";
 import * as gate from "@/lib/server/smsgate";
 import { getGateway } from "@/lib/server/smsgate-repo";
-import { claimRate, rateCount } from "@/lib/server/ratelimit";
+import { claimRate, IP_LIMITS, rateCount } from "@/lib/server/ratelimit";
 import { hashCode } from "@/lib/server/auth";
 import { DomainError, type NotifyType, type Shop, type Ticket } from "@/lib/domain/types";
 
@@ -494,12 +494,49 @@ describe("رموز التحقّق", () => {
 
   it("بلا مزوّد عامّ: هاتف العيادة وحده يكفي لتفعيل التحقّق بالرسائل", async () => {
     process.env.SMS_PROVIDER = "off";
-    await expect(svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() })).rejects.toThrow("sms_unavailable");
+    // لا وسيلة إرسال: الوضع التلقائي يُسقط الرمز (لا يُحجب المرضى)
+    await expect(svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() })).resolves.toMatchObject({ sent: false, verify: false });
     expect((await svc.publicShop(shop.slug)).view.smsVerify).toBe(false);
+    // التحقّق مفروض (PHONE_VERIFICATION=on) ← خطأ واضح بدل رقم بلا تحقّق
+    process.env.PHONE_VERIFICATION = "on";
+    try {
+      await expect(svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() })).rejects.toThrow("sms_unavailable");
+    } finally {
+      delete process.env.PHONE_VERIFICATION;
+    }
     await connect();
     expect((await svc.publicShop(shop.slug)).view.smsVerify).toBe(true);
     await expect(svc.requestCode(shop.slug, { name: "سعيد", phone: newPhone() })).resolves.toMatchObject({ sent: true });
     expect(sends()).toHaveLength(1);
+  });
+
+  it("الوضع التلقائي: بلا أيّ وسيلة تحقّق ← رقم بلا رمز، بحدّ لكلّ شبكة", async () => {
+    process.env.SMS_PROVIDER = "off";
+    let i = 0;
+    const phone = () => `0661${String(++i).padStart(6, "0")}`;
+    const take = (p: string, ip = "198.51.100.40") => svc.takeTicket(shop.slug, { name: "سعيد", phone: p }, { ip });
+    expect((await svc.publicShop(shop.slug)).view.verifyPhone).toBe(false);
+    const first = phone();
+    // مسار الواجهة: طلب «رمز» يجيب verify:false دون استهلاك الحدّ، ثمّ أخذ الرقم مباشرة
+    await expect(svc.requestCode(shop.slug, { name: "سعيد", phone: first }, { ip: "198.51.100.40" })).resolves.toMatchObject({ verify: false });
+    const t1 = await take(first);
+    expect(t1.existing).toBe(false);
+    // نفس الهاتف يسترجع رقمه دون أن يستهلك حدّ الشبكة
+    await expect(take(first)).resolves.toEqual({ ticketId: t1.ticketId, existing: true });
+    for (let k = 1; k < IP_LIMITS.ticket; k++) await take(phone());
+    await expect(take(phone())).rejects.toThrow("too_many_codes");
+    await expect(take(phone(), "198.51.100.41")).resolves.toMatchObject({ existing: false });
+    // ربط هاتف العيادة ← الرمز إلزامي من جديد
+    await connect();
+    await expect(take(phone(), "198.51.100.42")).rejects.toThrow("code_expired");
+    // PHONE_VERIFICATION=off يُسقط الرمز حتّى مع وجود وسيلة
+    process.env.PHONE_VERIFICATION = "off";
+    try {
+      await expect(take(phone(), "198.51.100.42")).resolves.toMatchObject({ existing: false });
+      expect((await svc.publicShop(shop.slug)).view.verifyPhone).toBe(false);
+    } finally {
+      delete process.env.PHONE_VERIFICATION;
+    }
   });
 
   it("حماية الشريحة: تُحسب الرموز المرسلة عبر هاتف العيادة فقط؛ بعد 60 في الساعة ← المزوّد العامّ، أو «رموز كثيرة»", async () => {

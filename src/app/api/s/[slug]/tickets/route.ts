@@ -1,7 +1,8 @@
 import { handle, readJson } from "@/lib/server/http";
+import { clientIp } from "@/lib/server/ratelimit";
 import { takeTicket } from "@/lib/server/service";
 
 export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  return handle(async () => takeTicket(slug, await readJson(req)));
+  return handle(async () => takeTicket(slug, await readJson(req), { ip: clientIp(req.headers) }));
 }

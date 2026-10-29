@@ -216,30 +216,39 @@ export async function resetLoginAttempts(q: Q, shopId: string) {
 export interface QueueDay {
   lastNumber: number;
   closed: boolean;
+  /** متى ومن أوقف استقبال المرضى الجدد (null إن كان مفتوحاً) */
+  closedAt: Date | null;
+  closedBy: "owner" | "assistant" | "manager" | null;
+}
+
+const DAY_COLS = "last_number, closed, closed_at, closed_by";
+type DayRow = { last_number: number; closed: boolean; closed_at: Date | string | null; closed_by: string | null };
+function rowToDay(r: DayRow | undefined): QueueDay {
+  if (!r) return { lastNumber: 0, closed: false, closedAt: null, closedBy: null };
+  const by = r.closed_by === "owner" || r.closed_by === "assistant" || r.closed_by === "manager" ? r.closed_by : null;
+  return { lastNumber: Number(r.last_number), closed: Boolean(r.closed), closedAt: r.closed ? d(r.closed_at) : null, closedBy: r.closed ? by : null };
 }
 
 /** يُنشئ صفّ اليوم إن لم يوجد ويقفله حتى نهاية المعاملة. */
 export async function lockDay(q: Q, shopId: string, day: string): Promise<QueueDay> {
   await q.query("insert into queue_days (shop_id, day) values ($1, $2) on conflict do nothing", [shopId, day]);
-  const rows = await q.query<{ last_number: number; closed: boolean }>(
-    "select last_number, closed from queue_days where shop_id = $1 and day = $2 for update",
-    [shopId, day],
-  );
-  return { lastNumber: Number(rows[0].last_number), closed: Boolean(rows[0].closed) };
+  const rows = await q.query<DayRow>(`select ${DAY_COLS} from queue_days where shop_id = $1 and day = $2 for update`, [shopId, day]);
+  return rowToDay(rows[0]);
 }
 
 export async function getDay(q: Q, shopId: string, day: string): Promise<QueueDay> {
-  const rows = await q.query<{ last_number: number; closed: boolean }>(
-    "select last_number, closed from queue_days where shop_id = $1 and day = $2",
-    [shopId, day],
-  );
-  return rows[0]
-    ? { lastNumber: Number(rows[0].last_number), closed: Boolean(rows[0].closed) }
-    : { lastNumber: 0, closed: false };
+  const rows = await q.query<DayRow>(`select ${DAY_COLS} from queue_days where shop_id = $1 and day = $2`, [shopId, day]);
+  return rowToDay(rows[0]);
 }
 
-export async function setDayClosed(q: Q, shopId: string, day: string, closed: boolean) {
-  await q.query("update queue_days set closed = $3 where shop_id = $1 and day = $2", [shopId, day, closed]);
+export async function setDayClosed(q: Q, shopId: string, day: string, closed: boolean, by: QueueDay["closedBy"] = null, now: Date = new Date()) {
+  await q.query(
+    `update queue_days set closed = $3,
+            closed_at = case when $3 then coalesce(case when closed then closed_at end, $5::timestamptz) end,
+            closed_by = case when $3 then coalesce(case when closed then closed_by end, $4) end
+      where shop_id = $1 and day = $2`,
+    [shopId, day, closed, by, now],
+  );
 }
 
 export async function allocateNumber(q: Q, shopId: string, day: string): Promise<number> {

@@ -54,6 +54,7 @@ import { isSubscriptionActive, mutate } from "./service";
 import { getSms } from "./sms";
 import { clinicSendsCodes, codeSender } from "./smsgate";
 import { shortCode } from "./whatsapp";
+import { phoneCheckRequired } from "./verify";
 
 const DAY_MS = 86_400_000;
 /**
@@ -65,9 +66,6 @@ export const bookingCodesKey = (shopId: string) => `codes:booking:${shopId}`;
 
 // ————————————————————————— أدوات —————————————————————————
 
-function phoneVerificationOn() {
-  return process.env.PHONE_VERIFICATION !== "off";
-}
 
 function demoMode() {
   return process.env.DAWRI_DEMO === "1" || !process.env.DATABASE_URL;
@@ -79,7 +77,7 @@ function demoMode() {
  */
 export type VerifyMode = "none" | "sms" | "unavailable";
 export async function verifyMode(shopId: string): Promise<VerifyMode> {
-  if (!phoneVerificationOn()) return "none";
+  if (!(await phoneCheckRequired(shopId))) return "none";
   return getSms() !== null || (await clinicSendsCodes(shopId)) ? "sms" : "unavailable";
 }
 
@@ -136,7 +134,7 @@ async function freshWaCode(q: Q, day: string): Promise<string> {
  * المحاولة الخاطئة تُسجَّل خارج المعاملة فلا يلغيها التراجع.
  */
 async function checkCode(q: Q, shop: Shop, phone: string, code: unknown, now: Date): Promise<number | null> {
-  if (!phoneVerificationOn()) return null;
+  if (!(await phoneCheckRequired(shop.id))) return null;
   const c = typeof code === "string" ? code.trim() : "";
   const row = await repo.latestCode(q, shop.id, phone, now);
   if (!row || row.attempts >= 5) throw new DomainError("code_expired");
@@ -268,15 +266,16 @@ export async function requestBookingCode(
   cleanName(body.name);
   const phone = requirePhone(body.phone);
   const { day, time } = slotInput(body, settings, now);
+  const required = await phoneCheckRequired(shop.id);
   // تحقّق مسبق بلا قفل: لا نرسل رسالة (لها كلفة) لحجز مستحيل.
   // من له موعد في ذلك اليوم يستطيع استرجاعه بالرمز (وبلا تحقّق: لا استرجاع لموعد شخص آخر).
   if (await ar.findActiveByPhone(db, shop.id, day, phone)) {
-    if (!phoneVerificationOn()) throw new DomainError("ap_already_booked", 409);
+    if (!required) throw new DomainError("ap_already_booked", 409);
   } else {
     await guardPhone(db, shop, phone, now);
     await slotCheck(db, shop, settings, day, time, now, "online", day === dayKey(now) && (await repo.getDay(db, shop.id, day)).closed);
   }
-  if (!phoneVerificationOn()) return { sent: false, verify: false, devCode: undefined as string | undefined };
+  if (!required) return { sent: false, verify: false, devCode: undefined as string | undefined };
   const sms = await codeSender(shop, getSms()); // هاتف العيادة أوّلاً (إن فعّلت ذلك) ثمّ المزوّد العامّ
   if (!sms) throw new DomainError("sms_unavailable", 503);
   if ((await repo.countRecentCodes(db, shop.id, phone, new Date(now.getTime() - 30 * 60000))) >= 3) {
@@ -306,6 +305,7 @@ export async function requestBookingCode(
 export async function bookOnline(
   slug: string,
   body: { name?: unknown; phone?: unknown; code?: unknown; day?: unknown; time?: unknown; lang?: unknown },
+  client: { ip?: string | null } = {},
 ): Promise<{ appointmentId: string; existing: boolean }> {
   const db = await getDb();
   const now = clockNow();
@@ -314,6 +314,8 @@ export async function bookOnline(
   const phone = requirePhone(body.phone);
   const { day, time } = slotInput(body, settings, now);
   const codeId = await checkCode(db, shop, phone, body.code, now);
+  // بلا رمز (لا وسيلة تحقّق): حدّ لكلّ شبكة بدل الرمز
+  if (codeId === null) await guardClientIp(db, client.ip, "booking", now);
   const r = await bookCore(
     shop,
     { name, phone, day, time, lang: langOf(body.lang, shop.defaultLang), source: "online" },

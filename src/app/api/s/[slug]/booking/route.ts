@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { DomainError } from "@/lib/domain/types";
 import { handle, readJson, serverError } from "@/lib/server/http";
+import { clientIp } from "@/lib/server/ratelimit";
 import { bookOnline, publicAvailability } from "@/lib/server/appointments";
 
 /**
@@ -22,5 +23,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 /** الحجز (بعد رمز التحقّق إن كان مفعّلاً). */
 export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  return handle(async () => bookOnline(slug, await readJson(req)));
+  return handle(async () => bookOnline(slug, await readJson(req), { ip: clientIp(req.headers) }));
 }

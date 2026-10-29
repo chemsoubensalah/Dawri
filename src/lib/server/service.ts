@@ -54,6 +54,7 @@ import { getMailer } from "./email";
 import { applyReferral } from "./referral";
 import { REPORT_BUDGET_MS, sendDailyReports } from "./report";
 import { guardClientIp } from "./ratelimit";
+import { phoneCheckRequired } from "./verify";
 import { getSms } from "./sms";
 import { clinicSendsCodes, codeSender } from "./smsgate";
 import {
@@ -84,9 +85,6 @@ function demoMode() {
   return process.env.DAWRI_DEMO === "1" || !process.env.DATABASE_URL;
 }
 
-function phoneVerificationOn() {
-  return process.env.PHONE_VERIFICATION !== "off";
-}
 
 async function shopOr404(q: Q, slug: string): Promise<Shop> {
   const shop = typeof slug === "string" ? await repo.getShopBySlug(q, slug.toLowerCase()) : null;
@@ -196,15 +194,15 @@ async function dispatch(shop: Shop, tickets: Ticket[], actions: Action[]) {
 }
 
 /** يقرأ طابور اليوم، ويطبّق ما فات من مهل (بلا قفل إن لم يكن هناك ما يتغيّر). */
-async function refreshDay(shop: Shop): Promise<{ tickets: Ticket[]; closed: boolean; now: Date }> {
+async function refreshDay(shop: Shop): Promise<{ tickets: Ticket[]; closed: boolean; qd: repo.QueueDay; now: Date }> {
   const db = await getDb();
   const now = clockNow();
   const day = dayKey(now);
   const tickets = await repo.listDayTickets(db, shop.id, day);
   const qd = await repo.getDay(db, shop.id, day);
-  if (!planTick(tickets, now, shop.settings).length) return { tickets, closed: qd.closed, now };
+  if (!planTick(tickets, now, shop.settings).length) return { tickets, closed: qd.closed, qd, now };
   const r = await mutate(shop, () => ({ actions: [], result: null }));
-  return { tickets: r.tickets, closed: qd.closed, now };
+  return { tickets: r.tickets, closed: qd.closed, qd, now };
 }
 
 /** يُغلق تذاكر الأيّام السابقة التي بقيت مفتوحة. */
@@ -319,7 +317,7 @@ export async function publicShop(slug: string) {
       currentNumber: cur?.number ?? null,
       waiting,
       avgServiceMin: Math.round(avg),
-      verifyPhone: phoneVerificationOn(),
+      verifyPhone: await phoneCheckRequired(shop.id, { whatsapp: true }),
       waVerify: waConfig().enabled,
       smsVerify: getSms() !== null || (await clinicSendsCodes(shop.id)),
       nextNumbers: lineup(tickets)
@@ -356,7 +354,8 @@ export async function requestCode(
     const blocker = ticketBlocker(shop, qd.closed, now, qd.lastNumber);
     if (blocker) throw new DomainError(blocker, 409);
   }
-  if (!phoneVerificationOn()) return { sent: false, verify: false, devCode: undefined as string | undefined };
+  // بلا رمز: لا إرسال هنا؛ حدّ الشبكة يُطبَّق عند أخذ الرقم (takeTicket) مرّة واحدة
+  if (!(await phoneCheckRequired(shop.id, { whatsapp: true }))) return { sent: false, verify: false, devCode: undefined as string | undefined };
   const sms = await codeSender(shop, getSms()); // هاتف العيادة أوّلاً (إن فعّلت ذلك) ثمّ المزوّد العامّ
   if (!sms) throw new DomainError("sms_unavailable", 503);
   if ((await repo.countRecentCodes(db, shop.id, phone, new Date(now.getTime() - 30 * 60000))) >= 3) {
@@ -379,7 +378,7 @@ export async function requestCode(
 }
 
 async function verifyCode(q: Q, shop: Shop, phone: string, code: unknown, now: Date) {
-  if (!phoneVerificationOn()) return;
+  if (!(await phoneCheckRequired(shop.id, { whatsapp: true }))) return;
   const c = typeof code === "string" ? code.trim() : "";
   const row = await repo.latestCode(q, shop.id, phone, now);
   if (!row || row.attempts >= 5) throw new DomainError("code_expired");
@@ -393,12 +392,15 @@ async function verifyCode(q: Q, shop: Shop, phone: string, code: unknown, now: D
 export async function takeTicket(
   slug: string,
   body: { name?: unknown; phone?: unknown; code?: unknown; door?: unknown; lang?: unknown },
+  client: { ip?: string | null } = {},
 ): Promise<{ ticketId: string; existing: boolean }> {
   const db = await getDb();
   const shop = await shopOr404(db, slug);
   const name = cleanName(body.name);
   const phone = requirePhone(body.phone);
-  await verifyCode(db, shop, phone, body.code, clockNow());
+  const now = clockNow();
+  if (await phoneCheckRequired(shop.id, { whatsapp: true })) await verifyCode(db, shop, phone, body.code, now);
+  else if (!(await repo.findTicketByPhone(db, shop.id, dayKey(now), phone))) await guardClientIp(db, client.ip, "ticket", now);
   const atDoor = typeof body.door === "string" && safeEqual(body.door, shop.doorCode);
   const { ticketId, existing } = await issueTicket(shop, { name, phone, lang: langOf(body.lang, shop.defaultLang), atDoor });
   return { ticketId, existing };
@@ -757,7 +759,7 @@ export function sessionFor(shop: Shop, now: Date, role: "owner" | "assistant" = 
 
 export async function staffState(shop: Shop) {
   await closeStaleTickets(shop.id);
-  const { tickets, closed, now } = await refreshDay(shop);
+  const { tickets, closed, qd, now } = await refreshDay(shop);
   const db = await getDb();
   const since = new Date(now.getTime() - NO_SHOW_RETENTION_DAYS * DAY_MS);
   const row = (t: Ticket) => ({
@@ -807,6 +809,9 @@ export async function staffState(shop: Shop) {
       hasEmail: Boolean(shop.ownerEmail),
     },
     closed,
+    // «إيقاف استقبال مرضى جدد»: متى ومن (يظهر في لوحة الطبيب والسكرتيرة معاً)
+    closedAt: qd.closedAt?.toISOString() ?? null,
+    closedBy: qd.closedBy,
     blocker: ticketBlocker(shop, closed, now, tickets.length),
     hoursToday: shop.hours[String(lt.weekday)] ?? [],
     current: cur
@@ -832,11 +837,12 @@ export type StaffState = Awaited<ReturnType<typeof staffState>>;
 export async function staffAction(
   shop: Shop,
   body: { action?: unknown; ticketId?: unknown; current?: unknown; name?: unknown; phone?: unknown; present?: unknown },
+  by: repo.QueueDay["closedBy"] = null,
 ) {
   const action = body.action;
   if (action === "open" || action === "close") {
-    await mutate(shop, async ({ q, day }) => {
-      await repo.setDayClosed(q, shop.id, day, action === "close");
+    await mutate(shop, async ({ q, day, now }) => {
+      await repo.setDayClosed(q, shop.id, day, action === "close", by, now);
       return { actions: [], result: null };
     });
     return { ok: true };

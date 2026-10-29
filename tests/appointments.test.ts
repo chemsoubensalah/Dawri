@@ -653,9 +653,19 @@ describe("رموز الحجز: هاتف العيادة والحدود", () => {
     sentSms.length = 0;
     try {
       await enable();
-      expect((await ap.publicAvailability(shop.slug)).verify).toBe("unavailable");
-      expect(await ap.bookingTeaser(await fresh())).toBeNull();
-      await expect(ap.requestBookingCode(shop.slug, { name: "سميرة", phone: newPhone(), day: "2026-10-12", time: "09:00" })).rejects.toThrow("sms_unavailable");
+      // لا وسيلة إرسال: الوضع التلقائي يحجز بلا رمز
+      expect((await ap.publicAvailability(shop.slug)).verify).toBe("none");
+      expect(await ap.bookingTeaser(await fresh())).not.toBeNull();
+      await expect(ap.requestBookingCode(shop.slug, { name: "سميرة", phone: newPhone(), day: "2026-10-12", time: "09:00" })).resolves.toMatchObject({ sent: false, verify: false });
+      // التحقّق مفروض ← «غير متاح» حتّى تُربط وسيلة
+      process.env.PHONE_VERIFICATION = "on";
+      try {
+        expect((await ap.publicAvailability(shop.slug)).verify).toBe("unavailable");
+        expect(await ap.bookingTeaser(await fresh())).toBeNull();
+        await expect(ap.requestBookingCode(shop.slug, { name: "سميرة", phone: newPhone(), day: "2026-10-12", time: "09:00" })).rejects.toThrow("sms_unavailable");
+      } finally {
+        delete process.env.PHONE_VERIFICATION;
+      }
 
       await gate.saveSmsSettings(shop, { username: "K7QX2M", password: "pw-123456" });
       expect((await ap.publicAvailability(shop.slug)).verify).toBe("sms");
