@@ -2,7 +2,7 @@
 import { Clock3, Stethoscope, Users } from "lucide-react";
 import SoundGate from "@/components/SoundGate";
 import { LogoMark } from "@/components/ui";
-import { t } from "@/lib/i18n";
+import { errorText, t } from "@/lib/i18n";
 import { CalloutOverlay, Controls } from "./shared";
 import type { LayoutDef, LayoutProps } from "./types";
 
@@ -187,6 +187,7 @@ function makeClassic(skin: ClassicSkin) {
             <div>
               <div className="text-xl leading-snug font-bold text-balance">{t(lang, "posterTitle").replace(" —", "\u00a0—")}</div>
               <p className="mt-1 text-sm text-slate-600">{t(lang, "dp_scan")}</p>
+              {v.blocker && <p className="mt-1.5 text-sm leading-snug font-semibold text-rose-700">{errorText(lang, v.blocker)}</p>}
             </div>
           </div>
         </aside>

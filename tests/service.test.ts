@@ -249,6 +249,27 @@ describe("أخذ رقم", () => {
     await expect(svc.requestCode(shop.slug, { name: "x x", phone: newPhone() })).resolves.toBeTruthy();
   });
 
+  it("إيقاف الاستقبال: يظهر لكلّ الشاشات من أوقفه ومتى، ويعود تلقائياً في اليوم التالي", async () => {
+    clock = new Date("2026-10-11T09:42:00Z"); // 10:42 محلّياً
+    const sh = (await repo.getShopBySlug(db, shop.slug))!;
+    await svc.staffAction(sh, { action: "close" }, "owner");
+    let st = await svc.staffState(sh);
+    expect(st).toMatchObject({ closed: true, closedBy: "owner", closedAt: "2026-10-11T09:42:00.000Z" });
+    expect((await svc.publicShop(shop.slug)).view.blocker).toBe("queue_closed");
+    // إغلاق ثانٍ (السكرتيرة) لا يغيّر من أوقفه أوّلاً ولا متى
+    advance(5);
+    await svc.staffAction(sh, { action: "close" }, "assistant");
+    st = await svc.staffState(sh);
+    expect(st).toMatchObject({ closedBy: "owner", closedAt: "2026-10-11T09:42:00.000Z" });
+    await svc.staffAction(sh, { action: "open" }, "assistant");
+    st = await svc.staffState(sh);
+    expect(st).toMatchObject({ closed: false, closedBy: null, closedAt: null });
+    await svc.staffAction(sh, { action: "close" }, "assistant");
+    expect(await svc.staffState(sh)).toMatchObject({ closed: true, closedBy: "assistant" });
+    advance(24 * 60); // اليوم التالي
+    expect(await svc.staffState(sh)).toMatchObject({ closed: false, closedBy: null });
+  });
+
   it("رقم هاتف غير صحيح يُرفض", async () => {
     await expect(svc.requestCode(shop.slug, { name: "x x", phone: "12345" })).rejects.toThrow("invalid_phone");
   });

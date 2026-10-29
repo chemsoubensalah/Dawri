@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, Mail, Phone, Plus, ShieldAlert, Smartphone, Timer, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Ban, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, Mail, Phone, Plus, ShieldAlert, Smartphone, Timer, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
 import Dialog, { ConfirmDialog } from "@/components/Dialog";
 import SoundGate from "@/components/SoundGate";
 import { Avatar, Chip, Empty, LiveDot, Stat } from "@/components/ui";
@@ -27,6 +27,8 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [newcomer, setNewcomer] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [stopAsk, setStopAsk] = useState(false);
+  const [notice, setNotice] = useState<{ text: string; stop: boolean } | null>(null);
   const Arrow = lang === "ar" ? ArrowLeft : ArrowRight;
 
   usePoll(async () => {
@@ -60,6 +62,25 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
     return () => clearTimeout(id);
   }, [newcomer]);
 
+  // الاستقبال أُوقف أو فُتح من جهاز آخر (الطبيب من مكتبه) ← صوت + تنبيه على شاشة السكرتيرة
+  const lastClosed = useRef(initial.closed);
+  const myToggle = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (s.closed === lastClosed.current) return;
+    lastClosed.current = s.closed;
+    const mine = myToggle.current === s.closed;
+    myToggle.current = null;
+    if (mine) return;
+    playSound(s.closed ? "next" : "moved");
+    const by = s.closed && s.closedBy ? ` — ${t(lang, `db_by_${s.closedBy}`)}` : "";
+    setNotice({ text: t(lang, s.closed ? "db_remoteStopped" : "db_remoteOpened") + by, stop: s.closed });
+  }, [s.closed, s.closedBy, lang]);
+  useEffect(() => {
+    if (!notice) return;
+    const id = setTimeout(() => setNotice(null), 12000);
+    return () => clearTimeout(id);
+  }, [notice]);
+
   const act = useCallback(
     async (body: Record<string, unknown>, okText?: (r: { number?: number }) => string) => {
       setBusy(true);
@@ -85,6 +106,16 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   const cur = s.current;
   const upNext = s.waiting.find((w) => !w.held) ?? null;
   const canNext = Boolean(cur || upNext);
+
+  const setAccepting = (open: boolean) => {
+    myToggle.current = !open;
+    setNotice(null);
+    return act({ action: open ? "open" : "close" });
+  };
+  const closedSince =
+    s.closed && s.closedAt
+      ? new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Algiers", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(s.closedAt))
+      : null;
 
   const next = useCallback(async () => {
     if (await act({ action: "next", current: s.current?.id ?? null })) playSound("next");
@@ -134,7 +165,8 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
           type="button"
           role="switch"
           aria-checked={!s.closed}
-          onClick={() => act({ action: s.closed ? "open" : "close" })}
+          onClick={() => (s.closed ? setAccepting(true) : setStopAsk(true))}
+          data-testid="accepting-switch"
           disabled={busy}
           className={`inline-flex items-center gap-2.5 rounded-full py-1.5 ps-1.5 pe-4 text-sm font-semibold ring-1 transition ${
             s.closed ? "bg-rose-50 text-rose-800 ring-rose-200" : "bg-brand-50 text-brand-800 ring-brand-200"
@@ -143,7 +175,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
           <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${s.closed ? "bg-slate-300" : "bg-brand-500"}`}>
             <span className={`absolute size-5 rounded-full bg-white shadow transition-all ${s.closed ? "ltr:left-0.5 rtl:right-0.5" : "ltr:left-[22px] rtl:right-[22px]"}`} />
           </span>
-          {s.closed ? t(lang, "queueIsClosed") : t(lang, "queueIsOpen")}
+          {s.closed ? t(lang, "db_stopped") : t(lang, "db_accepting")}
         </button>
         <Chip>
           <Clock3 size={12} />
@@ -175,6 +207,29 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
         </span>
       </div>
 
+      {s.closed && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-rose-50 p-4 text-rose-900 ring-1 ring-rose-200" role="status" data-testid="stopped-banner">
+          <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-rose-600 text-white">
+            <Ban size={20} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold">{t(lang, "db_stoppedBanner")}</p>
+            <p className="text-sm text-rose-800/80">
+              {closedSince && (
+                <>
+                  {t(lang, "db_stoppedSince", { time: closedSince })}
+                  {s.closedBy && ` · ${t(lang, `db_by_${s.closedBy}`)}`}
+                  {" — "}
+                </>
+              )}
+              {t(lang, "db_stoppedKeep")}
+            </p>
+          </div>
+          <button type="button" className="btn bg-white text-rose-800 ring-1 ring-rose-300 hover:bg-rose-100" onClick={() => setAccepting(true)} disabled={busy}>
+            {t(lang, "db_reopen")}
+          </button>
+        </div>
+      )}
       {!s.shop.active && (
         <a
           href={canManage ? `/staff/${slug}/billing` : undefined}
@@ -198,7 +253,18 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
         <SoundGate lang={lang} />
       </div>
 
-      {newcomer && (
+      {notice && (
+        <button
+          type="button"
+          className={`fixed inset-x-3 top-3 z-50 mx-auto flex max-w-md animate-fade-up items-center gap-3 rounded-2xl p-4 text-start text-white shadow-(--shadow-lift) ${notice.stop ? "bg-rose-700" : "bg-brand-700"}`}
+          onClick={() => setNotice(null)}
+          data-testid="accepting-notice"
+        >
+          <span className="flex-1 font-semibold">{notice.text}</span>
+          <X size={18} className="opacity-60" />
+        </button>
+      )}
+      {newcomer && !notice && (
         <button
           type="button"
           className="fixed inset-x-3 top-3 z-50 mx-auto flex max-w-md animate-fade-up items-center gap-3 rounded-2xl bg-ink p-4 text-start text-white shadow-(--shadow-lift)"
@@ -501,6 +567,17 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
         </form>
       </Dialog>
 
+      <ConfirmDialog
+        open={stopAsk}
+        title={t(lang, "db_stopTitle")}
+        body={t(lang, "db_stopBody")}
+        confirmLabel={t(lang, "db_stopConfirm")}
+        cancelLabel={t(lang, "db_back")}
+        danger
+        onConfirm={() => setAccepting(false)}
+        onClose={() => setStopAsk(false)}
+        closeLabel={t(lang, "a11y_close")}
+      />
       <ConfirmDialog
         open={confirm !== null}
         title={
