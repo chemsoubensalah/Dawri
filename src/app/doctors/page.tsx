@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { ChevronLeft, ChevronRight, Clock3, Hourglass, MapPin, Search, Stethoscope, Users } from "lucide-react";
 import LangSwitch from "@/components/LangSwitch";
+import MyVisits from "@/components/MyVisits";
 import RatingBadge from "@/components/RatingBadge";
 import { Chip, Empty, LiveDot, Logo } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
@@ -127,6 +128,7 @@ export default async function DoctorsPage({ searchParams }: Props) {
           </Link>
           <LangSwitch lang={lang} />
         </header>
+        <MyVisits lang={lang} className="mb-6" />
 
         <div className="mb-5">
           <h1 className="text-2xl leading-snug font-bold tracking-tight text-ink sm:text-3xl">{t(lang, "rv_dirTitle")}</h1>

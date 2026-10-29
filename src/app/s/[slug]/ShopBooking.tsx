@@ -6,7 +6,7 @@ import { CalendarCheck2, CalendarPlus, ChevronLeft, ChevronRight, Clock3, DoorOp
 import { daysBetween, fmtDay } from "@/lib/domain/appointments";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
-import { api, ApiError, saveTicket, unlockAudio } from "@/lib/client";
+import { api, ApiError, loadFlow, saveTicket, savedTicket, unlockAudio } from "@/lib/client";
 import { forgetAppt, savedAppts, todayAlgiers } from "@/lib/appointments-client";
 import type { AppointmentView, BookingTeaser } from "@/lib/server/appointments";
 
@@ -46,13 +46,18 @@ export default function ShopBooking({
     if (!target) return;
     api<AppointmentView>(`/api/a/${target.id}`)
       .then((v) => {
-        if (v.status === "booked") setMine(v);
-        else forgetAppt(slug, v.id);
+        if (v.status !== "booked") return forgetAppt(slug, v.id);
+        setMine(v);
+        // عاد إلى رابط العيادة وله موعد قادم: نفتح موعده (كما تُفتح تذكرة اليوم) —
+        // إلّا إن جاء من صفحة موعده/تذكرته، أو له رقم اليوم، أو كان في منتصف أخذ رقم
+        const fromTicket = new URLSearchParams(location.search).get("from") === "ticket";
+        const midFlow = loadFlow<{ step?: string }>(`ticket:${slug}`)?.step;
+        if (!door && !fromTicket && !savedTicket(slug) && (!midFlow || midFlow === "form")) router.replace(`/a/${v.id}`);
       })
       .catch((e) => {
         if ((e as ApiError).status === 404) forgetAppt(slug, target.id);
       });
-  }, [slug, door]);
+  }, [slug, door, router]);
 
   // عند الباب وله موعد اليوم: بطاقة الوصول تحلّ محلّ نموذج أخذ رقم
   const atDoor = Boolean(door && mine && mine.day === mine.today && mine.window !== "late");

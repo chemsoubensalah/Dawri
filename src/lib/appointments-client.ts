@@ -34,6 +34,13 @@ export function savedAppts(slug: string): SavedAppt[] {
     .sort((a, b) => (a.day + a.time).localeCompare(b.day + b.time));
 }
 
+/** مواعيد كلّ العيادات على هذا الهاتف (لبطاقة «موعدك» في الصفحة الرئيسية)، الأقرب أوّلاً. */
+export function allSavedAppts(): (SavedAppt & { slug: string })[] {
+  return Object.keys(readAll())
+    .flatMap((slug) => savedAppts(slug).map((a) => ({ ...a, slug })))
+    .sort((a, b) => (a.day + a.time).localeCompare(b.day + b.time));
+}
+
 export function saveAppt(slug: string, a: SavedAppt) {
   try {
     const all = readAll();

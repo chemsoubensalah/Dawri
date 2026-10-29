@@ -42,7 +42,8 @@ export default function Dialog({
           <X size={20} />
         </button>
       </div>
-      <div className="p-5">{children}</div>
+      {/* المحتوى يُركَّب عند الفتح فقط: لا عناصر مخفيّة مكرّرة في الصفحة (عدّة نوافذ تأكيد) */}
+      <div className="p-5">{open ? children : null}</div>
     </dialog>
   );
 }

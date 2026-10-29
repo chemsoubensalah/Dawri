@@ -25,6 +25,7 @@ import {
   Wifi,
 } from "lucide-react";
 import LangSwitch from "@/components/LangSwitch";
+import MyVisits from "@/components/MyVisits";
 import { Chip, IconBubble, Logo, SectionTitle } from "@/components/ui";
 import { t, type DictKey } from "@/lib/i18n";
 import { getLang } from "@/lib/server/http";
@@ -164,6 +165,8 @@ export default async function Home() {
       </header>
 
       <main>
+        {/* مريض عاد إلى الموقع: رقمه أو موعده أوّلاً */}
+        <MyVisits lang={lang} className="mx-auto max-w-6xl px-4 pt-6" />
         {/* ——— البطل ——— */}
         <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pt-12 pb-16 md:grid-cols-[1.15fr_1fr] md:pt-20">
           <div className="animate-fade-up">

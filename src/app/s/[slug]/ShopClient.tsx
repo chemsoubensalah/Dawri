@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BellRing, CheckCircle2, Hourglass, KeyRound, Loader2, MessageCircle, Phone, QrCode, ShieldCheck, Ticket, User, Users } from "lucide-react";
 import ClinicCard from "@/components/ClinicCard";
@@ -8,12 +8,16 @@ import { reasonsFor } from "@/lib/domain/reasons";
 import { Stat } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
-import { api, ApiError, saveTicket, savedTicket, unlockAudio, usePoll } from "@/lib/client";
+import { api, ApiError, clearFlow, loadFlow, saveFlow, saveTicket, savedTicket, unlockAudio, usePoll } from "@/lib/client";
 import type { PublicShopView } from "@/lib/server/service";
 import type { BookingTeaser } from "@/lib/server/appointments";
 import ShopBooking from "./ShopBooking";
 
 const PROFILE = "dawri:profile";
+
+type WaStep = { id: string; link: string; code: string; expired?: boolean };
+/** ما كتبه المريض وأين وصل — يبقى إن خرج ليقرأ رسالته ثمّ عاد (src/lib/client.ts: loadFlow) */
+type Flow = { step: "form" | "code" | "wa"; name: string; phone: string; reason: string | null; devCode: string | null; wa: WaStep | null };
 
 function fmtWait(lang: Lang, min: number) {
   if (min <= 0) return t(lang, "sp_noWait");
@@ -33,25 +37,49 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
   const [reason, setReason] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"form" | "code" | "wa">("form");
-  const [wa, setWa] = useState<{ id: string; link: string; code: string; expired?: boolean } | null>(null);
+  const [wa, setWa] = useState<WaStep | null>(null);
   const [devCode, setDevCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [arrivedMsg, setArrivedMsg] = useState(false);
   const [recover, setRecover] = useState(false);
+  const flowKey = `ticket:${view.slug}`;
+  const restored = useRef(false);
+  const done = useRef(false);
 
   useEffect(() => {
     const id = savedTicket(view.slug);
     setMine(id);
     // تذكرة اليوم موجودة ولم يأتِ من رمز الباب ← نفتحها مباشرة
     const fromTicket = new URLSearchParams(location.search).get("from") === "ticket";
-    if (id && !door && !fromTicket) router.replace(`/t/${id}`);
+    if (id && !door && !fromTicket) {
+      router.replace(`/t/${id}`);
+      return;
+    }
     try {
       const p = JSON.parse(localStorage.getItem(PROFILE) ?? "{}");
       if (p.name) setName(p.name);
       if (p.phone) setPhone(p.phone);
     } catch {}
+    // عاد بعد أن خرج (ليقرأ رمز الرسالة، أو من واتساب): نكمل من حيث توقّف
+    const f = loadFlow<Flow>(`ticket:${view.slug}`);
+    if (f) {
+      if (f.name) setName(f.name);
+      if (f.phone) setPhone(f.phone);
+      if (f.reason) setReason(f.reason);
+      if (f.step === "code" || (f.step === "wa" && f.wa)) {
+        setDevCode(f.devCode ?? null);
+        setWa(f.wa ?? null);
+        setStep(f.step);
+      }
+    }
+    restored.current = true;
   }, [view.slug, door, router]);
+
+  useEffect(() => {
+    if (!restored.current || done.current) return;
+    saveFlow(flowKey, { step, name, phone, reason, devCode, wa } satisfies Flow);
+  }, [flowKey, step, name, phone, reason, devCode, wa]);
 
   usePoll(async () => setView(await api<PublicShopView>(`/api/s/${view.slug}`)), 20000);
 
@@ -81,6 +109,8 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
   }
 
   const finish = (ticketId: string) => {
+    done.current = true;
+    clearFlow(flowKey);
     saveTicket(view.slug, ticketId);
     try {
       sessionStorage.setItem("dawri:justTook", ticketId); // صفحة التذكرة تُصدر نغمة التأكيد

@@ -9,11 +9,14 @@ import { DayPills, TimeGrid } from "@/components/SlotPicker";
 import { fmtDay } from "@/lib/domain/appointments";
 import type { Lang, ShopKind, ShopProfile } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
-import { api, ApiError, unlockAudio, usePoll } from "@/lib/client";
+import { api, ApiError, clearFlow, loadFlow, saveFlow, unlockAudio, usePoll } from "@/lib/client";
 import { loadProfile, saveAppt, saveProfile } from "@/lib/appointments-client";
 import type { PublicAvailability } from "@/lib/server/appointments";
 
 const RETRY_SLOT = ["ap_slot_unavailable", "ap_day_full", "ap_invalid_slot"];
+
+/** الوقت المختار وما كتبه المريض — يبقى إن خرج (ليقرأ الرمز مثلاً) ثمّ عاد. */
+type Flow = { day: string | null; time: string | null; name: string; phone: string; reason: string | null; codeSent: boolean; devCode: string | null };
 
 export default function BookClient({
   lang,
@@ -43,11 +46,34 @@ export default function BookClient({
   const detailsRef = useRef<HTMLElement>(null);
   const Back = lang === "ar" ? ArrowRight : ArrowLeft;
 
+  const flowKey = `book:${slug}`;
+  const restored = useRef(false);
+  const done = useRef(false);
+
   useEffect(() => {
     const p = loadProfile();
     if (p.name) setName(p.name);
     if (p.phone) setPhone(p.phone);
-  }, []);
+    const f = loadFlow<Flow>(flowKey);
+    if (f) {
+      if (f.name) setName(f.name);
+      if (f.phone) setPhone(f.phone);
+      if (f.reason) setReason(f.reason);
+      if (f.day && f.time) {
+        setDay(f.day);
+        setTime(f.time);
+        setCodeSent(f.codeSent);
+        setDevCode(f.devCode);
+        requestAnimationFrame(() => detailsRef.current?.scrollIntoView({ block: "start" }));
+      }
+    }
+    restored.current = true;
+  }, [flowKey]);
+
+  useEffect(() => {
+    if (!restored.current || done.current) return;
+    saveFlow(flowKey, { day, time, name, phone, reason, codeSent, devCode } satisfies Flow);
+  }, [flowKey, day, time, name, phone, reason, codeSent, devCode]);
 
   // الأوقات تتغيّر بحجوزات الآخرين: تحديث كلّ دقيقة (رخيص ومخزَّن في الـCDN)
   usePoll(async () => {
@@ -109,6 +135,8 @@ export default function BookClient({
 
   const doBook = async () => {
     const r = await api<{ appointmentId: string; existing: boolean }>(`/api/s/${slug}/booking`, { name, phone, reason, code, day, time, lang });
+    done.current = true;
+    clearFlow(flowKey);
     saveAppt(slug, { id: r.appointmentId, day: day!, time: time! });
     saveProfile(name, phone);
     try {

@@ -1,11 +1,13 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
-let phoneSeq = 20;
+// هواتف فريدة في كلّ تشغيل (الخادم يحتفظ بتذاكر التشغيلات/العمّال السابقة)
+let phoneSeq = 100000 + (Date.now() % 800000);
 
 async function takeNumber(page: Page, name: string, url = "/s/demo") {
   await page.goto(url);
   await page.getByLabel("اسمك").fill(name);
-  await page.getByLabel("رقم هاتفك").fill(`0661 00 00 ${phoneSeq++}`);
+  await page.getByLabel("رقم هاتفك").fill(`0661 ${phoneSeq++}`);
+  await page.getByLabel("كشف / استشارة").check();
   await page.getByRole("button", { name: "أرسل رمز التحقّق" }).click();
   const code = await page.locator("b.num").first().textContent();
   await page.getByLabel("رمز التحقّق").fill(code!.trim());
@@ -152,4 +154,26 @@ test("نسيت الرمز السرّي: الرابط يُطلب من صفحة ا
   await page.getByTestId("reset-save").click();
   await expect(page.locator("form [role=alert]")).toContainText("منتهي الصلاحية");
   await page.screenshot({ path: "test-results/reset.png" });
+});
+
+test("المريض يخرج ليقرأ الرمز ثمّ يعود: يجد خطوته كما تركها", async ({ browser }) => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto("/s/demo");
+  await page.getByLabel("اسمك").fill("عائد");
+  await page.getByLabel("رقم هاتفك").fill(`0661 ${phoneSeq++}`);
+  await page.getByLabel("مراجعة (متابعة)").check();
+  await page.getByRole("button", { name: "أرسل رمز التحقّق" }).click();
+  const code = (await page.locator("b.num").first().textContent())!.trim();
+  await page.close();
+  const back = await ctx.newPage();
+  await back.goto("/s/demo");
+  await back.getByLabel("رمز التحقّق").fill(code);
+  await back.getByRole("button", { name: "تأكيد وأخذ الرقم" }).click();
+  await back.waitForURL(/\/t\//);
+  await expect(back.getByTestId("ticket-reason")).toContainText("مراجعة");
+  // الصفحة الرئيسية تدلّه على رقمه
+  await back.goto("/");
+  await expect(back.getByTestId("my-visits")).toContainText("رقمك اليوم");
+  await ctx.close();
 });

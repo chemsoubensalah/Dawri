@@ -209,3 +209,49 @@ export function playSound(sound: Sound) {
     } catch {}
   }
 }
+
+/** كلّ تذاكر اليوم المحفوظة على هذا الهاتف (كلّ العيادات) — لبطاقة «رقمك اليوم» في الصفحة الرئيسية. */
+export function savedTicketsToday(): { slug: string; id: string }[] {
+  try {
+    const all = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Record<string, Saved>;
+    const d = today();
+    return Object.entries(all)
+      .filter(([, s]) => s && typeof s.id === "string" && s.day === d)
+      .map(([slug, s]) => ({ slug, id: s.id }));
+  } catch {
+    return [];
+  }
+}
+
+// ——— خطوة لم تكتمل (نموذج، رمز SMS، واتساب) ———
+// المريض يخرج ليقرأ رسالته أو يفتح واتساب، والمتصفّح قد يعيد تحميل الصفحة أو يغلقها:
+// نحفظ ما كتبه وأين وصل، فيجده كما تركه حين يعود (خلال 20 دقيقة).
+
+const FLOW_TTL_MS = 20 * 60_000;
+
+export function loadFlow<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(`dawri:flow:${key}`);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as { at?: number; data?: T };
+    if (!v || typeof v.at !== "number" || Date.now() - v.at > FLOW_TTL_MS || v.data == null) {
+      localStorage.removeItem(`dawri:flow:${key}`);
+      return null;
+    }
+    return v.data;
+  } catch {
+    return null;
+  }
+}
+
+export function saveFlow(key: string, data: unknown) {
+  try {
+    localStorage.setItem(`dawri:flow:${key}`, JSON.stringify({ at: Date.now(), data }));
+  } catch {}
+}
+
+export function clearFlow(key: string) {
+  try {
+    localStorage.removeItem(`dawri:flow:${key}`);
+  } catch {}
+}

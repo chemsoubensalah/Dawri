@@ -1,10 +1,10 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bookmark, CalendarCheck2, CalendarPlus, CalendarX2, CheckCircle2, Clock3, DoorOpen, PartyPopper, Share2, Ticket, XCircle } from "lucide-react";
+import { Bookmark, CalendarCheck2, CalendarPlus, CalendarX2, CheckCircle2, Clock3, DoorOpen, Download, ImageDown, PartyPopper, Share2, Ticket, XCircle } from "lucide-react";
 import ClinicCard from "@/components/ClinicCard";
-import { ConfirmDialog } from "@/components/Dialog";
+import Dialog, { ConfirmDialog } from "@/components/Dialog";
 import { Chip } from "@/components/ui";
 import { daysBetween, fmtDay } from "@/lib/domain/appointments";
 import type { Lang } from "@/lib/domain/types";
@@ -12,6 +12,7 @@ import { drTitle, errorText, reasonText, t, tn } from "@/lib/i18n";
 import { googleCalendarUrl } from "@/lib/ics";
 import { api, ApiError, playSound, saveTicket, unlockAudio, usePoll } from "@/lib/client";
 import { forgetAppt, saveAppt } from "@/lib/appointments-client";
+import { appointmentImage } from "@/lib/appt-image";
 import type { AppointmentView } from "@/lib/server/appointments";
 
 function relative(lang: Lang, v: AppointmentView, nowMs: number): string {
@@ -25,9 +26,11 @@ function relative(lang: Lang, v: AppointmentView, nowMs: number): string {
   return `${t(lang, "ap_today")} · ${t(lang, "ap_inTime", { t: span })}`;
 }
 
+const yearSuffix = (v: AppointmentView) => (v.day.slice(0, 4) !== v.today.slice(0, 4) ? ` ${v.day.slice(0, 4)}` : "");
+
 /** ملخّص الموعد كاملاً (يصلح للقطة شاشة): الاسم، الهاتف، السبب، التاريخ والساعة، الطبيب والعنوان. */
 function AppointmentDetails({ lang, v }: { lang: Lang; v: AppointmentView }) {
-  const year = v.day.slice(0, 4) !== v.today.slice(0, 4) ? ` ${v.day.slice(0, 4)}` : "";
+  const year = yearSuffix(v);
   const rows: [string, React.ReactNode, string?][] = [
     [t(lang, "ap_dtName"), v.name],
     ...(v.phone ? [[t(lang, "ap_dtPhone"), <span key="p" dir="ltr" className="num">{v.phone}</span>] as [string, React.ReactNode]] : []),
@@ -63,6 +66,9 @@ export default function AppointmentClient({ lang, initial, door }: { lang: Lang;
   const [just, setJust] = useState<"new" | "existing" | null>(null);
   const [android, setAndroid] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [img, setImg] = useState<{ url: string; name: string; file: File; canShare: boolean } | null>(null);
+  const [imgBusy, setImgBusy] = useState(false);
+  const cardRef = useRef<HTMLElement>(null);
   // ساعة الخادم (هواتف كثيرة ساعتها خاطئة): الفرق يُحسب بعد التحميل
   const [nowMs, setNowMs] = useState(() => Date.parse(initial.serverTime));
   const [pageUrl, setPageUrl] = useState<string | undefined>(undefined);
@@ -118,6 +124,48 @@ export default function AppointmentClient({ lang, initial, door }: { lang: Lang;
     }
   }
 
+  /** صورة الموعد للحفظ في معرض الصور (تُرسم على الهاتف) */
+  async function saveImage() {
+    setImgBusy(true);
+    setError("");
+    try {
+      const blob = await appointmentImage({
+        rtl: lang === "ar",
+        themeFrom: cardRef.current ?? document.body,
+        shop: v.shop.name,
+        title: t(lang, "ap_yourAppt"),
+        date: `${fmtDay(lang, v.day)}${yearSuffix(v)}`,
+        time: v.time,
+        rows: [
+          [t(lang, "ap_dtName"), v.name],
+          ...(v.phone ? [[t(lang, "ap_dtPhone"), v.phone, true] as [string, string, boolean]] : []),
+          ...(v.reason ? [[t(lang, "vr_label"), reasonText(lang, v.reason) ?? ""] as [string, string]] : []),
+          [t(lang, "ap_dtDoctor"), drTitle(lang, v.shop.kind, v.shop.profile.doctorName) ?? v.shop.name],
+          ...(v.shop.profile.address ? [[t(lang, "ap_dtAddress"), v.shop.profile.address] as [string, string]] : []),
+          ...(v.shop.profile.phone ? [[t(lang, "ap_dtClinicPhone"), v.shop.profile.phone, true] as [string, string, boolean]] : []),
+        ],
+        url: `${location.origin}/a/${v.id}`,
+        scanText: t(lang, "ap_imgScan"),
+        footer: "دوري — Dawri",
+      });
+      const name = `dawri-${v.day}-${v.time.replace(":", "h")}.png`;
+      const file = new File([blob], name, { type: "image/png" });
+      if (img) URL.revokeObjectURL(img.url);
+      setImg({ url: URL.createObjectURL(blob), name, file, canShare: Boolean(navigator.canShare?.({ files: [file] })) });
+    } catch {
+      setError(t(lang, "ap_imgFail"));
+    } finally {
+      setImgBusy(false);
+    }
+  }
+
+  async function shareImage() {
+    if (!img) return;
+    try {
+      await navigator.share({ files: [img.file], title: `${v.shop.name} — ${fmtDay(lang, v.day)} ${v.time}` });
+    } catch {}
+  }
+
   async function share() {
     const url = location.href.split("?")[0];
     try {
@@ -164,7 +212,7 @@ export default function AppointmentClient({ lang, initial, door }: { lang: Lang;
       )}
 
       {/* ——— بطاقة الموعد ——— */}
-      <section className="overflow-hidden rounded-[1.75rem] bg-white shadow-(--shadow-lift) ring-1 ring-slate-200/70" aria-live="polite" data-testid="appointment">
+      <section ref={cardRef} className="overflow-hidden rounded-[1.75rem] bg-white shadow-(--shadow-lift) ring-1 ring-slate-200/70" aria-live="polite" data-testid="appointment">
         <div className={`relative bg-gradient-to-br ${band} px-6 pt-5 pb-7 text-white`}>
           <div className="flex items-center justify-between gap-2 text-sm">
             <span className="flex min-w-0 items-center gap-1.5 font-semibold opacity-90">
@@ -239,13 +287,23 @@ export default function AppointmentClient({ lang, initial, door }: { lang: Lang;
           )}
 
           {booked && (
-            <div className="space-y-2">
+            <div className="space-y-2" data-testid="save-appt">
+              <div className="pt-1 text-center text-sm font-bold text-slate-700">{t(lang, "ap_saveTitle")}</div>
+              <button
+                type="button"
+                className={`${v.canCheckin ? "btn-secondary" : "btn-primary"} w-full`}
+                onClick={saveImage}
+                disabled={imgBusy}
+                data-testid="save-image"
+              >
+                <ImageDown size={18} /> {imgBusy ? "…" : t(lang, "ap_saveImage")}
+              </button>
               <a
                 href={android ? gcal : ics}
                 target={android ? "_blank" : undefined}
                 rel={android ? "noopener noreferrer" : undefined}
                 download={android ? undefined : true}
-                className={`${v.canCheckin ? "btn-secondary" : "btn-primary"} w-full`}
+                className="btn-secondary w-full"
                 data-testid="add-calendar"
               >
                 <CalendarPlus size={18} /> {t(lang, "ap_addCal")}
@@ -277,11 +335,43 @@ export default function AppointmentClient({ lang, initial, door }: { lang: Lang;
         )}
       </div>
 
+      {v.canCancel && (
+        <a href={`/s/${v.shop.slug}?from=ticket`} className="block text-center text-sm font-semibold text-brand-700 hover:underline">
+          {t(lang, "ap_backClinic")}
+        </a>
+      )}
+
       {booked && (
         <p className="flex items-start justify-center gap-2 text-center text-xs leading-relaxed text-slate-500">
           <Bookmark size={14} className="mt-0.5 shrink-0" /> {t(lang, "ap_screenshot")}
         </p>
       )}
+
+      <Dialog
+        open={img !== null}
+        onClose={() => {
+          if (img) URL.revokeObjectURL(img.url);
+          setImg(null);
+        }}
+        title={t(lang, "ap_saveTitle")}
+        closeLabel={t(lang, "a11y_close")}
+      >
+        {img && (
+          <div className="space-y-3" data-testid="appt-image">
+            {/* eslint-disable-next-line @next/next/no-img-element -- صورة محلّية (blob) */}
+            <img src={img.url} alt={`${fmtDay(lang, v.day)} ${v.time}`} className="mx-auto max-h-[55vh] w-auto rounded-2xl ring-1 ring-slate-200" />
+            <p className="text-center text-xs leading-relaxed text-slate-500">{t(lang, "ap_saveImageHint")}</p>
+            <a href={img.url} download={img.name} className="btn-primary w-full" data-testid="download-image">
+              <Download size={18} /> {t(lang, "ap_download")}
+            </a>
+            {img.canShare && (
+              <button type="button" className="btn-secondary w-full" onClick={shareImage}>
+                <Share2 size={18} /> {t(lang, "ap_shareImage")}
+              </button>
+            )}
+          </div>
+        )}
+      </Dialog>
 
       <ConfirmDialog
         open={askCancel}
