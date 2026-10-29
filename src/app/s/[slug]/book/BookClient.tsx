@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, CalendarCheck2, CalendarDays, CalendarX2, Clock3, KeyRound, Phone, ShieldCheck, User } from "lucide-react";
 import ClinicCard from "@/components/ClinicCard";
 import ReasonPicker from "@/components/ReasonPicker";
+import type { ReasonConfig } from "@/lib/domain/reasons";
 import { DayPills, TimeGrid } from "@/components/SlotPicker";
 import { fmtDay } from "@/lib/domain/appointments";
 import type { Lang, ShopKind, ShopProfile } from "@/lib/domain/types";
@@ -27,7 +28,7 @@ export default function BookClient({
 }: {
   lang: Lang;
   slug: string;
-  shop: { name: string; kind: ShopKind; profile: ShopProfile };
+  shop: { name: string; kind: ShopKind; profile: ShopProfile; reason: ReasonConfig };
   initial: PublicAvailability | null;
   error: string | null;
 }) {
@@ -293,7 +294,7 @@ export default function BookClient({
                     />
                   </div>
                 </div>
-                <ReasonPicker lang={lang} kind={shop.kind} value={reason} onChange={setReason} required idPrefix="bk-reason" />
+                <ReasonPicker lang={lang} config={shop.reason} value={reason} onChange={setReason} required={shop.reason.required} idPrefix="bk-reason" />
               </>
             ) : (
               <>

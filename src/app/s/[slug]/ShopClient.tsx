@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { BellRing, CheckCircle2, Hourglass, KeyRound, Loader2, MessageCircle, Phone, QrCode, ShieldCheck, Ticket, User, Users } from "lucide-react";
 import ClinicCard from "@/components/ClinicCard";
 import ReasonPicker from "@/components/ReasonPicker";
-import { reasonsFor } from "@/lib/domain/reasons";
 import { Stat } from "@/components/ui";
 import { OPEN_STATUSES, type Lang } from "@/lib/domain/types";
 import { aheadText, errorText, t } from "@/lib/i18n";
@@ -132,7 +131,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
 
   // زرّ «عبر الرسالة» خارج إرسال النموذج: لا يمرّ بتحقّق المتصفّح
   const missingReason = () => {
-    if (recover || !reasonsFor(view.kind).length || reason) return false;
+    if (recover || view.reason.mode === "off" || !view.reason.required || reason?.trim()) return false;
     setError(errorText(lang, "invalid_reason"));
     return true;
   };
@@ -301,7 +300,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
               {recover ? (
                 <p className="text-sm text-slate-600">{t(lang, "sp_recoverHint")}</p>
               ) : (
-                <ReasonPicker lang={lang} kind={view.kind} value={reason} onChange={setReason} required />
+                <ReasonPicker lang={lang} config={view.reason} value={reason} onChange={setReason} required={view.reason.required} />
               )}
               {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
               {view.waVerify && view.verifyPhone ? (

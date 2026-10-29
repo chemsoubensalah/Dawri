@@ -55,7 +55,7 @@ import { getSms } from "./sms";
 import { clinicSendsCodes, codeSender } from "./smsgate";
 import { shortCode } from "./whatsapp";
 import { phoneCheckRequired } from "./verify";
-import { cleanReason } from "../domain/reasons";
+import { activeReasonConfig, cleanReason, reasonConfigOf } from "../domain/reasons";
 
 const DAY_MS = 86_400_000;
 /**
@@ -313,7 +313,7 @@ export async function bookOnline(
   const { shop, settings } = await bookableShop(db, slug, now);
   const name = cleanName(body.name);
   const phone = requirePhone(body.phone);
-  const reason = cleanReason(shop.kind, body.reason);
+  const reason = cleanReason(reasonConfigOf(shop), body.reason);
   const { day, time } = slotInput(body, settings, now);
   const codeId = await checkCode(db, shop, phone, body.code, now);
   // بلا رمز (لا وسيلة تحقّق): حدّ لكلّ شبكة بدل الرمز
@@ -707,7 +707,7 @@ export async function deskAvailability(shop: Shop) {
   const today = dayKey(now);
   const s = await ar.getSettings(db, shop.id);
   const counts = await ar.activeCounts(db, shop.id, today, addDays(today, s.daysAhead));
-  return { today, kind: shop.kind, slotMin: s.slotMin, perSlot: s.perSlot, days: availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "desk" }) };
+  return { today, reason: activeReasonConfig(reasonConfigOf(shop)), slotMin: s.slotMin, perSlot: s.perSlot, days: availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "desk" }) };
 }
 
 export type DeskAvailability = Awaited<ReturnType<typeof deskAvailability>>;
@@ -728,7 +728,7 @@ export async function staffAppointmentAction(
       const phone = body.phone ? requirePhone(body.phone) : null;
       const s = await ar.getSettings(await getDb(), shop.id);
       const { day, time } = slotInput(body, s, now);
-      const r = await bookCore(shop, { name, phone, day, time, reason: cleanReason(shop.kind, body.reason), lang: shop.defaultLang, source: "desk" }, now);
+      const r = await bookCore(shop, { name, phone, day, time, reason: cleanReason(reasonConfigOf(shop), body.reason), lang: shop.defaultLang, source: "desk" }, now);
       return { ok: true, id: r.id };
     }
     case "checkin": {

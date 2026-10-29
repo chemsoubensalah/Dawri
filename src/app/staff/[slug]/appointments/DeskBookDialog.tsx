@@ -109,7 +109,7 @@ export default function DeskBookDialog({
           </div>
           {av && (
             <div className="sm:col-span-2">
-              <ReasonPicker lang={lang} kind={av.kind} value={reason} onChange={setReason} idPrefix="ap-reason" />
+              <ReasonPicker lang={lang} config={av.reason} value={reason} onChange={setReason} idPrefix="ap-reason" />
             </div>
           )}
         </div>

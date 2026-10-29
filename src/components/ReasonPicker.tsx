@@ -1,38 +1,67 @@
 "use client";
 import { Stethoscope } from "lucide-react";
-import { reasonsFor } from "@/lib/domain/reasons";
-import type { Lang, ShopKind } from "@/lib/domain/types";
-import { reasonText, t } from "@/lib/i18n";
+import { REASON_TEXT_MAX, type ReasonConfig } from "@/lib/domain/reasons";
+import type { Lang } from "@/lib/domain/types";
+import { t } from "@/lib/i18n";
 
 /**
- * سبب الزيارة: أزرار كبيرة (أسهل من قائمة منسدلة لكبار السنّ).
- * required: نموذج المريض لا يُرسل دون اختيار (تحقّق المتصفّح الأصلي).
- * لا شيء يُعرض لأنواع لا أسباب لها (حلّاق…).
+ * سبب الزيارة كما قرّره الطبيب (الإعدادات ← «سبب الزيارة»):
+ * list = أزرار كبيرة بالاختيارات التي كتبها (أسهل من قائمة منسدلة لكبار السنّ)، text = نصّ قصير يكتبه المريض.
+ * required: النموذج لا يُرسل دون جواب (تحقّق المتصفّح الأصلي). السكرتيرة: دائماً اختياري.
  */
 export default function ReasonPicker({
   lang,
-  kind,
+  config,
   value,
   onChange,
   required = false,
   idPrefix = "reason",
+  preview = false,
 }: {
   lang: Lang;
-  kind: ShopKind;
+  config: ReasonConfig;
   value: string | null;
   onChange: (v: string | null) => void;
   required?: boolean;
   idPrefix?: string;
+  /** معاينة داخل نموذج الإعدادات: يبدو إجبارياً دون أن يمنع حفظ النموذج */
+  preview?: boolean;
 }) {
-  const list = reasonsFor(kind);
-  if (!list.length) return null;
+  const block = required && !preview;
+  if (config.mode === "off" || (config.mode === "list" && !config.options.length)) return null;
+  const legend = (
+    <>
+      <Stethoscope size={15} className="text-brand-600" /> {t(lang, required ? "vr_label" : "vr_labelOptional")}
+    </>
+  );
+  const hint = required && <p className="mt-1.5 text-xs text-slate-500">{t(lang, "vr_private")}</p>;
+
+  if (config.mode === "text") {
+    return (
+      <div data-testid={`${idPrefix}-picker`}>
+        <label className="label flex items-center gap-1.5" htmlFor={`${idPrefix}-text`}>
+          {legend}
+        </label>
+        <textarea
+          id={`${idPrefix}-text`}
+          className="input min-h-14 resize-none py-2.5 leading-relaxed"
+          rows={2}
+          maxLength={REASON_TEXT_MAX}
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value || null)}
+          placeholder={t(lang, "vr_textPh")}
+          required={block}
+        />
+        {hint}
+      </div>
+    );
+  }
+
   return (
     <fieldset data-testid={`${idPrefix}-picker`}>
-      <legend className="label flex items-center gap-1.5">
-        <Stethoscope size={15} className="text-brand-600" /> {t(lang, required ? "vr_label" : "vr_labelOptional")}
-      </legend>
+      <legend className="label flex items-center gap-1.5">{legend}</legend>
       <div className="grid grid-cols-2 gap-2">
-        {list.map((r) => (
+        {config.options.map((r) => (
           <label
             key={r}
             className="flex min-h-12 cursor-pointer items-center gap-2 rounded-2xl bg-white px-3 py-2 text-sm leading-snug font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:ring-brand-300 has-checked:bg-brand-50 has-checked:text-brand-900 has-checked:ring-2 has-checked:ring-brand-500"
@@ -44,14 +73,14 @@ export default function ReasonPicker({
               checked={value === r}
               onChange={() => onChange(r)}
               onClick={() => !required && value === r && onChange(null)}
-              required={required}
+              required={block}
               className="size-4 shrink-0 accent-brand-600"
             />
-            {reasonText(lang, r)}
+            <span className="min-w-0 break-words">{r}</span>
           </label>
         ))}
       </div>
-      {required && <p className="mt-1.5 text-xs text-slate-500">{t(lang, "vr_private")}</p>}
+      {hint}
     </fieldset>
   );
 }

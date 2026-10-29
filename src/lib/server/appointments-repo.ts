@@ -204,7 +204,7 @@ export async function insertApptNoShow(q: Q, shopId: string, phone: string, appt
 /** يمحو الاسم والهاتف من المواعيد التي مضى على تاريخها 30 يوماً. */
 export async function anonymizeBefore(q: Q, day: string): Promise<number> {
   const rows = await q.query(
-    "update appointments set name = '—', phone = null where day < $1 and (phone is not null or name <> '—') returning id",
+    "update appointments set name = '—', phone = null, reason = null where day < $1 and (phone is not null or name <> '—' or reason is not null) returning id",
     [day],
   );
   return rows.length;

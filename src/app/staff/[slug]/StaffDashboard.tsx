@@ -6,7 +6,7 @@ import ReasonPicker from "@/components/ReasonPicker";
 import SoundGate from "@/components/SoundGate";
 import { Avatar, Chip, Empty, LiveDot, Stat } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
-import { errorText, t, tn } from "@/lib/i18n";
+import { errorText, reasonText, t, tn } from "@/lib/i18n";
 import { api, ApiError, playSound, usePoll } from "@/lib/client";
 import type { StaffState } from "@/lib/server/service";
 import TodayAppointments, { ApptBadge } from "./appointments/TodayAppointments";
@@ -145,9 +145,9 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   const [patientUrl, setPatientUrl] = useState(`/s/${slug}`);
   useEffect(() => setPatientUrl(`${location.origin}/s/${slug}`), [slug]);
 
-  const badges = (r: Row | NonNullable<StaffState["current"]>) => (
+  const badges = (r: Row | NonNullable<StaffState["current"]>, withReason = true) => (
     <span className="flex flex-wrap gap-1">
-      <ReasonChip lang={lang} reason={r.reason} />
+      {withReason && <ReasonChip lang={lang} reason={r.reason} />}
       {r.priority && <ApptBadge lang={lang} />}
       {r.arrived && (
         <Chip tone="green">
@@ -314,12 +314,17 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                 </div>
                 <div className="min-w-0 space-y-1.5">
                   <div className="truncate text-2xl font-bold">{cur.name}</div>
+                  {cur.reason && (
+                    <p className="line-clamp-3 text-sm leading-snug text-slate-200" data-testid="current-reason">
+                      {reasonText(lang, cur.reason)}
+                    </p>
+                  )}
                   {cur.phone && (
                     <div className="num flex items-center gap-1.5 text-slate-300" dir="ltr">
                       <Phone size={14} /> {cur.phone}
                     </div>
                   )}
-                  {badges(cur)}
+                  {badges(cur, false)}
                 </div>
               </div>
             ) : (
@@ -569,7 +574,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
             <input id="add-phone" className="input num text-start" dir="ltr" type="tel" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} placeholder="0550 12 34 56" />
             <p className="mt-1.5 text-xs text-slate-500">{t(lang, "db_addPhoneHint")}</p>
           </div>
-          <ReasonPicker lang={lang} kind={s.shop.kind} value={addReason} onChange={setAddReason} idPrefix="add-reason" />
+          <ReasonPicker lang={lang} config={s.shop.reason} value={addReason} onChange={setAddReason} idPrefix="add-reason" />
           <label className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 text-slate-700">
             <input type="checkbox" className="size-5 accent-brand-600" checked={addPresent} onChange={(e) => setAddPresent(e.target.checked)} />
             {t(lang, "presentNow")}

@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { activeReasonConfig, reasonConfigOf } from "@/lib/domain/reasons";
 import type { Metadata } from "next";
 import { DomainError } from "@/lib/domain/types";
 import { t } from "@/lib/i18n";
@@ -42,7 +43,7 @@ export default async function BookPage({ params, searchParams }: Props) {
       <BookClient
         lang={lang}
         slug={shop.slug}
-        shop={{ name: shop.name, kind: shop.kind, profile: shop.profile }}
+        shop={{ name: shop.name, kind: shop.kind, profile: shop.profile, reason: activeReasonConfig(reasonConfigOf(shop)) }}
         initial={initial}
         error={error}
       />

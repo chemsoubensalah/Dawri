@@ -7,7 +7,7 @@ import { dayKey, isValidHours, isWithinHours, localTime, minutesBetween, nextOpe
 import { formatPhone, normalizePhone } from "../domain/phone";
 import { isWilaya } from "../domain/wilayas";
 import { isDayOff } from "../domain/daysoff";
-import { cleanReason } from "../domain/reasons";
+import { activeReasonConfig, cleanReason, reasonConfigOf } from "../domain/reasons";
 import { sameName } from "../domain/names";
 import { publicRating } from "./reviews";
 import { getTvMessages } from "./tvmessages";
@@ -322,6 +322,8 @@ export async function publicShop(slug: string) {
       waiting,
       avgServiceMin: Math.round(avg),
       verifyPhone: await phoneCheckRequired(shop.id, { whatsapp: true }),
+      /** كيف يُسأل المريض عن سبب زيارته (إعداد الطبيب) */
+      reason: activeReasonConfig(reasonConfigOf(shop)),
       waVerify: waConfig().enabled,
       smsVerify: getSms() !== null || (await clinicSendsCodes(shop.id)),
       nextNumbers: lineup(tickets)
@@ -404,7 +406,7 @@ export async function takeTicket(
   const shop = await shopOr404(db, slug);
   const name = cleanName(body.name);
   const phone = requirePhone(body.phone);
-  const reason = cleanReason(shop.kind, body.reason);
+  const reason = cleanReason(reasonConfigOf(shop), body.reason);
   const now = clockNow();
   const verified = await phoneCheckRequired(shop.id, { whatsapp: true });
   if (verified) await verifyCode(db, shop, phone, body.code, now);
@@ -495,7 +497,7 @@ export async function startWaVerification(
   const shop = await shopOr404(db, slug);
   const name = cleanName(body.name);
   const phone = requirePhone(body.phone);
-  const reason = cleanReason(shop.kind, body.reason);
+  const reason = cleanReason(reasonConfigOf(shop), body.reason);
   const now = clockNow();
   const qd = await repo.getDay(db, shop.id, dayKey(now));
   const existing = await repo.findTicketByPhone(db, shop.id, dayKey(now), phone);
@@ -831,6 +833,7 @@ export async function staffState(shop: Shop) {
       callGraceMin: shop.settings.callGraceMin,
       profileComplete: Boolean(shop.profile.address || shop.profile.phone || shop.profile.doctorName),
       hasEmail: Boolean(shop.ownerEmail),
+      reason: activeReasonConfig(reasonConfigOf(shop)),
     },
     closed,
     // «إيقاف استقبال مرضى جدد»: متى ومن (يظهر في لوحة الطبيب والسكرتيرة معاً)
@@ -874,7 +877,7 @@ export async function staffAction(
   if (action === "add") {
     const name = cleanName(body.name);
     const phone = body.phone ? requirePhone(body.phone) : null;
-    const reason = cleanReason(shop.kind, body.reason);
+    const reason = cleanReason(reasonConfigOf(shop), body.reason);
     const present = body.present !== false;
     const { result } = await mutate(shop, async ({ q, now, day, tickets }) => {
       if (phone && tickets.some((t) => t.phone === phone)) throw new DomainError("already_has_ticket", 409);

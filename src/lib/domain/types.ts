@@ -200,6 +200,8 @@ export interface Shop {
   clinicSlug?: string | null;
   /** أيّام العطل: لا أرقام ولا مواعيد (020_days_off) — src/lib/domain/daysoff.ts */
   daysOff: DayOff[];
+  /** إعداد «سبب الزيارة» كما حُفظ (null = افتراضي) — اقرأه بـ reasonConfigOf (src/lib/domain/reasons.ts) */
+  reasonCfg?: unknown;
 }
 
 export interface DayOff {

@@ -17,7 +17,10 @@ import { claimRate, clientIp, ipBucket, IP_LIMITS, rateCount } from "@/lib/serve
 import { estimateWaitMinutes, initialFlags, lineup, nextEligible, peopleAhead, planNext } from "@/lib/domain/queue";
 import { addDays, availability, checkinWindow, daySlots, DEFAULT_BOOKING, slotInstant } from "@/lib/domain/appointments";
 import { cleanDaysOff, dayRange, upcomingFixedHolidays } from "@/lib/domain/daysoff";
-import { cleanReason, reasonsFor } from "@/lib/domain/reasons";
+import { activeReasonConfig, cleanReason, cleanReasonConfig, defaultReasonConfig, readReasonConfig } from "@/lib/domain/reasons";
+import { saveReasonSettings } from "@/lib/server/reason-settings";
+import * as apr from "@/lib/server/appointments-repo";
+import { reasonText } from "@/lib/i18n";
 import { daysOffView, saveDaysOff } from "@/lib/server/daysoff";
 import { buildIcs, foldLine } from "@/lib/ics";
 import { DEFAULT_SETTINGS, DomainError, type Shop, type Ticket } from "@/lib/domain/types";
@@ -839,45 +842,84 @@ describe("أيّام العطل", () => {
   });
 });
 
-describe("سبب الزيارة", () => {
-  it("قائمة ثابتة حسب نوع العيادة، بلا نصّ حرّ", () => {
-    expect(reasonsFor("doctor")).toContain("certificate");
-    expect(reasonsFor("lab")).toEqual(["sample", "pickup", "other"]);
-    expect(reasonsFor("barber")).toEqual([]);
-    expect(cleanReason("doctor", "consult")).toBe("consult");
-    expect(cleanReason("doctor", undefined)).toBeNull();
-    expect(cleanReason("doctor", "")).toBeNull();
-    for (const [kind, v] of [
-      ["doctor", "pickup"],
-      ["doctor", "ألم في الصدر"],
-      ["lab", "consult"],
-      ["barber", "other"],
-      ["doctor", 5],
-    ] as const) {
-      expect(() => cleanReason(kind, v), `${kind}:${v}`).toThrow("invalid_reason");
-    }
+describe("سبب الزيارة (يقرّره الطبيب)", () => {
+  const LIST = { mode: "list" as const, required: true, options: ["كشف عامّ", "مراجعة"] };
+
+  it("قواعد صافية: الإعداد الافتراضي، القائمة، النصّ الحرّ", () => {
+    expect(defaultReasonConfig("doctor")).toEqual({ mode: "text", required: true, options: [] });
+    expect(defaultReasonConfig("barber").mode).toBe("off");
+    expect(readReasonConfig("doctor", { mode: "list", options: ["أ"], required: false })).toEqual({ mode: "list", required: false, options: ["أ"] });
+    expect(readReasonConfig("dentist", "garbage")).toEqual(defaultReasonConfig("dentist"));
+    // قائمة: اختيارات الطبيب فقط
+    expect(cleanReason(LIST, " مراجعة ")).toBe("مراجعة");
+    expect(() => cleanReason(LIST, "ألم في الصدر")).toThrow("invalid_reason");
+    expect(cleanReason(LIST, "")).toBeNull();
+    // نصّ حرّ: قصير ونظيف
+    const TEXT = defaultReasonConfig("doctor");
+    expect(cleanReason(TEXT, "  ألم   في الظهر\u202e ")).toBe("ألم في الظهر");
+    expect(() => cleanReason(TEXT, "x".repeat(121))).toThrow("reason_too_long");
+    expect(() => cleanReason(TEXT, 5)).toThrow("invalid_reason");
+    // لا سؤال: أيّ قيمة تُتجاهل؛ وقائمة فارغة = لا سؤال
+    expect(cleanReason({ mode: "off", required: true, options: [] }, "شيء")).toBeNull();
+    expect(activeReasonConfig({ mode: "list", required: true, options: [] }).mode).toBe("off");
+    // إعداد الطبيب من صفحة الإعدادات
+    expect(cleanReasonConfig({ mode: "list", required: false, options: [" أ ", "أ", "ب"] })).toEqual({ mode: "list", required: false, options: ["أ", "ب"] });
+    expect(() => cleanReasonConfig({ mode: "list", required: true, options: [] })).toThrow("reason_no_options");
+    expect(() => cleanReasonConfig({ mode: "maybe", required: true })).toThrow("invalid_settings");
+    expect(() => cleanReasonConfig({ mode: "list", required: true, options: ["x".repeat(41)] })).toThrow("invalid_settings");
+    // رموز الإصدار السابق تُعرض مترجمة، والنصوص كما هي
+    expect(reasonText("ar", "followup")).toBe("مراجعة (متابعة)");
+    expect(reasonText("fr", "ألم في الظهر")).toBe("ألم في الظهر");
   });
 
-  it("الرقم والموعد يحملان السبب: يراه الطاقم وصاحبه، وينتقل إلى تذكرة الوصول", async () => {
+  it("الطبيب يختار: نصّ حرّ افتراضياً، ثمّ قائمته، ثمّ لا سؤال — في الرقم والموعد", async () => {
     process.env.PHONE_VERIFICATION = "off";
     await enable();
-    const tk = await svc.takeTicket(shop.slug, { name: "سعاد", phone: newPhone(), reason: "results" });
-    expect((await svc.ticketView(tk.ticketId)).reason).toBe("results");
-    await expect(svc.takeTicket(shop.slug, { name: "x x", phone: newPhone(), reason: "diagnosis" })).rejects.toThrow("invalid_reason");
-    await svc.staffAction(await fresh(), { action: "add", name: "عمر", reason: "certificate" });
+    // افتراضياً: المريض يكتب ما يريد
+    expect((await svc.publicShop(shop.slug)).view.reason).toEqual({ mode: "text", required: true, options: [] });
+    const tk = await svc.takeTicket(shop.slug, { name: "سعاد", phone: newPhone(), reason: "نتائج تحاليل الدم" });
+    expect((await svc.ticketView(tk.ticketId)).reason).toBe("نتائج تحاليل الدم");
+
+    // قائمة يكتبها الطبيب
+    expect((await saveReasonSettings(await fresh(), LIST)).config).toEqual(LIST);
+    expect((await svc.publicShop(shop.slug)).view.reason).toEqual(LIST);
+    expect((await svc.staffState(await fresh())).shop.reason).toEqual(LIST);
+    expect((await ap.deskAvailability(await fresh())).reason).toEqual(LIST);
+    await expect(svc.takeTicket(shop.slug, { name: "x x", phone: newPhone(), reason: "شيء آخر" })).rejects.toThrow("invalid_reason");
+    await svc.staffAction(await fresh(), { action: "add", name: "عمر", reason: "كشف عامّ" });
     await svc.staffAction(await fresh(), { action: "add", name: "بلا سبب" });
-    expect(Object.fromEntries((await staffState()).waiting.map((w) => [w.name, w.reason]))).toEqual({ سعاد: "results", عمر: "certificate", "بلا سبب": null });
+    expect(Object.fromEntries((await staffState()).waiting.map((w) => [w.name, w.reason]))).toEqual({ سعاد: "نتائج تحاليل الدم", عمر: "كشف عامّ", "بلا سبب": null });
 
-    const r = await ap.bookOnline(shop.slug, { name: "مريم", phone: newPhone(), day: "2026-10-11", time: "10:00", reason: "followup" });
-    expect(await ap.appointmentView(r.appointmentId)).toMatchObject({ name: "مريم", reason: "followup", day: "2026-10-11", time: "10:00" });
-    const desk = await ap.staffAppointmentAction(await fresh(), { action: "book", name: "هاتفي", day: "2026-10-11", time: "11:00", reason: "prescription" });
+    const r = await ap.bookOnline(shop.slug, { name: "مريم", phone: newPhone(), day: "2026-10-11", time: "10:00", reason: "مراجعة" });
+    expect(await ap.appointmentView(r.appointmentId)).toMatchObject({ name: "مريم", reason: "مراجعة", day: "2026-10-11", time: "10:00" });
+    const desk = await ap.staffAppointmentAction(await fresh(), { action: "book", name: "هاتفي", day: "2026-10-11", time: "11:00", reason: "كشف عامّ" });
     const items = (await ap.staffAppointments(await fresh(), "today")).todayItems;
-    expect(items.find((a) => a.id === r.appointmentId)?.reason).toBe("followup");
-    expect(items.find((a) => a.id === desk.id)?.reason).toBe("prescription");
-    await expect(ap.bookOnline(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-11", time: "12:00", reason: "pickup" })).rejects.toThrow("invalid_reason");
+    expect(items.find((a) => a.id === desk.id)?.reason).toBe("كشف عامّ");
+    await expect(ap.bookOnline(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-11", time: "12:00", reason: "غير موجود" })).rejects.toThrow("invalid_reason");
 
+    // وصل صاحب الموعد ← السبب ينتقل إلى تذكرته
     at("2026-10-11", "09:30");
     const c = await ap.appointmentAction(r.appointmentId, { action: "checkin" });
-    expect((await svc.ticketView(c.ticketId!)).reason).toBe("followup");
+    expect((await svc.ticketView(c.ticketId!)).reason).toBe("مراجعة");
+
+    // لا سؤال: لا يُحفظ أيّ سبب
+    await saveReasonSettings(await fresh(), { mode: "off", required: false, options: [] });
+    const t3 = await svc.takeTicket(shop.slug, { name: "بلال", phone: newPhone(), reason: "أيّ شيء" });
+    expect((await svc.ticketView(t3.ticketId)).reason).toBeNull();
+    await expect(saveReasonSettings(await fresh(), { mode: "list", required: true, options: [] })).rejects.toThrow("reason_no_options");
+  });
+
+  it("السبب (قد يكون نصّاً حرّاً) يُمحى مع الاسم والهاتف بعد 30 يوماً", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable();
+    const tk = await svc.takeTicket(shop.slug, { name: "سعاد", phone: newPhone(), reason: "ألم في الركبة" });
+    const r = await ap.bookOnline(shop.slug, { name: "مريم", phone: newPhone(), day: "2026-10-12", time: "10:00", reason: "مراجعة بعد العملية" });
+    advance(45 * 24 * 60);
+    await repo.purgeOld(db, clock, clock, new Date(clock.getTime() - 30 * 24 * 3600_000));
+    await apr.anonymizeBefore(db, "2026-11-20");
+    const rows = await db.query<{ reason: string | null }>("select reason from tickets where id = $1", [tk.ticketId]);
+    const ar2 = await db.query<{ reason: string | null }>("select reason from appointments where id = $1", [r.appointmentId]);
+    expect(ar2[0].reason).toBeNull();
+    expect(rows[0].reason).toBeNull();
   });
 });

@@ -15,14 +15,16 @@ export function ApptBadge({ lang }: { lang: Lang }) {
   );
 }
 
-/** سبب الزيارة الذي اختاره المريض (طابور ومواعيد). */
+/** سبب الزيارة الذي اختاره المريض أو كتبه (طابور ومواعيد) — النصّ الطويل يُقصّ، وكاملاً عند المرور. */
 export function ReasonChip({ lang, reason }: { lang: Lang; reason: string | null | undefined }) {
   const text = reasonText(lang, reason);
   if (!text) return null;
   return (
-    <Chip className="font-semibold">
-      <Stethoscope size={12} /> {text}
-    </Chip>
+    <span title={text} className="inline-flex max-w-full min-w-0">
+      <Chip className="max-w-[18rem] min-w-0 font-semibold">
+        <Stethoscope size={12} className="shrink-0" /> <span className="truncate">{text}</span>
+      </Chip>
+    </span>
   );
 }
 

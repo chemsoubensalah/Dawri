@@ -23,7 +23,7 @@ export const ar = {
   why_f7: "أرقام تفهم بها عيادتك",
   why_f7b: "عدد المرضى، ساعات الذروة، الغياب ووقت الانتظار — مع تقرير يومي على بريدك.",
   why_f8: "خصوصية حسب القانون 18-07",
-  why_f8b: "لا تفاصيل طبّية أبداً: الاسم والهاتف وسبب زيارة عامّ من قائمة، والاسم والهاتف يُمحيان تلقائياً بعد 30 يوماً.",
+  why_f8b: "الحدّ الأدنى من المعطيات: الاسم والهاتف، وسبب الزيارة إن أردتَ (قائمتك أو نصّ قصير). لا تراه إلّا عيادتك، ويُمحى كلّه تلقائياً بعد 30 يوماً.",
 };
 
 export const fr: Record<keyof typeof ar, string> = {
@@ -50,5 +50,5 @@ export const fr: Record<keyof typeof ar, string> = {
   why_f7: "Des chiffres pour piloter le cabinet",
   why_f7b: "Nombre de patients, heures de pointe, absences et temps d'attente — avec un rapport quotidien par e-mail.",
   why_f8: "Confidentialité selon la loi 18-07",
-  why_f8b: "Jamais de détails médicaux : nom, téléphone et un motif général choisi dans une liste ; nom et téléphone effacés automatiquement après 30 jours.",
+  why_f8b: "Le minimum de données : nom, téléphone et, si vous le voulez, le motif (votre liste ou un texte court). Visible seulement par votre cabinet, tout est effacé automatiquement après 30 jours.",
 };

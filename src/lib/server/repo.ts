@@ -54,6 +54,7 @@ export function rowToShop(r: Row): Shop {
     clinicName: r.clinic_id == null ? null : ((r.clinic_name as string | null) ?? null),
     clinicSlug: r.clinic_id == null ? null : ((r.clinic_slug as string | null) ?? null),
     daysOff: r.days_off == null ? [] : json<DayOff[]>(r.days_off),
+    reasonCfg: r.reason_cfg == null ? null : json<unknown>(r.reason_cfg),
   };
 }
 
@@ -159,7 +160,7 @@ export async function insertShop(
 export async function updateShop(
   q: Q,
   id: string,
-  patch: Partial<Pick<Shop, "name" | "hours" | "settings" | "defaultLang" | "pinHash" | "doorCode" | "profile" | "look" | "ownerEmail" | "daysOff">> & {
+  patch: Partial<Pick<Shop, "name" | "hours" | "settings" | "defaultLang" | "pinHash" | "doorCode" | "profile" | "look" | "ownerEmail" | "daysOff" | "reasonCfg">> & {
     bumpSession?: boolean;
   },
 ) {
@@ -186,6 +187,7 @@ export async function updateShop(
   if (patch.look !== undefined) set("look", JSON.stringify(patch.look));
   if (patch.ownerEmail !== undefined) set("owner_email", patch.ownerEmail);
   if (patch.daysOff !== undefined) set("days_off", JSON.stringify(patch.daysOff));
+  if (patch.reasonCfg !== undefined) set("reason_cfg", JSON.stringify(patch.reasonCfg));
   if (patch.bumpSession) sets.push("session_version = session_version + 1");
   if (!sets.length) return;
   params.push(id);
@@ -381,7 +383,7 @@ export async function purgeOld(q: Q, noShowsBefore: Date, codesBefore: Date, tic
     // التذاكر القديمة: نُبقي الأرقام للإحصاءات ونمحو الاسم والهاتف
     await q.query("delete from push_subscriptions where ticket_id in (select id from tickets where created_at < $1)", [ticketsBefore]);
     const c = await q.query(
-      "update tickets set name = '—', phone = null where created_at < $1 and (phone is not null or name <> '—') returning id",
+      "update tickets set name = '—', phone = null, reason = null where created_at < $1 and (phone is not null or name <> '—' or reason is not null) returning id",
       [ticketsBefore],
     );
     anonymized = c.length;

@@ -7,7 +7,7 @@ async function takeNumber(page: Page, name: string, url = "/s/demo") {
   await page.goto(url);
   await page.getByLabel("اسمك").fill(name);
   await page.getByLabel("رقم هاتفك").fill(`0661 ${phoneSeq++}`);
-  await page.getByLabel("كشف / استشارة").check();
+  await page.getByPlaceholder("مثال: مراجعة بعد التحاليل").fill("كشف");
   await page.getByRole("button", { name: "أرسل رمز التحقّق" }).click();
   const code = await page.locator("b.num").first().textContent();
   await page.getByLabel("رمز التحقّق").fill(code!.trim());
@@ -162,7 +162,7 @@ test("المريض يخرج ليقرأ الرمز ثمّ يعود: يجد خطو
   await page.goto("/s/demo");
   await page.getByLabel("اسمك").fill("عائد");
   await page.getByLabel("رقم هاتفك").fill(`0661 ${phoneSeq++}`);
-  await page.getByLabel("مراجعة (متابعة)").check();
+  await page.getByPlaceholder("مثال: مراجعة بعد التحاليل").fill("مراجعة بعد التحاليل");
   await page.getByRole("button", { name: "أرسل رمز التحقّق" }).click();
   const code = (await page.locator("b.num").first().textContent())!.trim();
   await page.close();
@@ -183,7 +183,7 @@ test("العودة إلى رقمي: بطاقة «رقمك اليوم»، وال�
   await page.goto("/s/demo");
   await page.getByLabel("اسمك").fill("رشيد");
   await page.getByLabel("رقم هاتفك").fill(phone);
-  await page.getByLabel("كشف / استشارة").check();
+  await page.getByPlaceholder("مثال: مراجعة بعد التحاليل").fill("كشف");
   await page.getByRole("button", { name: "أرسل رمز التحقّق" }).click();
   await page.getByLabel("رمز التحقّق").fill((await page.locator("b.num").first().textContent())!.trim());
   await page.getByRole("button", { name: "تأكيد وأخذ الرقم" }).click();
@@ -206,4 +206,28 @@ test("العودة إلى رقمي: بطاقة «رقمك اليوم»، وال�
   await other.getByRole("button", { name: "تأكيد وأخذ الرقم" }).click();
   await other.waitForURL(/\/t\//);
   await expect(other.getByTestId("my-number")).toHaveText(n);
+});
+
+test("الطبيب يقرّر سبب الزيارة: قائمته أو نصّ حرّ", async ({ page, browser }) => {
+  const staff = await staffPage(browser);
+  await staff.goto("/staff/demo/settings#reason");
+  const sec = staff.getByTestId("reason-settings");
+  await sec.getByText("اختيارات أكتبها أنا").click();
+  await staff.getByTestId("reason-option-input").fill("فحص دوري");
+  await staff.getByTestId("reason-option-input").press("Enter");
+  await staff.getByTestId("reason-option-input").fill("تلقيح");
+  await sec.getByRole("button", { name: "إضافة" }).click();
+  await staff.getByTestId("reason-save").click();
+  await expect(sec.getByRole("status")).toContainText("حُفظ");
+  // المريض يرى اختيارات الطبيب فقط
+  await page.goto("/s/demo");
+  await expect(page.getByTestId("reason-picker")).toContainText("فحص دوري");
+  await expect(page.getByTestId("reason-picker")).toContainText("تلقيح");
+  await expect(page.getByPlaceholder("مثال: مراجعة بعد التحاليل")).toHaveCount(0);
+  // ثمّ نصّ حرّ من جديد (حالة البداية للاختبارات الأخرى)
+  await sec.getByText("المريض يكتب ما يريد").click();
+  await staff.getByTestId("reason-save").click();
+  await expect(sec.getByRole("status")).toContainText("حُفظ");
+  await page.reload();
+  await expect(page.getByPlaceholder("مثال: مراجعة بعد التحاليل")).toBeVisible();
 });

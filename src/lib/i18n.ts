@@ -10,6 +10,7 @@ import * as sms from "./i18n-parts/sms";
 import * as tv from "./i18n-parts/tv";
 import * as why from "./i18n-parts/why";
 import type { Lang } from "./domain/types";
+import { LEGACY_REASON_CODES } from "./domain/reasons";
 
 const arCore = {
   appName: "دوري",
@@ -62,7 +63,7 @@ const arCore = {
   openMyTicket: "افتح تذكرتي",
   iArrived: "وصلت ✔",
   arrivedOk: "سجّلنا وصولك. شكراً!",
-  privacy: "نطلب اسمك ورقم هاتفك وسبب الزيارة من قائمة قصيرة فقط — لا تفاصيل عن حالتك الصحّية.",
+  privacy: "نطلب اسمك ورقم هاتفك، وسبب الزيارة إن طلبه الطبيب — لا تراه إلّا العيادة.",
   noSmartphone: "بلا هاتف ذكي؟ اطلب من السكرتيرة أن تضيفك.",
 
   // صفحة التذكرة
@@ -295,7 +296,7 @@ const arCore = {
   l_pat2: "يعرف بدقّة كم شخصاً أمامه ومتى يأتي دوره",
   l_pat3: "ينتظر في البيت أو المقهى أو العمل، لا في القاعة",
   l_pat4: "تنبيه بالصوت وواتساب حين يقترب دوره",
-  l_pat5: "الاسم والهاتف وسبب الزيارة فقط — لا تفاصيل طبّية",
+  l_pat5: "الاسم والهاتف، وسبب الزيارة إن أردتَ ذلك",
   l_nsTitle: "الغائبون؟ محسوبون",
   l_nsSub: "خمس قواعد تلقائية تجعل الطابور يتحرّك دائماً.",
   l_ns1: "«هل ما زلت قادماً؟»",
@@ -331,7 +332,7 @@ const arCore = {
   l_q4: "هل يعمل مع شبكة ضعيفة؟",
   l_a4: "نعم. الصفحات خفيفة جدّاً وتعمل على 3G، وتعيد المحاولة وحدها إن انقطعت الشبكة.",
   l_q5: "هل بيانات المرضى آمنة؟",
-  l_a5: "لا نطلب إلّا الاسم ورقم الهاتف وسبب الزيارة من قائمة قصيرة — لا تفاصيل طبّية أبداً. سجلّ الغياب يُمحى تلقائياً بعد شهرين.",
+  l_a5: "لا نطلب إلّا الاسم ورقم الهاتف، وسبب الزيارة إن أراده الطبيب (قائمة يكتبها، أو نصّ قصير يكتبه المريض) — لا تراه إلّا العيادة ويُمحى بعد 30 يوماً. سجلّ الغياب يُمحى تلقائياً بعد شهرين.",
   l_q6: "كيف أدفع الاشتراك؟",
   l_a6: "بعد الشهر المجّاني، تدفع شهرياً بالبطاقة الذهبية أو CIB أو بتحويل بريدي. بلا عقد ولا التزام.",
   l_finalTitle: "جاهز لقاعة انتظار هادئة؟",
@@ -720,7 +721,7 @@ const frCore: typeof arCore = {
   openMyTicket: "Ouvrir mon ticket",
   iArrived: "Je suis arrivé ✔",
   arrivedOk: "Arrivée enregistrée. Merci !",
-  privacy: "Nous demandons seulement votre nom, votre téléphone et le motif de visite (liste courte) — aucun détail sur votre santé.",
+  privacy: "Nous demandons votre nom, votre téléphone et, si le médecin le demande, le motif de visite — visible seulement par le cabinet.",
   noSmartphone: "Pas de smartphone ? Demandez à la secrétaire de vous ajouter.",
 
   yourNumber: "Votre numéro",
@@ -946,7 +947,7 @@ const frCore: typeof arCore = {
   l_pat2: "Il sait exactement combien de personnes sont devant lui",
   l_pat3: "Il attend chez lui, au café ou au travail — pas en salle",
   l_pat4: "Alerte sonore et WhatsApp quand son tour approche",
-  l_pat5: "Nom, téléphone et motif de visite — aucun détail médical",
+  l_pat5: "Nom, téléphone et, si vous le voulez, le motif de visite",
   l_nsTitle: "Les absents ? C'est prévu",
   l_nsSub: "Cinq règles automatiques pour que la file avance toujours.",
   l_ns1: "« Venez-vous toujours ? »",
@@ -982,7 +983,7 @@ const frCore: typeof arCore = {
   l_q4: "Ça marche avec une connexion faible ?",
   l_a4: "Oui. Les pages sont très légères, fonctionnent en 3G et se reconnectent toutes seules.",
   l_q5: "Les données des patients sont-elles protégées ?",
-  l_a5: "Nous ne demandons que le nom, le téléphone et le motif de visite (liste courte) — jamais de détails médicaux. L'historique d'absences est effacé après 2 mois.",
+  l_a5: "Nous ne demandons que le nom, le téléphone et, si le médecin le veut, le motif de visite (sa liste ou un texte court du patient) — visible seulement par le cabinet et effacé après 30 jours. L'historique d'absences est effacé après 2 mois.",
   l_q6: "Comment payer l'abonnement ?",
   l_a6: "Après le mois offert, paiement mensuel par carte Edahabia, CIB ou virement CCP. Sans engagement.",
   l_finalTitle: "Prêt pour une salle d'attente sereine ?",
@@ -1366,9 +1367,8 @@ export function drTitle(lang: Lang, kind: string, name: string | null | undefine
   return lang === "ar" ? `د. ${n}` : `Dr ${n}`;
 }
 
-/** اسم سبب الزيارة (رمز مجهول ← «سبب آخر»). */
+/** سبب الزيارة كما يُعرض: نصّ الطبيب أو المريض كما هو، ورموز الإصدار السابق باسمها المترجم. */
 export function reasonText(lang: Lang, r: string | null | undefined): string | null {
   if (!r) return null;
-  const k = `vr_${r}` as DictKey;
-  return k in dicts[lang] ? t(lang, k) : t(lang, "vr_other");
+  return LEGACY_REASON_CODES.includes(r) ? t(lang, `vr_${r}` as DictKey) : r;
 }
