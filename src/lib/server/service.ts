@@ -8,6 +8,7 @@ import { formatPhone, normalizePhone } from "../domain/phone";
 import { isWilaya } from "../domain/wilayas";
 import { isDayOff } from "../domain/daysoff";
 import { cleanReason } from "../domain/reasons";
+import { sameName } from "../domain/names";
 import { publicRating } from "./reviews";
 import { getTvMessages } from "./tvmessages";
 import { TRIAL_DAYS } from "../pricing";
@@ -342,7 +343,7 @@ export type PublicShopView = Awaited<ReturnType<typeof publicShop>>["view"];
 /** client.ip: عنوان العميل (من المسار) — حدّ رموز لكلّ عميل ضدّ إغراق أرقام عشوائية برسائل مدفوعة. */
 export async function requestCode(
   slug: string,
-  body: { name?: unknown; phone?: unknown; lang?: unknown },
+  body: { name?: unknown; phone?: unknown; lang?: unknown; recover?: unknown },
   client: { ip?: string | null } = {},
 ) {
   const db = await getDb();
@@ -353,6 +354,8 @@ export async function requestCode(
   const qd = await repo.getDay(db, shop.id, dayKey(now));
   // من لديه تذكرة اليوم يستطيع استرجاعها بالرمز حتى خارج الساعات
   const existing = await repo.findTicketByPhone(db, shop.id, dayKey(now), phone);
+  // «استرجع رقمي»: لا رسالة (لها كلفة) لهاتف بلا رقم اليوم
+  if (body.recover === true && !existing) throw new DomainError("no_ticket_today", 404);
   if (!existing) {
     const blocker = ticketBlocker(shop, qd.closed, now, qd.lastNumber);
     if (blocker) throw new DomainError(blocker, 409);
@@ -394,7 +397,7 @@ async function verifyCode(q: Q, shop: Shop, phone: string, code: unknown, now: D
 
 export async function takeTicket(
   slug: string,
-  body: { name?: unknown; phone?: unknown; code?: unknown; door?: unknown; lang?: unknown; reason?: unknown },
+  body: { name?: unknown; phone?: unknown; code?: unknown; door?: unknown; lang?: unknown; reason?: unknown; recover?: unknown },
   client: { ip?: string | null } = {},
 ): Promise<{ ticketId: string; existing: boolean }> {
   const db = await getDb();
@@ -403,8 +406,19 @@ export async function takeTicket(
   const phone = requirePhone(body.phone);
   const reason = cleanReason(shop.kind, body.reason);
   const now = clockNow();
-  if (await phoneCheckRequired(shop.id, { whatsapp: true })) await verifyCode(db, shop, phone, body.code, now);
-  else if (!(await repo.findTicketByPhone(db, shop.id, dayKey(now), phone))) await guardClientIp(db, client.ip, "ticket", now);
+  const verified = await phoneCheckRequired(shop.id, { whatsapp: true });
+  if (verified) await verifyCode(db, shop, phone, body.code, now);
+  const had = await repo.findTicketByPhone(db, shop.id, dayKey(now), phone);
+  // «استرجع رقمي» من متصفّح آخر: لا تذكرة جديدة إن لم يكن له رقم
+  if (body.recover === true && !had) throw new DomainError("no_ticket_today", 404);
+  if (!verified) {
+    if (!had) await guardClientIp(db, client.ip, "ticket", now);
+    else if (!sameName(had.name, name)) {
+      // بلا رمز: من يعرف هاتف مريض لا يفتح تذكرته (ولا يلغيها) إلّا بنفس الاسم — والمحاولات محدودة
+      await guardClientIp(db, client.ip, "ticket", now);
+      throw new DomainError("ticket_other_name", 409);
+    }
+  }
   const atDoor = typeof body.door === "string" && safeEqual(body.door, shop.doorCode);
   const { ticketId, existing } = await issueTicket(shop, { name, phone, reason, lang: langOf(body.lang, shop.defaultLang), atDoor });
   return { ticketId, existing };

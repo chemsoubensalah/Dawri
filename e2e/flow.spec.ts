@@ -177,3 +177,33 @@ test("المريض يخرج ليقرأ الرمز ثمّ يعود: يجد خطو
   await expect(back.getByTestId("my-visits")).toContainText("رقمك اليوم");
   await ctx.close();
 });
+
+test("العودة إلى رقمي: بطاقة «رقمك اليوم»، والاسترجاع من متصفّح آخر", async ({ page, browser }) => {
+  const phone = `0661 ${phoneSeq++}`;
+  await page.goto("/s/demo");
+  await page.getByLabel("اسمك").fill("رشيد");
+  await page.getByLabel("رقم هاتفك").fill(phone);
+  await page.getByLabel("كشف / استشارة").check();
+  await page.getByRole("button", { name: "أرسل رمز التحقّق" }).click();
+  await page.getByLabel("رمز التحقّق").fill((await page.locator("b.num").first().textContent())!.trim());
+  await page.getByRole("button", { name: "تأكيد وأخذ الرقم" }).click();
+  await page.waitForURL(/\/t\//);
+  const n = (await page.getByTestId("my-number").textContent())!.trim();
+  // رجع إلى صفحة العيادة (من صفحة التذكرة أو من السجلّ): يجد رقمه لا نموذجاً جديداً
+  await page.goto("/s/demo?from=ticket");
+  await expect(page.getByTestId("my-ticket-card")).toContainText(n);
+  await page.getByTestId("open-my-ticket").click();
+  await expect(page.getByTestId("my-number")).toHaveText(n);
+
+  // متصفّح آخر (مثلاً من داخل واتساب): «لديّ رقم اليوم — استرجعه»
+  const other = await (await browser.newContext()).newPage();
+  await other.goto("/s/demo");
+  await other.getByTestId("recover-toggle").click();
+  await other.getByLabel("اسمك").fill("رشيد");
+  await other.getByLabel("رقم هاتفك").fill(phone);
+  await other.getByRole("button", { name: "أرسل رمز التحقّق" }).click();
+  await other.getByLabel("رمز التحقّق").fill((await other.locator("b.num").first().textContent())!.trim());
+  await other.getByRole("button", { name: "تأكيد وأخذ الرقم" }).click();
+  await other.waitForURL(/\/t\//);
+  await expect(other.getByTestId("my-number")).toHaveText(n);
+});

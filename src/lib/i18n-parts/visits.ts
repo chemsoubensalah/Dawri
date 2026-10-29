@@ -12,6 +12,13 @@ export const ar = {
   ap_imgScan: "امسح الرمز لفتح موعدك",
   ap_imgFail: "تعذّر إنشاء الصورة. خذ لقطة شاشة لهذه الصفحة.",
   ap_dtClinicPhone: "هاتف العيادة",
+  sp_recoverTitle: "استرجع رقمك",
+  sp_recoverHint: "اكتب الاسم والهاتف كما كتبتهما حين أخذت الرقم.",
+  sp_recoverBtn: "استرجع رقمي",
+  sp_takeInstead: "لا، أريد أخذ رقم جديد",
+  sp_forOther: "خذ رقماً لشخص آخر",
+  err_no_ticket_today: "لا رقم اليوم بهذا الهاتف في هذه العيادة.",
+  err_ticket_other_name: "هذا الهاتف أخذ رقماً اليوم باسم آخر. اكتب الاسم كما كتبته أوّل مرّة لاسترجاعه، أو اطلب من السكرتيرة إضافة شخص آخر.",
 };
 
 export const fr: Record<keyof typeof ar, string> = {
@@ -27,4 +34,11 @@ export const fr: Record<keyof typeof ar, string> = {
   ap_imgScan: "Scannez pour ouvrir votre rendez-vous",
   ap_imgFail: "Impossible de créer l'image. Faites une capture d'écran de cette page.",
   ap_dtClinicPhone: "Tél. du cabinet",
+  sp_recoverTitle: "Retrouver mon numéro",
+  sp_recoverHint: "Saisissez le nom et le téléphone utilisés pour prendre le numéro.",
+  sp_recoverBtn: "Retrouver mon numéro",
+  sp_takeInstead: "Non, prendre un nouveau numéro",
+  sp_forOther: "Prendre un numéro pour une autre personne",
+  err_no_ticket_today: "Aucun numéro aujourd'hui avec ce téléphone dans ce cabinet.",
+  err_ticket_other_name: "Ce téléphone a déjà un numéro aujourd'hui sous un autre nom. Saisissez le nom utilisé la première fois pour le retrouver, ou demandez à la secrétaire d'ajouter une autre personne.",
 };

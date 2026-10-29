@@ -11,6 +11,8 @@ import { readSession } from "@/lib/server/auth";
 import { sentMail, setMailer } from "@/lib/server/email";
 import type { Shop } from "@/lib/domain/types";
 import { TRIAL_DAYS } from "@/lib/pricing";
+import { sameName } from "@/lib/domain/names";
+import { IP_LIMITS } from "@/lib/server/ratelimit";
 
 let db: Db;
 let clock = new Date("2026-10-11T07:00:00Z"); // الأحد 08:00 بتوقيت الجزائر
@@ -563,5 +565,49 @@ describe("رسائل شاشة القاعة", () => {
     await expect(saveTvMessages(shop, ["x".repeat(161)])).rejects.toThrow("tv_too_long");
     await expect(saveTvMessages(shop, Array.from({ length: 11 }, () => "a"))).rejects.toThrow("tv_invalid");
     await expect(saveTvMessages(shop, "nope")).rejects.toThrow("tv_invalid");
+  });
+});
+
+describe("العودة إلى رقمي من متصفّح آخر", () => {
+  let i = 0;
+  const phone = () => `0662${String(++i).padStart(6, "0")}`;
+
+  it("مقارنة الأسماء كما يكتبها الناس", () => {
+    expect(sameName("أحمد بن علي", "احمد  بن-علي")).toBe(true);
+    expect(sameName("Ahmed Ben Ali", "ahmed benali")).toBe(true);
+    expect(sameName("Hélène", "helene")).toBe(true);
+    expect(sameName("فاطمة", "فاطمه")).toBe(true);
+    expect(sameName("مريم", "مريمة")).toBe(false);
+    expect(sameName("سارة", "أحمد")).toBe(false);
+  });
+
+  it("بلا رمز: نفس الاسم يسترجع تذكرته، واسم آخر لا يفتحها، و«استرجع» بلا رقم لا ينشئ تذكرة", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    try {
+      const p = phone();
+      const t1 = await svc.takeTicket(shop.slug, { name: "أحمد بن علي", phone: p }, { ip: "198.51.100.60" });
+      await expect(svc.takeTicket(shop.slug, { name: "احمد بن علي", phone: p, recover: true })).resolves.toEqual({ ticketId: t1.ticketId, existing: true });
+      await expect(svc.takeTicket(shop.slug, { name: "احمد بن علي", phone: p })).resolves.toEqual({ ticketId: t1.ticketId, existing: true });
+      // من يعرف هاتفه فقط لا يفتح تذكرته (ولا يستطيع إلغاءها)
+      await expect(svc.takeTicket(shop.slug, { name: "سارة", phone: p }, { ip: "198.51.100.61" })).rejects.toThrow("ticket_other_name");
+      // والمحاولات محدودة لكلّ شبكة
+      for (let k = 1; k < IP_LIMITS.ticket; k++) await svc.takeTicket(shop.slug, { name: `x${k} y`, phone: p }, { ip: "198.51.100.61" }).catch(() => {});
+      await expect(svc.takeTicket(shop.slug, { name: "أحمد بن علي", phone: p, recover: true }, { ip: "198.51.100.61" })).resolves.toMatchObject({ existing: true });
+      await expect(svc.takeTicket(shop.slug, { name: "ليلى", phone: p }, { ip: "198.51.100.61" })).rejects.toThrow("too_many_codes");
+      // «استرجع رقمي» لهاتف بلا رقم: خطأ واضح، ولا تذكرة جديدة
+      const other = phone();
+      await expect(svc.requestCode(shop.slug, { name: "x x", phone: other, recover: true })).rejects.toThrow("no_ticket_today");
+      await expect(svc.takeTicket(shop.slug, { name: "x x", phone: other, recover: true })).rejects.toThrow("no_ticket_today");
+      expect((await state()).waiting).toHaveLength(1);
+    } finally {
+      delete process.env.PHONE_VERIFICATION;
+    }
+  });
+
+  it("بالرمز: ملكية الهاتف ثابتة، فيسترجع تذكرته مهما كتب الاسم", async () => {
+    const p = phone();
+    const t1 = await take("أمين", p);
+    const c = await svc.requestCode(shop.slug, { name: "Amine", phone: p, recover: true });
+    await expect(svc.takeTicket(shop.slug, { name: "Amine", phone: p, code: c.devCode, recover: true })).resolves.toEqual({ ticketId: t1.ticketId, existing: true });
   });
 });

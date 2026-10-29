@@ -6,10 +6,10 @@ import ClinicCard from "@/components/ClinicCard";
 import ReasonPicker from "@/components/ReasonPicker";
 import { reasonsFor } from "@/lib/domain/reasons";
 import { Stat } from "@/components/ui";
-import type { Lang } from "@/lib/domain/types";
-import { errorText, t } from "@/lib/i18n";
+import { OPEN_STATUSES, type Lang } from "@/lib/domain/types";
+import { aheadText, errorText, t } from "@/lib/i18n";
 import { api, ApiError, clearFlow, loadFlow, saveFlow, saveTicket, savedTicket, unlockAudio, usePoll } from "@/lib/client";
-import type { PublicShopView } from "@/lib/server/service";
+import type { PublicShopView, TicketView } from "@/lib/server/service";
 import type { BookingTeaser } from "@/lib/server/appointments";
 import ShopBooking from "./ShopBooking";
 
@@ -17,7 +17,7 @@ const PROFILE = "dawri:profile";
 
 type WaStep = { id: string; link: string; code: string; expired?: boolean };
 /** ما كتبه المريض وأين وصل — يبقى إن خرج ليقرأ رسالته ثمّ عاد (src/lib/client.ts: loadFlow) */
-type Flow = { step: "form" | "code" | "wa"; name: string; phone: string; reason: string | null; devCode: string | null; wa: WaStep | null };
+type Flow = { step: "form" | "code" | "wa"; name: string; phone: string; reason: string | null; devCode: string | null; wa: WaStep | null; recover?: boolean };
 
 function fmtWait(lang: Lang, min: number) {
   if (min <= 0) return t(lang, "sp_noWait");
@@ -43,6 +43,9 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
   const [error, setError] = useState("");
   const [arrivedMsg, setArrivedMsg] = useState(false);
   const [recover, setRecover] = useState(false);
+  // رقم اليوم المحفوظ على هذا الهاتف: بطاقة «رقمك اليوم» بدل نموذج جديد (حتى بعد «صفحة العيادة»)
+  const [mineView, setMineView] = useState<TicketView | null>(null);
+  const [another, setAnother] = useState(false);
   const flowKey = `ticket:${view.slug}`;
   const restored = useRef(false);
   const done = useRef(false);
@@ -67,6 +70,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
       if (f.name) setName(f.name);
       if (f.phone) setPhone(f.phone);
       if (f.reason) setReason(f.reason);
+      if (f.recover) setRecover(true);
       if (f.step === "code" || (f.step === "wa" && f.wa)) {
         setDevCode(f.devCode ?? null);
         setWa(f.wa ?? null);
@@ -78,8 +82,15 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
 
   useEffect(() => {
     if (!restored.current || done.current) return;
-    saveFlow(flowKey, { step, name, phone, reason, devCode, wa } satisfies Flow);
-  }, [flowKey, step, name, phone, reason, devCode, wa]);
+    saveFlow(flowKey, { step, name, phone, reason, devCode, wa, recover } satisfies Flow);
+  }, [flowKey, step, name, phone, reason, devCode, wa, recover]);
+
+  useEffect(() => {
+    if (!mine) return;
+    api<TicketView>(`/api/t/${mine}`)
+      .then((v) => setMineView(OPEN_STATUSES.includes(v.status as (typeof OPEN_STATUSES)[number]) ? v : null))
+      .catch(() => setMineView(null));
+  }, [mine]);
 
   usePoll(async () => setView(await api<PublicShopView>(`/api/s/${view.slug}`)), 20000);
 
@@ -121,7 +132,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
 
   // زرّ «عبر الرسالة» خارج إرسال النموذج: لا يمرّ بتحقّق المتصفّح
   const missingReason = () => {
-    if (!reasonsFor(view.kind).length || reason) return false;
+    if (recover || !reasonsFor(view.kind).length || reason) return false;
     setError(errorText(lang, "invalid_reason"));
     return true;
   };
@@ -129,9 +140,9 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
   const sendCode = () =>
     !missingReason() &&
     run(async () => {
-      const r = await api<{ verify: boolean; devCode?: string }>(`/api/s/${view.slug}/code`, { name, phone, lang });
+      const r = await api<{ verify: boolean; devCode?: string }>(`/api/s/${view.slug}/code`, { name, phone, lang, recover });
       if (!r.verify) {
-        const tk = await api<{ ticketId: string }>(`/api/s/${view.slug}/tickets`, { name, phone, reason, door, lang });
+        const tk = await api<{ ticketId: string }>(`/api/s/${view.slug}/tickets`, { name, phone, reason: recover ? null : reason, door, lang, recover });
         return finish(tk.ticketId);
       }
       setDevCode(r.devCode ?? null);
@@ -147,7 +158,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
 
   const confirm = () =>
     run(async () => {
-      const tk = await api<{ ticketId: string }>(`/api/s/${view.slug}/tickets`, { name, phone, reason, code, door, lang });
+      const tk = await api<{ ticketId: string }>(`/api/s/${view.slug}/tickets`, { name, phone, reason: recover ? null : reason, code, door, lang, recover });
       finish(tk.ticketId);
     });
 
@@ -200,6 +211,24 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
           </a>
           {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
         </section>
+      ) : mineView && !door && !another ? (
+        <section className="card space-y-3 text-center ring-2 ring-brand-500" data-testid="my-ticket-card">
+          <span className="mx-auto inline-flex size-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
+            <Ticket size={26} />
+          </span>
+          <p className="text-sm font-semibold text-brand-700">{t(lang, "mv_ticket")}</p>
+          <div className="num text-7xl leading-none font-bold text-ink">{mineView.number}</div>
+          <p className="text-sm text-slate-600">
+            {mineView.name}
+            {mineView.ahead !== null && ` · ${mineView.ahead === 0 ? t(lang, "ahead0") : aheadText(lang, mineView.ahead)}`}
+          </p>
+          <a className="btn-primary w-full py-4 text-lg" href={`/t/${mineView.id}`} data-testid="open-my-ticket">
+            {t(lang, "openMyTicket")}
+          </a>
+          <button type="button" className="text-sm font-semibold text-slate-500 hover:text-ink" onClick={() => setAnother(true)}>
+            {t(lang, "sp_forOther")}
+          </button>
+        </section>
       ) : view.blocker && !recover ? (
         <section className="card text-center">
           <Hourglass size={36} className="mx-auto text-amber-500" />
@@ -220,7 +249,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
       ) : (
         <section className="card p-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold">{t(lang, "takeNumber")}</h2>
+            <h2 className="text-xl font-bold">{t(lang, recover ? "sp_recoverTitle" : "takeNumber")}</h2>
             {view.verifyPhone && (
               <ol className="flex items-center gap-1.5 text-xs font-semibold text-slate-400" aria-label="steps">
                 {[1, 2].map((n) => {
@@ -269,7 +298,11 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
                   />
                 </div>
               </div>
-              <ReasonPicker lang={lang} kind={view.kind} value={reason} onChange={setReason} required />
+              {recover ? (
+                <p className="text-sm text-slate-600">{t(lang, "sp_recoverHint")}</p>
+              ) : (
+                <ReasonPicker lang={lang} kind={view.kind} value={reason} onChange={setReason} required />
+              )}
               {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
               {view.waVerify && view.verifyPhone ? (
                 <>
@@ -284,10 +317,22 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
                   )}
                 </>
               ) : (
-                <button className="btn-primary w-full text-lg" disabled={busy}>
-                  {busy ? "…" : view.verifyPhone ? t(lang, "sendCode") : t(lang, "takeNumber")}
+                <button className="btn-primary w-full text-lg" disabled={busy} data-testid="take-submit">
+                  {busy ? "…" : view.verifyPhone ? t(lang, "sendCode") : t(lang, recover ? "sp_recoverBtn" : "takeNumber")}
                 </button>
               )}
+              {/* أخذ رقماً من متصفّح أو هاتف آخر: يسترجعه بدل رقم جديد */}
+              <button
+                type="button"
+                className="block w-full text-center text-sm font-semibold text-brand-700 hover:underline"
+                onClick={() => {
+                  setRecover(!recover);
+                  setError("");
+                }}
+                data-testid="recover-toggle"
+              >
+                {t(lang, recover ? "sp_takeInstead" : "sp_haveTicket")}
+              </button>
             </form>
           ) : step === "wa" && wa ? (
             <div className="mt-5 space-y-4 text-center">
