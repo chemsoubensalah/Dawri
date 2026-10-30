@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, Banknote, CalendarCheck, Clock, Eye, Star, Stethoscope, UserRoundX, Users, UserCheck, UserPlus } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Banknote, CalendarCheck, CalendarClock, CalendarDays, Clock, Eye, MousePointerClick, Star, Stethoscope, UserRoundX, Users, UserCheck, UserPlus } from "lucide-react";
 import type { AdminStats, Kpis } from "@/lib/server/analytics";
 import { wilayaName } from "@/lib/domain/wilayas";
 import { Columns, HBars } from "./Charts";
@@ -7,6 +7,7 @@ import { fmtN, SERIES } from "./format";
 const SECTION: Record<string, string> = {
   home: "الصفحة الرئيسية",
   shop: "صفحة الطبيب (المرضى)",
+  book: "صفحة حجز موعد",
   ticket: "تذكرة المريض",
   appt: "صفحة الموعد",
   tv: "شاشة القاعة",
@@ -87,6 +88,105 @@ function Panel({ title, sub, children, className = "" }: { title: string; sub?: 
   );
 }
 
+/** المواعيد: كم شخصاً حجز (وحده أو عند السكرتيرة)، كم زائراً فتح صفحة الحجز، والحضور — ثمّ كلّ عيادة وحدها. */
+function Appointments({ s, vs }: { s: AdminStats; vs: string }) {
+  const a = s.appts;
+  const booked = a.online + a.desk;
+  const prevBooked = s.prev.appointments;
+  const ended = a.arrived + a.noShow;
+  // النسبة على الأيّام التي عُدّت فيها صفحة الحجز فقط (وإلّا تتجاوز 100%)
+  const trackedOnline = a.bookSince ? a.daily.filter((d) => d.day >= a.bookSince!).reduce((t, d) => t + d.online, 0) : 0;
+  return (
+    <section className="card space-y-4 p-4 sm:p-5" data-testid="admin-appts">
+      <div className="flex items-center gap-2">
+        <CalendarDays size={20} className="text-brand-600" />
+        <h3 className="text-lg font-bold">المواعيد</h3>
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Tile
+          icon={CalendarCheck}
+          label="أشخاص حجزوا موعداً"
+          value={fmtN(booked)}
+          sub={`${fmtN(a.online)} من الهاتف · ${fmtN(a.desk)} عند السكرتيرة${a.cancelled ? ` · ${fmtN(a.cancelled)} ألغوا` : ""}`}
+          delta={<Delta now={booked} before={prevBooked} />}
+        />
+        <Tile
+          icon={MousePointerClick}
+          label="زوّار صفحة الحجز"
+          value={fmtN(a.bookVisitors)}
+          sub={a.bookVisitors ? `${Math.min(100, pct(trackedOnline, a.bookVisitors))}% منهم حجزوا فعلاً` : "زائر مختلف كلّ يوم"}
+          delta={<Delta now={a.bookVisitors} before={a.prevBookVisitors} />}
+        />
+        <Tile icon={CalendarClock} label="مواعيد قادمة" value={fmtN(a.upcoming)} sub="محجوزة لليوم وما بعده (كلّ العيادات)" />
+        <Tile
+          icon={UserCheck}
+          label="حضروا موعدهم"
+          value={ended ? `${pct(a.arrived, ended)}%` : "—"}
+          sub={ended ? `${fmtN(a.arrived)} حضر · ${fmtN(a.noShow)} غاب` : "لا مواعيد مضت في الفترة"}
+        />
+      </div>
+      <p className="-mt-1 text-xs text-slate-400">
+        الحجوزات تُعدّ بيوم الحجز لا بيوم الموعد. النسب الملوّنة {vs}.
+      </p>
+
+      <Panel title="الحجوزات يومياً" sub="متى حجز الناس (لا يوم الموعد نفسه)" className="bg-slate-50/60 shadow-none">
+        <Columns
+          data={a.daily.map((d) => ({ label: short(d.day), title: d.day, values: [d.online, d.desk] }))}
+          series={[
+            { name: "حجز من الهاتف", color: SERIES[0] },
+            { name: "عند السكرتيرة", color: SERIES[1] },
+          ]}
+        />
+      </Panel>
+
+      <div>
+        <h4 className="mb-2 font-bold">حسب العيادة</h4>
+        {a.byClinic.length === 0 ? (
+          <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">لا مواعيد ولا زيارات لصفحات الحجز في هذه الفترة.</p>
+        ) : (
+          <div className="-mx-4 overflow-x-auto px-4 sm:-mx-5 sm:px-5">
+            <table className="w-full min-w-[640px] text-sm" data-testid="admin-appts-clinics">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs text-slate-500">
+                  <th className="py-2 text-start font-semibold">العيادة</th>
+                  {/* الأهمّ أوّلاً: على الهاتف يظهر دون سحب الجدول */}
+                  <th className="px-2 py-2 font-semibold">حجزوا من الهاتف</th>
+                  <th className="px-2 py-2 font-semibold">عند السكرتيرة</th>
+                  <th className="px-2 py-2 font-semibold">قادمة</th>
+                  <th className="px-2 py-2 font-semibold">فتحوا صفحة الحجز</th>
+                  <th className="px-2 py-2 font-semibold">زوّار صفحتها</th>
+                  <th className="px-2 py-2 font-semibold">ألغوا</th>
+                </tr>
+              </thead>
+              <tbody className="num text-center">
+                {a.byClinic.map((c) => (
+                  <tr key={c.slug} className="border-b border-slate-100 last:border-0">
+                    <td className="max-w-56 truncate py-2 text-start font-semibold">
+                      <a href={`/s/${c.slug}`} target="_blank" className="hover:underline">
+                        {c.name}
+                      </a>
+                    </td>
+                    <td className="px-2 py-2 font-bold text-brand-800">{fmtN(c.online)}</td>
+                    <td className="px-2 py-2">{fmtN(c.desk)}</td>
+                    <td className="px-2 py-2 font-bold">{fmtN(c.upcoming)}</td>
+                    <td className="px-2 py-2">{fmtN(c.bookVisitors)}</td>
+                    <td className="px-2 py-2">{fmtN(c.pageVisitors)}</td>
+                    <td className="px-2 py-2 text-slate-500">{fmtN(c.cancelled)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="mt-2 text-xs text-slate-400">
+          «زوّار صفحتها» و«فتحوا صفحة الحجز»: أشخاص مختلفون كلّ يوم.
+          {a.bookSince ? ` صفحة الحجز تُعدّ وحدها منذ ${short(a.bookSince)}/${a.bookSince.slice(0, 4)} — قبل ذلك كانت ضمن زوّار صفحة الطبيب.` : " صفحة الحجز ستُعدّ وحدها ابتداءً من أوّل زيارة لها."}
+        </p>
+      </div>
+    </section>
+  );
+}
+
 export default function StatsView({ s, subs }: { s: AdminStats; subs: { key: string; label: string; n: number }[] }) {
   const k: Kpis = s.kpi;
   const p: Kpis = s.prev;
@@ -120,6 +220,8 @@ export default function StatsView({ s, subs }: { s: AdminStats; subs: { key: str
           </div>
         ))}
       </section>
+
+      <Appointments s={s} vs={vs} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Panel title="الزوّار يومياً" sub="كلّ من فتح الموقع (المرضى + الأطبّاء + الزوّار)">
@@ -166,7 +268,7 @@ export default function StatsView({ s, subs }: { s: AdminStats; subs: { key: str
         <Panel title="أكثر الأطبّاء مرضى" sub="عدد التذاكر في الفترة">
           <HBars rows={s.topDoctors.map((r) => ({ key: r.slug, label: <a href={`/s/${r.slug}`} target="_blank" className="hover:underline">{r.name}</a>, n: r.n }))} empty="لا مرضى بعد" />
         </Panel>
-        <Panel title="أكثر صفحات الأطبّاء زيارةً" sub="زوّار صفحة المرضى">
+        <Panel title="أكثر صفحات الأطبّاء زيارةً" sub="زوّار صفحة الطبيب وصفحة الحجز">
           <HBars rows={s.topPages.map((r) => ({ key: r.slug, label: <a href={`/s/${r.slug}`} target="_blank" className="hover:underline">{r.name}</a>, n: r.n }))} color={SERIES[1]} empty="لا زيارات بعد" />
         </Panel>
         <Panel title="مصير التذاكر" sub="ماذا حدث لكلّ رقم">
@@ -178,18 +280,11 @@ export default function StatsView({ s, subs }: { s: AdminStats; subs: { key: str
         <Panel title="حالة الاشتراكات" sub="الطوابير (عيادات طبيب واحد + أطبّاء العيادات)">
           <HBars rows={subs.map((r) => ({ key: r.key, label: r.label, n: r.n }))} color={SERIES[1]} empty="لا أطبّاء بعد" />
         </Panel>
-        <Panel title="المواعيد والتقييمات">
-          <div className="grid grid-cols-2 gap-3 text-center">
-            <div className="rounded-xl bg-slate-50 p-3">
-              <CalendarCheck className="mx-auto text-brand-600" size={20} />
-              <div className="num mt-1 text-2xl font-bold">{fmtN(k.appointments)}</div>
-              <div className="text-xs text-slate-500">موعد في الفترة</div>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-3">
-              <Star className="mx-auto text-amber-500" size={20} />
-              <div className="num mt-1 text-2xl font-bold">{s.totals.rating ?? "—"}</div>
-              <div className="text-xs text-slate-500">{fmtN(s.totals.reviews)} تقييم</div>
-            </div>
+        <Panel title="التقييمات">
+          <div className="rounded-xl bg-slate-50 p-3 text-center">
+            <Star className="mx-auto text-amber-500" size={20} />
+            <div className="num mt-1 text-2xl font-bold">{s.totals.rating ?? "—"}</div>
+            <div className="text-xs text-slate-500">{fmtN(s.totals.reviews)} تقييم</div>
           </div>
         </Panel>
       </div>

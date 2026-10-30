@@ -8,7 +8,7 @@ import { dayKey, localTime, TIME_ZONE } from "@/lib/domain/time";
 import { now as clockNow } from "./clock";
 import { getDb, type Q } from "./db";
 
-export type Section = "home" | "shop" | "ticket" | "appt" | "tv" | "doctors" | "signup" | "staff" | "clinic" | "other";
+export type Section = "home" | "shop" | "book" | "ticket" | "appt" | "tv" | "doctors" | "signup" | "staff" | "clinic" | "other";
 export type Source = "direct" | "qr" | "internal" | "google" | "facebook" | "instagram" | "whatsapp" | "tiktok" | "other";
 export type Device = "mobile" | "desktop" | "tv";
 
@@ -18,7 +18,7 @@ const SLUG = /^[a-z0-9][a-z0-9-]{2,39}$/;
 /** المسار ← القسم (+ اسم الطبيب/العيادة في الرابط). null = لا يُعدّ (لوحة المؤسّس، الـ API…). */
 export function classifyPath(path: string): { section: Section; shop: string } | null {
   if (typeof path !== "string" || path.length > 200 || !path.startsWith("/")) return null;
-  const [, a = "", b = ""] = path.toLowerCase().split("/");
+  const [, a = "", b = "", c = ""] = path.toLowerCase().split("/");
   const slug = SLUG.test(b) ? b : "";
   switch (a) {
     case "":
@@ -27,7 +27,8 @@ export function classifyPath(path: string): { section: Section; shop: string } |
     case "api":
       return null;
     case "s":
-      return slug ? { section: "shop", shop: slug } : null;
+      // صفحة الحجز تُعدّ وحدها: كم زائراً فتحها مقابل كم حجز (لوحة المؤسّس ← المواعيد)
+      return slug ? { section: c === "book" ? "book" : "shop", shop: slug } : null;
     case "d":
       return slug ? { section: "tv", shop: slug } : null;
     case "staff":
@@ -58,8 +59,9 @@ export function classifySource(referrer: unknown, qr: boolean, ownHost: string |
   }
   if (ownHost && (host === ownHost || host.endsWith(`.${ownHost}`))) return "internal";
   if (/(^|\.)google\./.test(host)) return "google";
-  if (/(^|\.)(facebook\.com|fb\.com|fb\.me|messenger\.com)$/.test(host)) return "facebook";
-  if (/(^|\.)instagram\.com$/.test(host)) return "instagram";
+  // تطبيقات أندرويد ترسل android-app://com.facebook.katana أو com.instagram.android
+  if (/(^|\.)(facebook\.com|fb\.com|fb\.me|messenger\.com)$/.test(host) || /^com\.facebook\./.test(host)) return "facebook";
+  if (/(^|\.)instagram\.com$/.test(host) || /^com\.instagram\./.test(host)) return "instagram";
   if (/(^|\.)(whatsapp\.com|wa\.me)$/.test(host)) return "whatsapp";
   if (/(^|\.)tiktok\.com$/.test(host)) return "tiktok";
   return "other";
@@ -147,6 +149,25 @@ export interface AdminStats {
   topDoctors: { slug: string; name: string; n: number }[];
   wilayas: { code: number | null; n: number }[];
   outcomes: { key: string; n: number }[];
+  appts: ApptStats;
+}
+
+/** المواعيد: كم حُجز (ومن أين)، كم زائراً فتح صفحة الحجز، والحضور — للمنصّة ولكلّ عيادة. */
+export interface ApptStats {
+  online: number;
+  desk: number;
+  cancelled: number;
+  /** محجوزة لليوم أو بعده (كلّ الفترات) */
+  upcoming: number;
+  /** مواعيد أيّامها في الفترة وقد مضت أو اليوم */
+  arrived: number;
+  noShow: number;
+  bookVisitors: number;
+  prevBookVisitors: number;
+  /** أوّل يوم عُدّت فيه صفحة الحجز وحدها (قبله كانت ضمن صفحة الطبيب) */
+  bookSince: string | null;
+  daily: { day: string; online: number; desk: number }[];
+  byClinic: { slug: string; name: string; pageVisitors: number; bookVisitors: number; online: number; desk: number; cancelled: number; upcoming: number }[];
 }
 
 const n = (v: unknown) => Number(v ?? 0) || 0;
@@ -229,8 +250,8 @@ export async function adminStats(range: number): Promise<AdminStats> {
     db.query("select source as key, count(*) as n from visits where day between $1 and $2 group by 1 order by 2 desc", span),
     db.query("select device as key, count(*) as n from visits where day between $1 and $2 group by 1 order by 2 desc", span),
     db.query(
-      `select v.shop as slug, s.name, count(*) as n from visits v join shops s on s.slug = v.shop
-       where v.day between $1 and $2 and v.section = 'shop' group by 1, 2 order by 3 desc limit 10`,
+      `select v.shop as slug, s.name, count(distinct v.day || ':' || v.vid) as n from visits v join shops s on s.slug = v.shop
+       where v.day between $1 and $2 and v.section in ('shop', 'book') group by 1, 2 order by 3 desc limit 10`,
       span,
     ),
     db.query(
@@ -248,6 +269,7 @@ export async function adminStats(range: number): Promise<AdminStats> {
     ),
   ]);
 
+  const appts = await apptStats(db, from, today, prevFrom, prevTo, days);
   const byDay = <T extends Record<string, unknown>>(rows: T[]) => new Map(rows.map((r) => [String(r.day), r]));
   const vMap = byDay(vd);
   const tMap = byDay(td);
@@ -291,5 +313,74 @@ export async function adminStats(range: number): Promise<AdminStats> {
     topDoctors: docs.map((r) => ({ slug: String(r.slug), name: String(r.name), n: n(r.n) })),
     wilayas: wil.map((r) => ({ code: r.code == null ? null : n(r.code), n: n(r.n) })),
     outcomes: kv(out),
+    appts,
+  };
+}
+
+async function apptStats(q: Q, from: string, today: string, prevFrom: string, prevTo: string, days: string[]): Promise<ApptStats> {
+  const created = `to_char(created_at at time zone ${TZ}, 'YYYY-MM-DD')`;
+  const [sum, up, att, bv, pbv, since, daily, clinics] = await Promise.all([
+    q.query(
+      `select count(*) filter (where source = 'online') as online, count(*) filter (where source = 'desk') as desk,
+              count(*) filter (where status = 'cancelled') as cancelled
+       from appointments where ${created} between $1 and $2`,
+      [from, today],
+    ),
+    q.query("select count(*) as n from appointments where status = 'booked' and day >= $1", [today]),
+    q.query(
+      `select count(*) filter (where status = 'arrived') as arrived, count(*) filter (where status = 'no_show') as no_show
+       from appointments where day between $1 and $2`,
+      [from, today],
+    ),
+    q.query("select count(*) as n from visits where section = 'book' and day between $1 and $2", [from, today]),
+    q.query("select count(*) as n from visits where section = 'book' and day between $1 and $2", [prevFrom, prevTo]),
+    q.query("select min(day) as d from visits where section = 'book'"),
+    q.query(
+      `select ${created} as day, count(*) filter (where source = 'online') as online, count(*) filter (where source = 'desk') as desk
+       from appointments where ${created} between $1 and $2 group by 1`,
+      [from, today],
+    ),
+    q.query(
+      `with a as (
+         select shop_id, count(*) filter (where source = 'online') as online, count(*) filter (where source = 'desk') as desk,
+                count(*) filter (where status = 'cancelled') as cancelled
+         from appointments where ${created} between $1 and $2 group by 1
+       ), u as (
+         select shop_id, count(*) as upcoming from appointments where status = 'booked' and day >= $2 group by 1
+       ), v as (
+         select shop, count(*) filter (where section = 'book') as book, count(*) filter (where section = 'shop') as page
+         from visits where day between $1 and $2 and section in ('shop', 'book') group by 1
+       )
+       select s.slug, s.name, coalesce(a.online, 0) as online, coalesce(a.desk, 0) as desk, coalesce(a.cancelled, 0) as cancelled,
+              coalesce(u.upcoming, 0) as upcoming, coalesce(v.book, 0) as book, coalesce(v.page, 0) as page
+       from shops s left join a on a.shop_id = s.id left join u on u.shop_id = s.id left join v on v.shop = s.slug
+       where a.shop_id is not null or u.shop_id is not null or coalesce(v.book, 0) > 0
+       order by coalesce(a.online, 0) + coalesce(a.desk, 0) desc, coalesce(u.upcoming, 0) desc, coalesce(v.book, 0) desc
+       limit 30`,
+      [from, today],
+    ),
+  ]);
+  const dMap = new Map(daily.map((r) => [String(r.day), r]));
+  return {
+    online: n(sum[0]?.online),
+    desk: n(sum[0]?.desk),
+    cancelled: n(sum[0]?.cancelled),
+    upcoming: n(up[0]?.n),
+    arrived: n(att[0]?.arrived),
+    noShow: n(att[0]?.no_show),
+    bookVisitors: n(bv[0]?.n),
+    prevBookVisitors: n(pbv[0]?.n),
+    bookSince: since[0]?.d ? String(since[0].d) : null,
+    daily: days.map((day) => ({ day, online: n(dMap.get(day)?.online), desk: n(dMap.get(day)?.desk) })),
+    byClinic: clinics.map((r) => ({
+      slug: String(r.slug),
+      name: String(r.name),
+      pageVisitors: n(r.page),
+      bookVisitors: n(r.book),
+      online: n(r.online),
+      desk: n(r.desk),
+      cancelled: n(r.cancelled),
+      upcoming: n(r.upcoming),
+    })),
   };
 }

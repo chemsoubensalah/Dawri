@@ -44,6 +44,8 @@ describe("التصنيف", () => {
   it("المسارات", () => {
     expect(classifyPath("/")).toEqual({ section: "home", shop: "" });
     expect(classifyPath("/s/dr-ali")).toEqual({ section: "shop", shop: "dr-ali" });
+    expect(classifyPath("/s/dr-ali/book")).toEqual({ section: "book", shop: "dr-ali" });
+    expect(classifyPath("/s/dr-ali/appointment/x")).toEqual({ section: "shop", shop: "dr-ali" });
     expect(classifyPath("/d/dr-ali")).toEqual({ section: "tv", shop: "dr-ali" });
     expect(classifyPath("/t/123")).toEqual({ section: "ticket", shop: "" });
     expect(classifyPath("/admin")).toBeNull();
@@ -56,6 +58,8 @@ describe("التصنيف", () => {
     expect(classifySource("", true, "dawri.app")).toBe("qr");
     expect(classifySource("https://www.google.com/", false, "dawri.app")).toBe("google");
     expect(classifySource("https://l.facebook.com/x", false, "dawri.app")).toBe("facebook");
+    expect(classifySource("android-app://com.facebook.katana/", false, "dawri.app")).toBe("facebook");
+    expect(classifySource("android-app://com.instagram.android/", false, "dawri.app")).toBe("instagram");
     expect(classifySource("https://dawri.app/doctors", false, "dawri.app")).toBe("internal");
     expect(classifySource("not a url", false, null)).toBe("direct");
     expect(classifyDevice(PHONE_UA)).toBe("mobile");
@@ -129,6 +133,46 @@ describe("الإحصائيات", () => {
     const later = await adminStats(7);
     expect(later.kpi.patients).toBe(0);
     expect(later.prev.patients).toBe(3);
+  });
+
+  it("المواعيد: من حجز، من فتح صفحة الحجز، القادمة والحضور — ولكلّ عيادة", async () => {
+    const saved = clock;
+    const shop = await svc.createShop({ name: "عيادة المواعيد", slug: "appt-doc", pin: "4321", email: "appt@example.com", kind: "dentist" });
+    const base = { referrer: "", qr: false, ownHost: "dawri.app" };
+    // الفترة السابقة: زائر واحد لصفحة الحجز
+    clock = new Date("2026-10-29T09:30:00Z");
+    await recordVisit({ ...base, path: "/s/appt-doc/book", ip: "41.5.5.5", ua: PHONE_UA });
+    // اليوم (5 نوفمبر): زائران لصفحة الحجز، أحدهما فتح صفحة الطبيب أيضاً (مرّتين)
+    clock = new Date("2026-11-05T09:30:00Z");
+    await recordVisit({ ...base, path: "/s/appt-doc", ip: "41.3.3.3", ua: PHONE_UA });
+    await recordVisit({ ...base, path: "/s/appt-doc/book", ip: "41.3.3.3", ua: PHONE_UA });
+    await recordVisit({ ...base, path: "/s/appt-doc/book", ip: "41.3.3.3", ua: PHONE_UA });
+    await recordVisit({ ...base, path: "/s/appt-doc/book", ip: "41.4.4.4", ua: PHONE_UA });
+
+    await db.query(
+      `insert into appointments (shop_id, day, time, name, source, status, created_at) values
+       ($1,'2026-11-10','09:00','a','online','booked','2026-11-05T08:00:00Z'),
+       ($1,'2026-11-06','10:00','b','desk','booked','2026-11-04T10:00:00Z'),
+       ($1,'2026-11-07','11:00','c','online','cancelled','2026-11-05T08:30:00Z'),
+       ($1,'2026-11-03','09:30','d','online','arrived','2026-11-01T08:00:00Z'),
+       ($1,'2026-11-04','09:30','e','online','no_show','2026-10-25T08:00:00Z')`,
+      [shop.id],
+    );
+
+    const s = await adminStats(7); // 30 أكتوبر ← 5 نوفمبر
+    expect(s.kpi.appointments).toBe(4); // بيوم الحجز: الخامس حُجز في الفترة السابقة
+    expect(s.prev.appointments).toBe(1);
+    expect(s.appts).toMatchObject({ online: 3, desk: 1, cancelled: 1, upcoming: 2, arrived: 1, noShow: 1, bookVisitors: 2, prevBookVisitors: 1, bookSince: "2026-10-29" });
+    expect(s.appts.daily).toHaveLength(7);
+    expect(s.appts.daily.at(-1)).toEqual({ day: "2026-11-05", online: 2, desk: 0 });
+    expect(s.appts.daily.at(-2)).toEqual({ day: "2026-11-04", online: 0, desk: 1 });
+    expect(s.appts.byClinic).toEqual([
+      { slug: "appt-doc", name: "عيادة المواعيد", pageVisitors: 1, bookVisitors: 2, online: 3, desk: 1, cancelled: 1, upcoming: 2 },
+    ]);
+    // صفحة الطبيب + صفحة الحجز: الشخص نفسه يُعدّ مرّة واحدة
+    expect(s.topPages).toEqual([{ slug: "appt-doc", name: "عيادة المواعيد", n: 2 }]);
+    expect(s.sections).toEqual(expect.arrayContaining([{ key: "book", n: 2 }, { key: "shop", n: 1 }]));
+    clock = saved;
   });
 });
 
