@@ -59,7 +59,7 @@ export async function handle(fn: () => Promise<unknown>) {
   try {
     return json(await fn());
   } catch (e) {
-    if (e instanceof DomainError) return json({ error: e.code }, e.status);
+    if (e instanceof DomainError) return json(e.vars ? { error: e.code, vars: e.vars } : { error: e.code }, e.status);
     return serverError(e);
   }
 }

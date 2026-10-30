@@ -92,6 +92,10 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
   }, [mine]);
 
   usePoll(async () => setView(await api<PublicShopView>(`/api/s/${view.slug}`)), 20000);
+  // الحالة المختارة اكتمل عددها اليوم (حدّ الطبيب): نلغي الاختيار
+  useEffect(() => {
+    if (reason && view.reasonFull?.includes(reason)) setReason(null);
+  }, [reason, view.reasonFull]);
 
   // ننتظر رسالة واتساب: تتحقّق الصفحة كلّ ثانيتين ونصف (وفوراً عند الرجوع من واتساب)
   usePoll(async () => {
@@ -112,7 +116,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
     try {
       await fn();
     } catch (e) {
-      setError(errorText(lang, (e as ApiError).code));
+      setError(errorText(lang, (e as ApiError).code, (e as ApiError).vars));
     } finally {
       setBusy(false);
     }
@@ -139,7 +143,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
   const sendCode = () =>
     !missingReason() &&
     run(async () => {
-      const r = await api<{ verify: boolean; devCode?: string }>(`/api/s/${view.slug}/code`, { name, phone, lang, recover });
+      const r = await api<{ verify: boolean; devCode?: string }>(`/api/s/${view.slug}/code`, { name, phone, reason: recover ? null : reason, lang, recover });
       if (!r.verify) {
         const tk = await api<{ ticketId: string }>(`/api/s/${view.slug}/tickets`, { name, phone, reason: recover ? null : reason, door, lang, recover });
         return finish(tk.ticketId);
@@ -300,7 +304,7 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
               {recover ? (
                 <p className="text-sm text-slate-600">{t(lang, "sp_recoverHint")}</p>
               ) : (
-                <ReasonPicker lang={lang} config={view.reason} value={reason} onChange={setReason} required={view.reason.required} />
+                <ReasonPicker lang={lang} config={view.reason} value={reason} onChange={setReason} required={view.reason.required} full={view.reasonFull} />
               )}
               {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
               {view.waVerify && view.verifyPhone ? (

@@ -20,7 +20,8 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   const billingLink = (children: React.ReactNode) => (canManage ? <a href={`/staff/${slug}/billing`}>{children}</a> : children);
   const [s, setS] = useState(initial);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  /** override: حدّ الطبيب بلغ ويُسمح بالتجاوز — زرّ «أضف رغم ذلك» */
+  const [msg, setMsg] = useState<{ text: string; ok: boolean; override?: boolean } | null>(null);
   const [online, setOnline] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
@@ -96,7 +97,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
       } catch (e) {
         const err = e as ApiError;
         if (err.status === 401) location.reload();
-        setMsg({ text: errorText(lang, err.code), ok: false });
+        setMsg({ text: errorText(lang, err.code, err.vars, true), ok: false, override: err.vars?.override === 1 });
         if (err.code === "conflict") api<StaffState>(`/api/staff/${slug}/state`).then(setS).catch(() => {});
         return false;
       } finally {
@@ -105,6 +106,22 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
     },
     [slug, lang],
   );
+
+  /** إضافة شخص من الاستقبال؛ force بعد تنبيه «حدّ الطبيب» (إن سمح بالتجاوز) */
+  const addPerson = async (force: boolean) => {
+    const ok = await act(
+      { action: "add", name: addName, phone: addPhone || undefined, present: addPresent, reason: addReason, force },
+      (r) => t(lang, "added", { n: r.number ?? "" }),
+    );
+    if (ok) {
+      setAddName("");
+      setAddPhone("");
+      setAddReason(null);
+      setAddOpen(false);
+    }
+  };
+  // التجاوز يخصّ ما نُبِّه عليه فقط
+  useEffect(() => setMsg((m) => (m?.override ? { ...m, override: false } : m)), [addPhone, addReason]);
 
   const cur = s.current;
   const upNext = s.waiting.find((w) => !w.held) ?? null;
@@ -550,18 +567,9 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
       <Dialog open={addOpen} onClose={() => setAddOpen(false)} title={t(lang, "addPerson")} closeLabel={t(lang, "a11y_close")}>
         <form
           className="space-y-4"
-          onSubmit={async (e) => {
+          onSubmit={(e) => {
             e.preventDefault();
-            const ok = await act(
-              { action: "add", name: addName, phone: addPhone || undefined, present: addPresent, reason: addReason },
-              (r) => t(lang, "added", { n: r.number ?? "" }),
-            );
-            if (ok) {
-              setAddName("");
-              setAddPhone("");
-              setAddReason(null);
-              setAddOpen(false);
-            }
+            addPerson(false);
           }}
         >
           <p className="text-sm text-slate-600">{t(lang, "addPersonHint")}</p>
@@ -574,12 +582,29 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
             <input id="add-phone" className="input num text-start" dir="ltr" type="tel" value={addPhone} onChange={(e) => setAddPhone(e.target.value)} placeholder="0550 12 34 56" />
             <p className="mt-1.5 text-xs text-slate-500">{t(lang, "db_addPhoneHint")}</p>
           </div>
-          <ReasonPicker lang={lang} config={s.shop.reason} value={addReason} onChange={setAddReason} idPrefix="add-reason" />
+          <ReasonPicker
+            lang={lang}
+            config={s.shop.reason}
+            value={addReason}
+            onChange={setAddReason}
+            idPrefix="add-reason"
+            full={s.shop.reasonFull}
+            fullSelectable={s.shop.limitsOverride}
+          />
           <label className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 text-slate-700">
             <input type="checkbox" className="size-5 accent-brand-600" checked={addPresent} onChange={(e) => setAddPresent(e.target.checked)} />
             {t(lang, "presentNow")}
           </label>
-          {msg && !msg.ok && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{msg.text}</p>}
+          {msg && !msg.ok && (
+            <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">
+              {msg.text}
+              {msg.override && (
+                <button type="button" className="btn-secondary btn-sm mt-2 w-full" disabled={busy} onClick={() => addPerson(true)} data-testid="add-force">
+                  {t(lang, "lm_forceAdd")}
+                </button>
+              )}
+            </div>
+          )}
           <button className="btn-primary w-full" disabled={busy}>
             <UserPlus size={18} /> {t(lang, "add")}
           </button>

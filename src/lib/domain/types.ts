@@ -202,6 +202,8 @@ export interface Shop {
   daysOff: DayOff[];
   /** إعداد «سبب الزيارة» كما حُفظ (null = افتراضي) — اقرأه بـ reasonConfigOf (src/lib/domain/reasons.ts) */
   reasonCfg?: unknown;
+  /** «حدود التسجيل» كما حُفظت (null = افتراضي) — اقرأها بـ readLimits (src/lib/domain/limits.ts) */
+  limitsCfg?: unknown;
 }
 
 export interface DayOff {
@@ -232,6 +234,8 @@ export class DomainError extends Error {
   constructor(
     public code: string,
     public status = 400,
+    /** قيم تُدرج في نصّ الخطأ (err_<code>_v): تاريخ، اسم الحالة… — تُرسل للعميل في {vars} */
+    public vars?: Record<string, string | number>,
   ) {
     super(code);
   }

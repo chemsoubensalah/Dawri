@@ -13,15 +13,18 @@ export interface ReasonConfig {
   required: boolean;
   /** اختيارات يكتبها الطبيب (وضع list) */
   options: string[];
+  /** حدّ يوميّ لاختيار (حشو: 6): الطابور والمواعيد معاً — src/lib/server/limits.ts. غائب = بلا حدّ */
+  caps: Record<string, number>;
 }
 
 export const REASON_TEXT_MAX = 120;
 export const REASON_OPTION_MAX = 40;
 export const REASON_OPTIONS_MAX = 12;
+export const REASON_CAP_MAX = 200;
 
 /** قبل أن يختار الطبيب: العيادات والمخابر يكتب فيها المريض سببه؛ الأنواع الأخرى لا تسأل. */
 export function defaultReasonConfig(kind: ShopKind): ReasonConfig {
-  return { mode: kind === "doctor" || kind === "dentist" || kind === "lab" ? "text" : "off", required: true, options: [] };
+  return { mode: kind === "doctor" || kind === "dentist" || kind === "lab" ? "text" : "off", required: true, options: [], caps: {} };
 }
 
 /** اقتراحات يضيفها الطبيب إلى قائمته بنقرة (مفاتيح نصوص i18n: vr_<key>) — لا تُعرض على المريض إلّا إن اختارها. */
@@ -41,13 +44,24 @@ function cleanText(v: string): string {
   return v.replace(/[\u0000-\u001f\u007f‎‏‪-‮⁦-⁩]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+const isCap = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= REASON_CAP_MAX;
+
+/** الحدود المحفوظة لاختيارات موجودة فقط (اختيار حُذف يسقط حدّه). */
+function readCaps(raw: unknown, options: string[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    for (const [k, v] of Object.entries(raw)) if (options.includes(k) && isCap(v)) out[k] = v;
+  }
+  return out;
+}
+
 /** الإعداد المحفوظ (قد يكون فارغاً أو قديماً) + القيم الافتراضية حسب نوع العيادة. */
 export function readReasonConfig(kind: ShopKind, raw: unknown): ReasonConfig {
   const d = defaultReasonConfig(kind);
   const o = (raw && typeof raw === "object" ? raw : {}) as Partial<Record<keyof ReasonConfig, unknown>>;
   const mode = o.mode === "off" || o.mode === "list" || o.mode === "text" ? o.mode : d.mode;
   const options = Array.isArray(o.options) ? o.options.filter((x): x is string => typeof x === "string" && x.trim() !== "").slice(0, REASON_OPTIONS_MAX) : [];
-  return { mode, required: typeof o.required === "boolean" ? o.required : d.required, options };
+  return { mode, required: typeof o.required === "boolean" ? o.required : d.required, options, caps: readCaps(o.caps, options) };
 }
 
 export function reasonConfigOf(shop: Pick<Shop, "kind" | "reasonCfg">): ReasonConfig {
@@ -73,7 +87,24 @@ export function cleanReasonConfig(v: unknown): ReasonConfig {
     if (s && !options.includes(s)) options.push(s);
   }
   if (o.mode === "list" && options.length === 0) throw new DomainError("reason_no_options");
-  return { mode: o.mode, required: o.required, options };
+  // {اختيار: عدد}؛ فارغ أو 0 = بلا حدّ
+  const rawCaps = o.caps ?? {};
+  if (!rawCaps || typeof rawCaps !== "object" || Array.isArray(rawCaps)) throw new DomainError("invalid_settings");
+  const caps: Record<string, number> = {};
+  for (const [k, v] of Object.entries(rawCaps)) {
+    if (v === null || v === "" || v === 0) continue;
+    const n = typeof v === "string" ? Number(v) : v;
+    if (!isCap(n)) throw new DomainError("invalid_settings");
+    const key = cleanText(k);
+    if (options.includes(key)) caps[key] = n;
+  }
+  return { mode: o.mode, required: o.required, options, caps };
+}
+
+/** الحدّ اليوميّ للسبب المختار (null = بلا حدّ: نصّ حرّ، أو اختيار بلا حدّ). */
+export function reasonCap(c: ReasonConfig, reason: string | null | undefined): number | null {
+  const a = activeReasonConfig(c);
+  return a.mode === "list" && reason ? (a.caps[reason] ?? null) : null;
 }
 
 /**

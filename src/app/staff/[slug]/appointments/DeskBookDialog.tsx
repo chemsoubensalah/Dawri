@@ -34,6 +34,8 @@ export default function DeskBookDialog({
   const [reason, setReason] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  /** حدّ الطبيب بلغ (حالة مكتملة، أو مهلة الهاتف) ويُسمح للسكرتيرة بالتجاوز */
+  const [canForce, setCanForce] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -55,10 +57,14 @@ export default function DeskBookDialog({
     };
   }, [open, slug, lang]);
 
-  const submit = async () => {
+  // التجاوز يخصّ الطلب الذي نُبِّه عليه فقط: أيّ تغيير يعيد التنبيه
+  useEffect(() => setCanForce(false), [day, time, phone, reason]);
+
+  const submit = async (force = false) => {
     if (!day || !time) return;
     setBusy(true);
     setError("");
+    setCanForce(false);
     try {
       const r = await api<{ state: StaffAppointments }>(`/api/staff/${slug}/appointments?scope=${scope}`, {
         action: "book",
@@ -67,6 +73,7 @@ export default function DeskBookDialog({
         reason,
         day,
         time,
+        force,
       });
       onBooked(r.state, `${t(lang, "ap_booked")} — ${fmtDay(lang, day)} ${time}`);
       setName("");
@@ -77,7 +84,8 @@ export default function DeskBookDialog({
     } catch (e) {
       const err = e as ApiError;
       if (err.status === 401) location.reload();
-      setError(errorText(lang, err.code));
+      setError(errorText(lang, err.code, err.vars, true));
+      setCanForce(err.vars?.override === 1);
       if (err.code === "ap_slot_unavailable" || err.code === "ap_day_full") {
         setTime(null);
         api<DeskAvailability>(`/api/staff/${slug}/appointments/slots`).then(setAv).catch(() => {});
@@ -109,7 +117,15 @@ export default function DeskBookDialog({
           </div>
           {av && (
             <div className="sm:col-span-2">
-              <ReasonPicker lang={lang} config={av.reason} value={reason} onChange={setReason} idPrefix="ap-reason" />
+              <ReasonPicker
+                lang={lang}
+                config={av.reason}
+                value={reason}
+                onChange={setReason}
+                idPrefix="ap-reason"
+                full={(day && av.full[day]) || []}
+                fullSelectable={av.override}
+              />
             </div>
           )}
         </div>
@@ -138,7 +154,16 @@ export default function DeskBookDialog({
             )}
           </>
         )}
-        {error && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">{error}</p>}
+        {error && (
+          <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">
+            {error}
+            {canForce && (
+              <button type="button" className="btn-secondary btn-sm mt-2 w-full" disabled={busy} onClick={() => submit(true)} data-testid="ap-force">
+                {t(lang, "lm_forceAdd")}
+              </button>
+            )}
+          </div>
+        )}
         <button className="btn-primary w-full" disabled={busy || !day || !time} data-testid="ap-desk-submit">
           <CalendarPlus size={18} /> {day && time ? `${t(lang, "ap_confirm")} · ${fmtDay(lang, day, "short")} ${time}` : t(lang, "ap_confirm")}
         </button>

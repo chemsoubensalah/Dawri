@@ -58,6 +58,7 @@ import { applyReferral } from "./referral";
 import { REPORT_BUDGET_MS, sendDailyReports } from "./report";
 import { guardClientIp } from "./ratelimit";
 import { phoneCheckRequired } from "./verify";
+import { checkNewTicket, fullReasons, limitsOf, PATIENT } from "./limits";
 import { getSms } from "./sms";
 import { clinicSendsCodes, codeSender } from "./smsgate";
 import {
@@ -324,6 +325,8 @@ export async function publicShop(slug: string) {
       verifyPhone: await phoneCheckRequired(shop.id, { whatsapp: true }),
       /** كيف يُسأل المريض عن سبب زيارته (إعداد الطبيب) */
       reason: activeReasonConfig(reasonConfigOf(shop)),
+      /** الحالات التي اكتمل عددها اليوم (حدّ الطبيب اليوميّ) */
+      reasonFull: (await fullReasons(db, shop, dayKey(now), dayKey(now)))[dayKey(now)] ?? [],
       waVerify: waConfig().enabled,
       smsVerify: getSms() !== null || (await clinicSendsCodes(shop.id)),
       nextNumbers: lineup(tickets)
@@ -345,7 +348,7 @@ export type PublicShopView = Awaited<ReturnType<typeof publicShop>>["view"];
 /** client.ip: عنوان العميل (من المسار) — حدّ رموز لكلّ عميل ضدّ إغراق أرقام عشوائية برسائل مدفوعة. */
 export async function requestCode(
   slug: string,
-  body: { name?: unknown; phone?: unknown; lang?: unknown; recover?: unknown },
+  body: { name?: unknown; phone?: unknown; lang?: unknown; recover?: unknown; reason?: unknown },
   client: { ip?: string | null } = {},
 ) {
   const db = await getDb();
@@ -361,6 +364,8 @@ export async function requestCode(
   if (!existing) {
     const blocker = ticketBlocker(shop, qd.closed, now, qd.lastNumber);
     if (blocker) throw new DomainError(blocker, 409);
+    // حدود الطبيب قبل الرسالة (لها كلفة): المهلة بين تسجيلين، والحالة المكتملة اليوم
+    await checkNewTicket(db, shop, { phone, reason: cleanReason(reasonConfigOf(shop), body.reason), day: dayKey(now) }, PATIENT);
   }
   // بلا رمز: لا إرسال هنا؛ حدّ الشبكة يُطبَّق عند أخذ الرقم (takeTicket) مرّة واحدة
   if (!(await phoneCheckRequired(shop.id, { whatsapp: true }))) return { sent: false, verify: false, devCode: undefined as string | undefined };
@@ -459,6 +464,7 @@ export async function issueTicket(
     }
     const blocker = ticketBlocker(shop, closed, now, tickets.length);
     if (blocker) throw new DomainError(blocker, 409);
+    await checkNewTicket(q, shop, { phone: o.phone, reason: o.reason, day }, PATIENT);
     const since = new Date(now.getTime() - NO_SHOW_RETENTION_DAYS * DAY_MS);
     const noShows = await repo.countNoShows(q, shop.id, o.phone, since);
     const number = await repo.allocateNumber(q, shop.id, day);
@@ -504,6 +510,7 @@ export async function startWaVerification(
   if (!existing) {
     const blocker = ticketBlocker(shop, qd.closed, now, qd.lastNumber);
     if (blocker) throw new DomainError(blocker, 409);
+    await checkNewTicket(db, shop, { phone, reason, day: dayKey(now) }, PATIENT);
   }
   if ((await repo.countRecentWaVerifications(db, shop.id, phone, new Date(now.getTime() - 30 * 60000))) >= 5) {
     throw new DomainError("too_many_codes", 429);
@@ -613,7 +620,7 @@ async function handleIntent(
       } catch (e) {
         if (!(e instanceof DomainError)) throw e;
         await repo.failWaVerification(c.db, v.id, e.code);
-        return reply(errorText(lang, e.code));
+        return reply(errorText(lang, e.code, e.vars));
       }
       await repo.completeWaVerification(c.db, v.id, ticketId, c.now);
     }
@@ -834,6 +841,9 @@ export async function staffState(shop: Shop) {
       profileComplete: Boolean(shop.profile.address || shop.profile.phone || shop.profile.doctorName),
       hasEmail: Boolean(shop.ownerEmail),
       reason: activeReasonConfig(reasonConfigOf(shop)),
+      /** الحالات المكتملة اليوم، وهل تتجاوزها السكرتيرة بعد تنبيه */
+      reasonFull: (await fullReasons(db, shop, dayKey(now), dayKey(now)))[dayKey(now)] ?? [],
+      limitsOverride: limitsOf(shop).staffOverride,
     },
     closed,
     // «إيقاف استقبال مرضى جدد»: متى ومن (يظهر في لوحة الطبيب والسكرتيرة معاً)
@@ -863,7 +873,7 @@ export type StaffState = Awaited<ReturnType<typeof staffState>>;
 
 export async function staffAction(
   shop: Shop,
-  body: { action?: unknown; ticketId?: unknown; current?: unknown; name?: unknown; phone?: unknown; present?: unknown; reason?: unknown },
+  body: { action?: unknown; ticketId?: unknown; current?: unknown; name?: unknown; phone?: unknown; present?: unknown; reason?: unknown; force?: unknown },
   by: repo.QueueDay["closedBy"] = null,
 ) {
   const action = body.action;
@@ -881,6 +891,7 @@ export async function staffAction(
     const present = body.present !== false;
     const { result } = await mutate(shop, async ({ q, now, day, tickets }) => {
       if (phone && tickets.some((t) => t.phone === phone)) throw new DomainError("already_has_ticket", 409);
+      await checkNewTicket(q, shop, { phone, reason, day }, { staff: true, force: body.force === true });
       const number = await repo.allocateNumber(q, shop.id, day);
       const flags = initialFlags(tickets, shop.settings, now, { arrived: present, source: "desk" });
       await repo.insertTicket(q, {

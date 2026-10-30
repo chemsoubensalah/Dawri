@@ -56,6 +56,7 @@ import { clinicSendsCodes, codeSender } from "./smsgate";
 import { shortCode } from "./whatsapp";
 import { phoneCheckRequired } from "./verify";
 import { activeReasonConfig, cleanReason, reasonConfigOf } from "../domain/reasons";
+import { checkPhoneGap, checkReasonCap, fullReasons, limitsOf, PATIENT, type Who } from "./limits";
 
 const DAY_MS = 86_400_000;
 /**
@@ -176,6 +177,8 @@ async function bookCore(
   now: Date,
   /** رمز التحقّق: يُستهلك داخل المعاملة. وجوده = إثبات ملكية الهاتف */
   onCommit?: (q: Q) => Promise<void>,
+  /** السكرتيرة: تتجاوز حدود الطبيب إن سمح (بعد تنبيه) — src/lib/server/limits.ts */
+  who: Who = PATIENT,
 ): Promise<{ id: string; existing: boolean }> {
   const db = await getDb();
   const online = input.source === "online";
@@ -194,11 +197,13 @@ async function bookCore(
           return { id: existing.id, existing: true };
         }
         if (online) await guardPhone(q, shop, input.phone, now);
+        await checkPhoneGap(q, shop, input.phone, { kind: "appt", today: dayKey(now), visitDay: input.day }, who);
       }
       if (online && (await ar.countRecentOnline(q, shop.id, new Date(now.getTime() - 3600_000))) >= MAX_ONLINE_PER_HOUR) {
         throw new DomainError("ap_rate", 429);
       }
       await slotCheck(q, shop, s, input.day, input.time, now, online ? "online" : "desk", input.day === dayKey(now) && qd.closed);
+      await checkReasonCap(q, shop, input.day, input.reason, who);
       await onCommit?.(q);
       const a = await ar.insertAppointment(q, { shopId: shop.id, ...input, now });
       return { id: a.id, existing: false };
@@ -234,10 +239,12 @@ export async function publicAvailability(slug: string) {
   const now = clockNow();
   const { shop, settings } = await bookableShop(db, slug, now);
   const today = dayKey(now);
-  const [counts, qd, verify] = await Promise.all([
-    ar.activeCounts(db, shop.id, today, addDays(today, settings.daysAhead)),
+  const last = addDays(today, settings.daysAhead);
+  const [counts, qd, verify, full] = await Promise.all([
+    ar.activeCounts(db, shop.id, today, last),
     repo.getDay(db, shop.id, today),
     verifyMode(shop.id),
+    fullReasons(db, shop, today, last),
   ]);
   return {
     slug: shop.slug,
@@ -247,6 +254,8 @@ export async function publicAvailability(slug: string) {
     minLeadMin: settings.minLeadMin,
     verify,
     days: availability({ settings, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "online", closedToday: qd.closed }),
+    /** الحالات المكتملة لكلّ يوم (حدّ الطبيب اليوميّ) */
+    full,
   };
 }
 
@@ -258,7 +267,7 @@ export type PublicAvailability = Awaited<ReturnType<typeof publicAvailability>>;
  */
 export async function requestBookingCode(
   slug: string,
-  body: { name?: unknown; phone?: unknown; day?: unknown; time?: unknown; lang?: unknown },
+  body: { name?: unknown; phone?: unknown; day?: unknown; time?: unknown; lang?: unknown; reason?: unknown },
   client: { ip?: string | null } = {},
 ) {
   const db = await getDb();
@@ -274,7 +283,9 @@ export async function requestBookingCode(
     if (!required) throw new DomainError("ap_already_booked", 409);
   } else {
     await guardPhone(db, shop, phone, now);
+    await checkPhoneGap(db, shop, phone, { kind: "appt", today: dayKey(now), visitDay: day }, PATIENT);
     await slotCheck(db, shop, settings, day, time, now, "online", day === dayKey(now) && (await repo.getDay(db, shop.id, day)).closed);
+    await checkReasonCap(db, shop, day, cleanReason(reasonConfigOf(shop), body.reason), PATIENT);
   }
   if (!required) return { sent: false, verify: false, devCode: undefined as string | undefined };
   const sms = await codeSender(shop, getSms()); // هاتف العيادة أوّلاً (إن فعّلت ذلك) ثمّ المزوّد العامّ
@@ -706,15 +717,25 @@ export async function deskAvailability(shop: Shop) {
   const now = clockNow();
   const today = dayKey(now);
   const s = await ar.getSettings(db, shop.id);
-  const counts = await ar.activeCounts(db, shop.id, today, addDays(today, s.daysAhead));
-  return { today, reason: activeReasonConfig(reasonConfigOf(shop)), slotMin: s.slotMin, perSlot: s.perSlot, days: availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "desk" }) };
+  const last = addDays(today, s.daysAhead);
+  const [counts, full] = await Promise.all([ar.activeCounts(db, shop.id, today, last), fullReasons(db, shop, today, last)]);
+  return {
+    today,
+    reason: activeReasonConfig(reasonConfigOf(shop)),
+    /** الحالات المكتملة لكلّ يوم، وهل تتجاوزها السكرتيرة (بعد تنبيه) */
+    full,
+    override: limitsOf(shop).staffOverride,
+    slotMin: s.slotMin,
+    perSlot: s.perSlot,
+    days: availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "desk" }),
+  };
 }
 
 export type DeskAvailability = Awaited<ReturnType<typeof deskAvailability>>;
 
 export async function staffAppointmentAction(
   shop: Shop,
-  body: { action?: unknown; id?: unknown; name?: unknown; phone?: unknown; day?: unknown; time?: unknown; reason?: unknown },
+  body: { action?: unknown; id?: unknown; name?: unknown; phone?: unknown; day?: unknown; time?: unknown; reason?: unknown; force?: unknown },
 ): Promise<{ ok: true; id?: string; ticketId?: string; number?: number | null }> {
   const now = clockNow();
   // اشتراك منتهٍ: لا مواعيد جديدة ولا تذاكر من المكتب (كالحجز عبر الإنترنت وأخذ الأرقام)؛ الإلغاء يبقى ممكناً
@@ -728,7 +749,13 @@ export async function staffAppointmentAction(
       const phone = body.phone ? requirePhone(body.phone) : null;
       const s = await ar.getSettings(await getDb(), shop.id);
       const { day, time } = slotInput(body, s, now);
-      const r = await bookCore(shop, { name, phone, day, time, reason: cleanReason(reasonConfigOf(shop), body.reason), lang: shop.defaultLang, source: "desk" }, now);
+      const r = await bookCore(
+        shop,
+        { name, phone, day, time, reason: cleanReason(reasonConfigOf(shop), body.reason), lang: shop.defaultLang, source: "desk" },
+        now,
+        undefined,
+        { staff: true, force: body.force === true },
+      );
       return { ok: true, id: r.id };
     }
     case "checkin": {

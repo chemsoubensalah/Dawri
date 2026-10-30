@@ -99,6 +99,11 @@ export default function BookClient({
     }
   }, [av, day, time, lang]);
 
+  // الحالة المختارة مكتملة في اليوم المختار (حدّ الطبيب): نلغي الاختيار
+  useEffect(() => {
+    if (reason && day && av?.full?.[day]?.includes(reason)) setReason(null);
+  }, [av, day, reason]);
+
   const pickTime = (v: string) => {
     setTime(v);
     setError("");
@@ -128,7 +133,7 @@ export default function BookClient({
         setCodeSent(false);
         setCode("");
       }
-      setError(errorText(lang, code));
+      setError(errorText(lang, code, (e as ApiError).vars));
     } finally {
       setBusy(false);
     }
@@ -149,7 +154,7 @@ export default function BookClient({
   const submit = () =>
     run(async () => {
       if (av?.verify === "sms" && !codeSent) {
-        const r = await api<{ verify: boolean; devCode?: string }>(`/api/s/${slug}/booking/code`, { name, phone, day, time, lang });
+        const r = await api<{ verify: boolean; devCode?: string }>(`/api/s/${slug}/booking/code`, { name, phone, reason, day, time, lang });
         if (r.verify) {
           setDevCode(r.devCode ?? null);
           setCodeSent(true);
@@ -189,6 +194,7 @@ export default function BookClient({
   }
 
   const selected = av.days.find((d) => d.day === day) ?? null;
+  const dayFull = (day && av.full?.[day]) || [];
   const anyOpen = av.days.some((d) => d.state === "open");
 
   return (
@@ -294,7 +300,7 @@ export default function BookClient({
                     />
                   </div>
                 </div>
-                <ReasonPicker lang={lang} config={shop.reason} value={reason} onChange={setReason} required={shop.reason.required} idPrefix="bk-reason" />
+                <ReasonPicker lang={lang} config={shop.reason} value={reason} onChange={setReason} required={shop.reason.required} idPrefix="bk-reason" full={dayFull} />
               </>
             ) : (
               <>

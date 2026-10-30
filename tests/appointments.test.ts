@@ -17,10 +17,12 @@ import { claimRate, clientIp, ipBucket, IP_LIMITS, rateCount } from "@/lib/serve
 import { estimateWaitMinutes, initialFlags, lineup, nextEligible, peopleAhead, planNext } from "@/lib/domain/queue";
 import { addDays, availability, checkinWindow, daySlots, DEFAULT_BOOKING, slotInstant } from "@/lib/domain/appointments";
 import { cleanDaysOff, dayRange, upcomingFixedHolidays } from "@/lib/domain/daysoff";
-import { activeReasonConfig, cleanReason, cleanReasonConfig, defaultReasonConfig, readReasonConfig } from "@/lib/domain/reasons";
+import { activeReasonConfig, cleanReason, cleanReasonConfig, defaultReasonConfig, readReasonConfig, reasonCap } from "@/lib/domain/reasons";
+import { cleanLimits, DEFAULT_LIMITS, phoneWaitUntil, readLimits } from "@/lib/domain/limits";
+import { limitsSettingsView, saveLimitsSettings } from "@/lib/server/limits";
 import { saveReasonSettings } from "@/lib/server/reason-settings";
 import * as apr from "@/lib/server/appointments-repo";
-import { reasonText } from "@/lib/i18n";
+import { errorText, reasonText } from "@/lib/i18n";
 import { daysOffView, saveDaysOff } from "@/lib/server/daysoff";
 import { buildIcs, foldLine } from "@/lib/ics";
 import { DEFAULT_SETTINGS, DomainError, type Shop, type Ticket } from "@/lib/domain/types";
@@ -843,12 +845,12 @@ describe("أيّام العطل", () => {
 });
 
 describe("سبب الزيارة (يقرّره الطبيب)", () => {
-  const LIST = { mode: "list" as const, required: true, options: ["كشف عامّ", "مراجعة"] };
+  const LIST = { mode: "list" as const, required: true, options: ["كشف عامّ", "مراجعة"], caps: {} };
 
   it("قواعد صافية: الإعداد الافتراضي، القائمة، النصّ الحرّ", () => {
-    expect(defaultReasonConfig("doctor")).toEqual({ mode: "text", required: true, options: [] });
+    expect(defaultReasonConfig("doctor")).toEqual({ mode: "text", required: true, options: [], caps: {} });
     expect(defaultReasonConfig("barber").mode).toBe("off");
-    expect(readReasonConfig("doctor", { mode: "list", options: ["أ"], required: false })).toEqual({ mode: "list", required: false, options: ["أ"] });
+    expect(readReasonConfig("doctor", { mode: "list", options: ["أ"], required: false })).toEqual({ mode: "list", required: false, options: ["أ"], caps: {} });
     expect(readReasonConfig("dentist", "garbage")).toEqual(defaultReasonConfig("dentist"));
     // قائمة: اختيارات الطبيب فقط
     expect(cleanReason(LIST, " مراجعة ")).toBe("مراجعة");
@@ -860,10 +862,10 @@ describe("سبب الزيارة (يقرّره الطبيب)", () => {
     expect(() => cleanReason(TEXT, "x".repeat(121))).toThrow("reason_too_long");
     expect(() => cleanReason(TEXT, 5)).toThrow("invalid_reason");
     // لا سؤال: أيّ قيمة تُتجاهل؛ وقائمة فارغة = لا سؤال
-    expect(cleanReason({ mode: "off", required: true, options: [] }, "شيء")).toBeNull();
-    expect(activeReasonConfig({ mode: "list", required: true, options: [] }).mode).toBe("off");
+    expect(cleanReason({ mode: "off", required: true, options: [], caps: {} }, "شيء")).toBeNull();
+    expect(activeReasonConfig({ mode: "list", required: true, options: [], caps: {} }).mode).toBe("off");
     // إعداد الطبيب من صفحة الإعدادات
-    expect(cleanReasonConfig({ mode: "list", required: false, options: [" أ ", "أ", "ب"] })).toEqual({ mode: "list", required: false, options: ["أ", "ب"] });
+    expect(cleanReasonConfig({ mode: "list", required: false, options: [" أ ", "أ", "ب"] })).toEqual({ mode: "list", required: false, options: ["أ", "ب"], caps: {} });
     expect(() => cleanReasonConfig({ mode: "list", required: true, options: [] })).toThrow("reason_no_options");
     expect(() => cleanReasonConfig({ mode: "maybe", required: true })).toThrow("invalid_settings");
     expect(() => cleanReasonConfig({ mode: "list", required: true, options: ["x".repeat(41)] })).toThrow("invalid_settings");
@@ -876,7 +878,7 @@ describe("سبب الزيارة (يقرّره الطبيب)", () => {
     process.env.PHONE_VERIFICATION = "off";
     await enable();
     // افتراضياً: المريض يكتب ما يريد
-    expect((await svc.publicShop(shop.slug)).view.reason).toEqual({ mode: "text", required: true, options: [] });
+    expect((await svc.publicShop(shop.slug)).view.reason).toEqual({ mode: "text", required: true, options: [], caps: {} });
     const tk = await svc.takeTicket(shop.slug, { name: "سعاد", phone: newPhone(), reason: "نتائج تحاليل الدم" });
     expect((await svc.ticketView(tk.ticketId)).reason).toBe("نتائج تحاليل الدم");
 
@@ -921,5 +923,151 @@ describe("سبب الزيارة (يقرّره الطبيب)", () => {
     const ar2 = await db.query<{ reason: string | null }>("select reason from appointments where id = $1", [r.appointmentId]);
     expect(ar2[0].reason).toBeNull();
     expect(rows[0].reason).toBeNull();
+  });
+});
+
+// ————————————————————————— حدود التسجيل (يقرّرها الطبيب) —————————————————————————
+
+describe("حدود التسجيل: حدّ يوميّ لكلّ حالة، ومهلة بين تسجيلين لنفس الهاتف", () => {
+  /** الخطأ المتوقَّع (برمزه ومتغيّراته) */
+  async function fails(p: Promise<unknown>): Promise<DomainError> {
+    try {
+      await p;
+    } catch (e) {
+      return e as DomainError;
+    }
+    throw new Error("expected a DomainError");
+  }
+  const LIST = { mode: "list" as const, required: false, options: ["حشو", "كشف"], caps: { حشو: 2 } };
+
+  it("قواعد صافية: الحدود المحفوظة، التحقّق، وتاريخ التسجيل التالي", () => {
+    expect(readReasonConfig("dentist", { mode: "list", required: true, options: ["حشو"], caps: { حشو: 6, محذوف: 3, كشف: 0 } }).caps).toEqual({ حشو: 6 });
+    expect(cleanReasonConfig({ mode: "list", required: true, options: ["حشو", "كشف"], caps: { " حشو ": "6", كشف: "" } }).caps).toEqual({ حشو: 6 });
+    expect(() => cleanReasonConfig({ mode: "list", required: true, options: ["حشو"], caps: { حشو: 201 } })).toThrow("invalid_settings");
+    expect(() => cleanReasonConfig({ mode: "list", required: true, options: ["حشو"], caps: { حشو: 2.5 } })).toThrow("invalid_settings");
+    expect(reasonCap(LIST, "حشو")).toBe(2);
+    expect(reasonCap(LIST, "كشف")).toBeNull();
+    expect(reasonCap({ ...LIST, mode: "text" }, "حشو")).toBeNull();
+
+    expect(readLimits(null)).toEqual(DEFAULT_LIMITS);
+    expect(readLimits({ phoneDays: 99, phoneScope: "x", staffOverride: false })).toEqual({ ...DEFAULT_LIMITS, staffOverride: false });
+    expect(cleanLimits({ phoneDays: "7", phoneScope: "all", staffOverride: false })).toEqual({ phoneDays: 7, phoneScope: "all", staffOverride: false });
+    for (const bad of [{ phoneDays: 31, phoneScope: "all", staffOverride: true }, { phoneDays: -1, phoneScope: "all", staffOverride: true }, { phoneDays: 3, phoneScope: "x", staffOverride: true }, { phoneDays: 3, phoneScope: "all" }]) {
+      expect(() => cleanLimits(bad)).toThrow("invalid_settings");
+    }
+    // 7 أيّام من يوم التسجيل: سجّل يوم 11 ← من جديد يوم 18
+    const c = { ...DEFAULT_LIMITS, phoneDays: 7 };
+    expect(phoneWaitUntil(c, "2026-10-11", "2026-10-17")).toBe("2026-10-18");
+    expect(phoneWaitUntil(c, "2026-10-11", "2026-10-18")).toBeNull();
+    expect(phoneWaitUntil(DEFAULT_LIMITS, "2026-10-11", "2026-10-12")).toBeNull();
+    // نصّ الخطأ يكتب التاريخ، وللطاقم نصّ خاصّ
+    expect(errorText("ar", "phone_wait", { day: "2026-10-18" })).toContain("18");
+    expect(errorText("ar", "phone_wait", { day: "2026-10-18" }, true)).toContain("هذا الهاتف");
+    expect(errorText("ar", "reason_full", { reason: "حشو", max: 6 })).toContain("«حشو»");
+    expect(errorText("fr", "reason_full")).toContain("atteint");
+  });
+
+  it("حدّ الحالة: الطابور والمواعيد معاً، الموعد الذي وصل لا يُحسب مرّتين، والسكرتيرة تتجاوز إن سُمح لها", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable();
+    await saveReasonSettings(await fresh(), LIST);
+    const t1 = await svc.takeTicket(shop.slug, { name: "رقم أوّل", phone: newPhone(), reason: "حشو" });
+    const appt = await ap.bookOnline(shop.slug, { name: "موعد", phone: newPhone(), day: "2026-10-11", time: "10:00", reason: "حشو" });
+
+    // اكتمل «حشو» اليوم: معطّل في الصفحة، ومرفوض في كلّ المسارات
+    expect((await svc.publicShop(shop.slug)).view.reasonFull).toEqual(["حشو"]);
+    expect((await ap.publicAvailability(shop.slug)).full).toEqual({ "2026-10-11": ["حشو"] });
+    expect((await svc.staffState(await fresh())).shop).toMatchObject({ reasonFull: ["حشو"], limitsOverride: true });
+    const e1 = await fails(svc.takeTicket(shop.slug, { name: "x x", phone: newPhone(), reason: "حشو" }));
+    expect([e1.code, e1.vars]).toEqual(["reason_full", { reason: "حشو", max: 2 }]);
+    expect((await fails(svc.requestCode(shop.slug, { name: "x x", phone: newPhone(), reason: "حشو" }))).code).toBe("reason_full");
+    expect((await fails(ap.requestBookingCode(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-11", time: "11:00", reason: "حشو" }))).code).toBe("reason_full");
+    expect((await fails(ap.bookOnline(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-11", time: "11:00", reason: "حشو" }))).code).toBe("reason_full");
+    // حالة أخرى، أو يوم آخر: مفتوح
+    await svc.takeTicket(shop.slug, { name: "كشف", phone: newPhone(), reason: "كشف" });
+    await ap.bookOnline(shop.slug, { name: "غداً", phone: newPhone(), day: "2026-10-12", time: "10:00", reason: "حشو" });
+
+    // السكرتيرة: تنبيه أوّلاً (override)، ثمّ «أضف رغم ذلك»
+    const e2 = await fails(svc.staffAction(await fresh(), { action: "add", name: "مستعجل", reason: "حشو" }));
+    expect([e2.code, e2.vars]).toEqual(["reason_full", { reason: "حشو", max: 2, override: 1 }]);
+    await svc.staffAction(await fresh(), { action: "add", name: "مستعجل", reason: "حشو", force: true });
+    expect((await fails(desk({ day: "2026-10-11", time: "11:00", reason: "حشو" }))).vars?.override).toBe(1);
+    await desk({ day: "2026-10-11", time: "11:00", reason: "حشو", force: true });
+    // الطبيب يمنع التجاوز: لا أحد يتجاوز، ولا زرّ «أضف رغم ذلك»
+    await saveLimitsSettings(await fresh(), { phoneDays: 0, phoneScope: "appts", staffOverride: false });
+    const e3 = await fails(svc.staffAction(await fresh(), { action: "add", name: "ممنوع", reason: "حشو", force: true }));
+    expect([e3.code, e3.vars]).toEqual(["reason_full", { reason: "حشو", max: 2 }]);
+
+    // الموعد الذي وصل يصير تذكرة: يُحسب مرّة واحدة. ما أُلغي يحرّر مكانه.
+    await saveReasonSettings(await fresh(), { ...LIST, caps: { حشو: 4 } }); // الآن: رقم + موعد + رقم مستعجل + موعد هاتفي = 4
+    at("2026-10-11", "09:45");
+    await ap.appointmentAction(appt.appointmentId, { action: "checkin" });
+    expect((await svc.publicShop(shop.slug)).view.reasonFull).toEqual(["حشو"]);
+    await svc.ticketAction(t1.ticketId, { action: "cancel" });
+    expect((await svc.publicShop(shop.slug)).view.reasonFull).toEqual([]);
+    await svc.takeTicket(shop.slug, { name: "مكان محرَّر", phone: newPhone(), reason: "حشو" });
+    expect((await fails(svc.takeTicket(shop.slug, { name: "x x", phone: newPhone(), reason: "حشو" }))).code).toBe("reason_full");
+  });
+
+  it("مهلة الهاتف للمواعيد فقط: من يوم التسجيل، الطابور مفتوح، والملغى لا يُحسب", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable();
+    expect(limitsSettingsView(await fresh()).config).toEqual(DEFAULT_LIMITS);
+    expect((await saveLimitsSettings(await fresh(), { phoneDays: 7, phoneScope: "appts", staffOverride: true })).config.phoneDays).toBe(7);
+    const p = newPhone();
+    await ap.bookOnline(shop.slug, { name: "سمير", phone: p, day: "2026-10-14", time: "10:00" });
+    // حجز ثانٍ (يوم آخر) قبل مرور 7 أيّام من يوم الحجز (11) ← ممنوع حتى 18
+    const e = await fails(ap.bookOnline(shop.slug, { name: "سمير", phone: p, day: "2026-10-20", time: "10:00" }));
+    expect([e.code, e.vars]).toEqual(["phone_wait", { day: "2026-10-18" }]);
+    expect((await fails(ap.requestBookingCode(shop.slug, { name: "سمير", phone: p, day: "2026-10-20", time: "10:00" }))).code).toBe("phone_wait");
+    // نفس اليوم: «لديك موعد» كما كان، لا مهلة
+    expect((await fails(ap.requestBookingCode(shop.slug, { name: "سمير", phone: p, day: "2026-10-14", time: "11:00" }))).code).toBe("ap_already_booked");
+    // المواعيد فقط: أخذ رقم اليوم مفتوح
+    await svc.takeTicket(shop.slug, { name: "سمير", phone: p });
+    // السكرتيرة: تنبيه ثمّ تجاوز
+    expect((await fails(desk({ phone: p, day: "2026-10-20", time: "11:00" }))).vars).toEqual({ day: "2026-10-18", override: 1 });
+    await desk({ phone: p, day: "2026-10-20", time: "11:00", force: true });
+    // الملغى لا يُحسب
+    const q = newPhone();
+    const first = await ap.bookOnline(shop.slug, { name: "ليلى", phone: q, day: "2026-10-14", time: "11:00" });
+    await ap.appointmentAction(first.appointmentId, { action: "cancel" });
+    await ap.bookOnline(shop.slug, { name: "ليلى", phone: q, day: "2026-10-15", time: "11:00" });
+    // يوم 18: مرّت 7 أيّام
+    at("2026-10-17", "08:00");
+    expect((await fails(ap.bookOnline(shop.slug, { name: "سمير", phone: p, day: "2026-10-25", time: "10:00" }))).code).toBe("phone_wait");
+    at("2026-10-18", "08:00");
+    await ap.bookOnline(shop.slug, { name: "سمير", phone: p, day: "2026-10-25", time: "10:00" });
+  });
+
+  it("مهلة الهاتف للمواعيد والطابور: الرقم يُحسب، وصاحب موعد اليوم يأخذ رقمه", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable();
+    await saveLimitsSettings(await fresh(), { phoneDays: 3, phoneScope: "all", staffOverride: true });
+    const p = newPhone();
+    await svc.takeTicket(shop.slug, { name: "كريم", phone: p });
+    // رقم اليوم ثمّ موعد بعد يوم: ممنوع حتى 14
+    expect((await fails(ap.bookOnline(shop.slug, { name: "كريم", phone: p, day: "2026-10-12", time: "10:00" }))).vars).toEqual({ day: "2026-10-14" });
+    at("2026-10-12", "08:00");
+    const e = await fails(svc.takeTicket(shop.slug, { name: "كريم", phone: p }));
+    expect([e.code, e.vars]).toEqual(["phone_wait", { day: "2026-10-14" }]);
+    expect((await fails(svc.requestCode(shop.slug, { name: "كريم", phone: p }))).code).toBe("phone_wait");
+    expect((await fails(svc.staffAction(await fresh(), { action: "add", name: "كريم", phone: p }))).vars?.override).toBe(1);
+    await svc.staffAction(await fresh(), { action: "add", name: "كريم", phone: p, force: true });
+    // بلا هاتف (كبار السنّ): لا مهلة
+    await svc.staffAction(await fresh(), { action: "add", name: "بلا هاتف" });
+
+    // صاحب موعد اليوم (حُجز قبل أيّام) يأخذ رقمه عادياً: زيارة واحدة
+    const r = newPhone();
+    await ap.bookOnline(shop.slug, { name: "رانية", phone: r, day: "2026-10-15", time: "15:00" });
+    at("2026-10-15", "08:00");
+    await svc.takeTicket(shop.slug, { name: "رانية", phone: r });
+    // مرّت 3 أيّام على رقم كريم الأوّل (11) والمستعجل (12): يوم 15 مسموح
+    await svc.takeTicket(shop.slug, { name: "كريم", phone: p });
+
+    // رقم ملغى لا يُحسب
+    const s2 = newPhone();
+    const tk = await svc.takeTicket(shop.slug, { name: "سارة", phone: s2 });
+    await svc.ticketAction(tk.ticketId, { action: "cancel" });
+    await ap.bookOnline(shop.slug, { name: "سارة", phone: s2, day: "2026-10-18", time: "10:00" });
   });
 });

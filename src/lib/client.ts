@@ -5,6 +5,8 @@ export class ApiError extends Error {
   constructor(
     public code: string,
     public status: number,
+    /** قيم الرسالة من الخادم (التاريخ، الحالة…) و override = 1: يستطيع الطاقم التجاوز */
+    public vars?: Record<string, string | number>,
   ) {
     super(code);
   }
@@ -24,7 +26,10 @@ export async function api<T = unknown>(url: string, body?: unknown): Promise<T> 
     throw new ApiError("network", 0);
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError((data as { error?: string }).error ?? "generic", res.status);
+  if (!res.ok) {
+    const d = data as { error?: string; vars?: Record<string, string | number> };
+    throw new ApiError(d.error ?? "generic", res.status, d.vars && typeof d.vars === "object" ? d.vars : undefined);
+  }
   return data as T;
 }
 

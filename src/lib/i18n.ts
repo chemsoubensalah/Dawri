@@ -1,7 +1,9 @@
 import * as appointments from "./i18n-parts/appointments";
+import { fmtDay } from "./domain/appointments";
 import * as clinics from "./i18n-parts/clinics";
 import * as daysoff from "./i18n-parts/daysoff";
 import * as reasons from "./i18n-parts/reasons";
+import * as limits from "./i18n-parts/limits";
 import * as visits from "./i18n-parts/visits";
 import * as growth from "./i18n-parts/growth";
 import * as plans from "./i18n-parts/plans";
@@ -667,6 +669,7 @@ const ar = {
   ...why.ar,
   ...daysoff.ar,
   ...reasons.ar,
+  ...limits.ar,
   ...visits.ar,
 };
 
@@ -1317,6 +1320,7 @@ const fr: Dict = {
   ...why.fr,
   ...daysoff.fr,
   ...reasons.fr,
+  ...limits.fr,
   ...visits.fr,
 };
 
@@ -1337,9 +1341,17 @@ export function dirOf(lang: Lang) {
 }
 
 /** يحوّل رمز خطأ من الخادم إلى نصّ. */
-export function errorText(lang: Lang, code: string | undefined): string {
-  const key = `err_${code}` as DictKey;
-  return key in dicts.ar ? t(lang, key) : t(lang, "err_generic");
+/**
+ * نصّ الخطأ. vars (من الخادم: {error, vars}) ← err_<code>_v إن وُجد، ولطاقم العيادة err_<code>_staff.
+ * vars.day ("YYYY-MM-DD") يُكتب تاريخاً مقروءاً.
+ */
+export function errorText(lang: Lang, code: string | undefined, vars?: Record<string, string | number>, staff = false): string {
+  const base = `err_${code}`;
+  const keys = [staff && vars ? `${base}_staff` : "", vars ? `${base}_v` : "", base];
+  const key = keys.find((k) => k && k in dicts.ar) as DictKey | undefined;
+  if (!key) return t(lang, "err_generic");
+  const v = vars && Object.fromEntries(Object.entries(vars).map(([k, x]) => [k, k === "day" && typeof x === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x) ? fmtDay(lang, x) : x]));
+  return t(lang, key, v);
 }
 
 /**

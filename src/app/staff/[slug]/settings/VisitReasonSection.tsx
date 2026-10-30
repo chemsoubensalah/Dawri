@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { ListChecks, MessageSquareText, Plus, Save, Stethoscope, UserX, X } from "lucide-react";
 import ReasonPicker from "@/components/ReasonPicker";
-import { REASON_OPTION_MAX, REASON_OPTIONS_MAX, type ReasonConfig, type ReasonMode } from "@/lib/domain/reasons";
+import { REASON_CAP_MAX, REASON_OPTION_MAX, REASON_OPTIONS_MAX, type ReasonConfig, type ReasonMode } from "@/lib/domain/reasons";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t, type DictKey } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
@@ -45,6 +45,16 @@ export default function VisitReasonSection({ lang, slug }: { lang: Lang; slug: s
     set({ options: [...cfg.options, s] });
     setDraft("");
   };
+  const removeOption = (o: string) => {
+    const { [o]: _, ...caps } = cfg.caps;
+    set({ options: cfg.options.filter((x) => x !== o), caps });
+  };
+  /** الحدّ اليوميّ لاختيار: فارغ = بلا حدّ (القيمة تبقى صالحة دائماً: الحقل داخل نموذج الإعدادات) */
+  const setCap = (o: string, v: string) => {
+    const n = Math.min(Number.parseInt(v, 10), REASON_CAP_MAX);
+    const { [o]: _, ...caps } = cfg.caps;
+    set({ caps: n >= 1 ? { ...caps, [o]: n } : caps });
+  };
   const noOptions = cfg.mode === "list" && cfg.options.length === 0;
 
   async function save() {
@@ -54,6 +64,8 @@ export default function VisitReasonSection({ lang, slug }: { lang: Lang; slug: s
     try {
       const r = await api<ReasonSettingsView>(`/api/staff/${slug}/reason`, cfg);
       setCfg(r.config);
+      // قسم «حدود التسجيل» يعرض الحدود اليومية
+      window.dispatchEvent(new CustomEvent("dawri:reason-saved", { detail: r.config }));
       setMsg({ ok: true, text: t(lang, "vs_saved") });
     } catch (e) {
       setMsg({ ok: false, text: errorText(lang, (e as ApiError).code) });
@@ -95,16 +107,35 @@ export default function VisitReasonSection({ lang, slug }: { lang: Lang; slug: s
         <div className="mt-4 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200/70">
           <div className="label">{t(lang, "vs_options")}</div>
           {cfg.options.length > 0 ? (
-            <ul className="mb-3 flex flex-wrap gap-2" data-testid="reason-options">
-              {cfg.options.map((o) => (
-                <li key={o} className="flex items-center gap-1 rounded-xl bg-white py-1.5 ps-3 pe-1.5 text-sm font-semibold ring-1 ring-slate-200">
-                  {o}
-                  <button type="button" className="rounded-lg p-1 text-rose-500 hover:bg-rose-50" aria-label={`× ${o}`} onClick={() => set({ options: cfg.options.filter((x) => x !== o) })}>
-                    <X size={15} />
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="mb-2 space-y-2" data-testid="reason-options">
+                {cfg.options.map((o) => (
+                  <li key={o} className="flex items-center gap-2 rounded-xl bg-white py-1.5 ps-3 pe-1.5 text-sm font-semibold ring-1 ring-slate-200">
+                    <span className="min-w-0 flex-1 break-words">{o}</span>
+                    <label className="flex shrink-0 items-center gap-1.5 text-xs font-normal text-slate-500">
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={REASON_CAP_MAX}
+                        className="input num w-24 py-1.5 text-center text-sm"
+                        placeholder={t(lang, "vs_capPh")}
+                        value={cfg.caps[o] ?? ""}
+                        onChange={(e) => setCap(o, e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+                        aria-label={`${o} — ${t(lang, "vs_capLabel")}`}
+                        data-testid="reason-cap"
+                      />
+                      {t(lang, "vs_capLabel")}
+                    </label>
+                    <button type="button" className="rounded-lg p-1 text-rose-500 hover:bg-rose-50" aria-label={`× ${o}`} onClick={() => removeOption(o)}>
+                      <X size={15} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p className="mb-3 text-xs leading-relaxed text-slate-500">{t(lang, "vs_capHint")}</p>
+            </>
           ) : (
             <p className="mb-3 text-sm font-semibold text-amber-700">{t(lang, "vs_noOptions")}</p>
           )}

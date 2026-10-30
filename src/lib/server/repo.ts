@@ -55,6 +55,7 @@ export function rowToShop(r: Row): Shop {
     clinicSlug: r.clinic_id == null ? null : ((r.clinic_slug as string | null) ?? null),
     daysOff: r.days_off == null ? [] : json<DayOff[]>(r.days_off),
     reasonCfg: r.reason_cfg == null ? null : json<unknown>(r.reason_cfg),
+    limitsCfg: r.limits_cfg == null ? null : json<unknown>(r.limits_cfg),
   };
 }
 
@@ -160,7 +161,7 @@ export async function insertShop(
 export async function updateShop(
   q: Q,
   id: string,
-  patch: Partial<Pick<Shop, "name" | "hours" | "settings" | "defaultLang" | "pinHash" | "doorCode" | "profile" | "look" | "ownerEmail" | "daysOff" | "reasonCfg">> & {
+  patch: Partial<Pick<Shop, "name" | "hours" | "settings" | "defaultLang" | "pinHash" | "doorCode" | "profile" | "look" | "ownerEmail" | "daysOff" | "reasonCfg" | "limitsCfg">> & {
     bumpSession?: boolean;
   },
 ) {
@@ -188,6 +189,7 @@ export async function updateShop(
   if (patch.ownerEmail !== undefined) set("owner_email", patch.ownerEmail);
   if (patch.daysOff !== undefined) set("days_off", JSON.stringify(patch.daysOff));
   if (patch.reasonCfg !== undefined) set("reason_cfg", JSON.stringify(patch.reasonCfg));
+  if (patch.limitsCfg !== undefined) set("limits_cfg", JSON.stringify(patch.limitsCfg));
   if (patch.bumpSession) sets.push("session_version = session_version + 1");
   if (!sets.length) return;
   params.push(id);

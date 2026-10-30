@@ -15,6 +15,7 @@ import TvMessagesSection from "./TvMessagesSection";
 import BookingSection from "./BookingSection";
 import DaysOffSection from "./DaysOffSection";
 import VisitReasonSection from "./VisitReasonSection";
+import LimitsSection from "./LimitsSection";
 import AssistantPin from "./AssistantPin";
 import ReportSection from "./ReportSection";
 
@@ -151,6 +152,7 @@ export default function SettingsForm({
               ["hours", "hours"],
               ["daysoff", "do_nav"],
               ["reason", "vs_nav"],
+              ["limits", "lm_nav"],
               ["booking", "ap_se_title"],
               ["rules", "se_rules"],
               ["report", "gr_reportNav"],
@@ -376,6 +378,7 @@ export default function SettingsForm({
         </Section>
         <DaysOffSection lang={lang} slug={slug} />
         <VisitReasonSection lang={lang} slug={slug} />
+        <LimitsSection lang={lang} slug={slug} />
         <BookingSection lang={lang} slug={slug} />
 
         <Section id="rules" icon={<ListChecks size={20} />} title={t(lang, "se_rules")} sub={t(lang, "se_rulesSub")}>
