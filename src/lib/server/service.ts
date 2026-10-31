@@ -28,6 +28,7 @@ import {
   planConfirm,
   planNext,
   planCallTicket,
+  planMove,
   planReject,
   planTick,
 } from "../domain/queue";
@@ -878,7 +879,7 @@ export type StaffState = Awaited<ReturnType<typeof staffState>>;
 
 export async function staffAction(
   shop: Shop,
-  body: { action?: unknown; ticketId?: unknown; current?: unknown; name?: unknown; phone?: unknown; present?: unknown; reason?: unknown; force?: unknown },
+  body: { action?: unknown; ticketId?: unknown; current?: unknown; name?: unknown; phone?: unknown; present?: unknown; reason?: unknown; force?: unknown; dir?: unknown },
   by: repo.QueueDay["closedBy"] = null,
 ) {
   const action = body.action;
@@ -935,6 +936,13 @@ export async function staffAction(
       if (!t) throw new DomainError("ticket_not_found", 404);
       if (t.status !== "waiting") throw new DomainError("ticket_closed", 409);
       return { actions: planCallTicket(tickets, now, t), result: null };
+    }
+    if (action === "move") {
+      const t = tickets.find((x) => x.id === body.ticketId);
+      if (!t) throw new DomainError("ticket_not_found", 404);
+      if (t.status !== "waiting") throw new DomainError("ticket_closed", 409);
+      if (body.dir !== "up" && body.dir !== "down") throw new DomainError("invalid_action");
+      return { actions: planMove(tickets, t.id, body.dir === "up" ? -1 : 1), result: null };
     }
     if (action === "recall") {
       if (!cur) throw new DomainError("ticket_closed", 409);

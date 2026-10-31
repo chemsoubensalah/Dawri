@@ -33,6 +33,8 @@ export interface Ticket {
   priority?: boolean;
   /** لحظة منح الأولوية (وصول صاحب الموعد) — ترتيب أصحاب المواعيد بينهم؛ null = createdAt. */
   priorityAt?: Date | null;
+  /** مكان في الطابور حين تعيد السكرتيرة ترتيبه (null = رقمه) — انظر queueOrder */
+  queuePos?: number | null;
   createdAt: Date;
   calledAt: Date | null;
   doneAt: Date | null;
@@ -63,6 +65,8 @@ export type TicketPatch = Partial<
     | "confirmedAt"
     | "notifiedSoonAt"
     | "closedAt"
+    | "queuePos"
+    | "priorityAt"
   >
 >;
 

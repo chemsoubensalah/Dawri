@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Ban, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, Mail, Megaphone, Phone, Plus, Printer, ShieldAlert, Smartphone, Timer, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, Ban, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, Mail, Megaphone, Phone, Plus, Printer, ShieldAlert, Smartphone, Timer, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
 import Dialog, { ConfirmDialog } from "@/components/Dialog";
 import ReasonPicker from "@/components/ReasonPicker";
 import SoundGate from "@/components/SoundGate";
@@ -29,6 +29,8 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   const [addPhone, setAddPhone] = useState("");
   const [addPresent, setAddPresent] = useState(true);
   const [addReason, setAddReason] = useState<string | null>(null);
+  /** وضع «ترتيب الطابور»: سهما ↑ ↓ بدل أزرار السطر */
+  const [reorder, setReorder] = useState(false);
   /** طباعة التذكرة بعد الإضافة (إعداد هذا الجهاز: الطابعة موصولة به) */
   const [addPrint, setAddPrint] = useState(false);
   useEffect(() => setAddPrint(autoPrint("ticket")), []);
@@ -415,10 +417,23 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                 <Users size={18} className="text-brand-600" /> {t(lang, "queue")}
                 <span className="num rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{s.waiting.length}</span>
               </h2>
-              <button className="btn-secondary btn-sm" onClick={() => setAddOpen(true)}>
-                <UserPlus size={16} /> {t(lang, "addPerson")}
-              </button>
+              <span className="flex gap-2">
+                {s.waiting.length > 1 && (
+                  <button
+                    className={`btn-sm ${reorder ? "btn-primary" : "btn-secondary"}`}
+                    onClick={() => setReorder(!reorder)}
+                    aria-pressed={reorder}
+                    data-testid="reorder-toggle"
+                  >
+                    <ArrowUpDown size={16} /> {t(lang, reorder ? "db_reorderDone" : "db_reorder")}
+                  </button>
+                )}
+                <button className="btn-secondary btn-sm" onClick={() => setAddOpen(true)}>
+                  <UserPlus size={16} /> {t(lang, "addPerson")}
+                </button>
+              </span>
             </div>
+            {reorder && s.waiting.length > 1 && <p className="-mt-1 px-5 pb-2 text-xs text-slate-500">{t(lang, "db_reorderHint")}</p>}
             {s.waiting.length === 0 ? (
               <Empty icon={<Users size={40} />} title={t(lang, "emptyQueue")} sub={t(lang, "db_emptyHint")} />
             ) : (
@@ -441,6 +456,29 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                     {r.eta !== null && (
                       <span className="num hidden text-xs whitespace-nowrap text-slate-500 sm:inline">≈ {t(lang, "sp_min", { n: r.eta })}</span>
                     )}
+                    {reorder ? (
+                      <span className="flex shrink-0 gap-2">
+                        {(["up", "down"] as const).map((dir) => {
+                          const j = dir === "up" ? i - 1 : i + 1;
+                          const other = s.waiting[j];
+                          // أصحاب المواعيد يبقون أوّلاً: لا انتقال بين المجموعتين
+                          const can = Boolean(other) && Boolean(other.priority) === Boolean(r.priority);
+                          return (
+                            <button
+                              key={dir}
+                              className="inline-flex size-10 items-center justify-center rounded-xl text-brand-700 ring-1 ring-brand-200 hover:bg-brand-50 disabled:opacity-30"
+                              onClick={() => act({ action: "move", ticketId: r.id, dir })}
+                              disabled={busy || !can}
+                              aria-label={`${t(lang, dir === "up" ? "db_moveUp" : "db_moveDown")} ${r.number}`}
+                              title={t(lang, dir === "up" ? "db_moveUp" : "db_moveDown")}
+                              data-testid={`move-${dir}`}
+                            >
+                              {dir === "up" ? <ArrowUp size={18} /> : <ArrowDown size={18} />}
+                            </button>
+                          );
+                        })}
+                      </span>
+                    ) : (
                     <span className="flex shrink-0 gap-2">
                       {/* «نادِ الآن»: قبل دوره (صاحب الدور لم يصل) — من تُخطّي يبقى أوّل الطابور */}
                       {r.id !== upNext?.id && (
@@ -487,6 +525,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                         <X size={17} />
                       </button>
                     </span>
+                    )}
                   </li>
                 ))}
               </ul>

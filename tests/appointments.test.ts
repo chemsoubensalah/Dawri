@@ -14,7 +14,7 @@ import * as repo from "@/lib/server/repo";
 import * as gate from "@/lib/server/smsgate";
 import { sentSms } from "@/lib/server/sms";
 import { claimRate, clientIp, ipBucket, IP_LIMITS, rateCount } from "@/lib/server/ratelimit";
-import { estimateWaitMinutes, initialFlags, lineup, nextEligible, peopleAhead, planNext } from "@/lib/domain/queue";
+import { estimateWaitMinutes, initialFlags, lineup, nextEligible, peopleAhead, planMove, planNext } from "@/lib/domain/queue";
 import { addDays, availability, checkinWindow, daySlots, DEFAULT_BOOKING, slotInstant } from "@/lib/domain/appointments";
 import { cleanDaysOff, dayRange, upcomingFixedHolidays } from "@/lib/domain/daysoff";
 import { activeReasonConfig, cleanReason, cleanReasonConfig, defaultReasonConfig, readReasonConfig, reasonCap } from "@/lib/domain/reasons";
@@ -126,6 +126,28 @@ function mk(number: number, over: Partial<Ticket> = {}): Ticket {
     ...over,
   };
 }
+
+describe("ترتيب الطابور يدوياً (planMove)", () => {
+  /** يطبّق الإجراءات على نسخة من التذاكر (كما يفعل الخادم) */
+  const apply = (ts: Ticket[], acts: ReturnType<typeof planMove>) =>
+    ts.map((t) => acts.reduce((x, a) => (a.kind === "update" && a.id === x.id ? { ...x, ...a.patch } : x), t));
+  it("أصحاب المواعيد يبقون أوّلاً ويُرتَّبون بينهم؛ العاديّون يتبادلون أماكنهم", () => {
+    let ts = [mk(1), mk(2), mk(3), mk(7, { priority: true, priorityAt: min(5) }), mk(8, { priority: true, priorityAt: min(9) })];
+    expect(lineup(ts).map((t) => t.number)).toEqual([7, 8, 1, 2, 3]);
+    // أوّل عاديّ لا يتقدّم على صاحب موعد، وآخر صاحب موعد لا يتأخّر بين العاديّين
+    expect(planMove(ts, "t1", -1)).toEqual([]);
+    expect(planMove(ts, "t8", 1)).toEqual([]);
+    // بين أصحاب المواعيد: 8 قبل 7
+    ts = apply(ts, planMove(ts, "t8", -1));
+    expect(lineup(ts).map((t) => t.number)).toEqual([8, 7, 1, 2, 3]);
+    // بين العاديّين: 3 ثمّ 3 مرّة أخرى
+    ts = apply(ts, planMove(ts, "t3", -1));
+    ts = apply(ts, planMove(ts, "t3", -1));
+    expect(lineup(ts).map((t) => t.number)).toEqual([8, 7, 3, 1, 2]);
+    expect(nextEligible(ts)?.number).toBe(8);
+    expect(peopleAhead(ts, ts.find((t) => t.number === 1)!)).toBe(3);
+  });
+});
 
 describe("الطابور: أصحاب المواعيد أوّلاً", () => {
   const tickets = () => [

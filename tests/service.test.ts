@@ -343,6 +343,37 @@ describe("يوم عمل كامل", () => {
     await expect(act({ action: "call", ticketId: ids[3], current: null })).rejects.toThrow("conflict");
   });
 
+  it("ترتيب الطابور بالسهمين: التالي والوقت المتوقَّع يتبعان الترتيب الجديد", async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 4; i++) ids.push((await take(`زبون ${i + 1}`)).ticketId);
+    const order = async () => (await state()).waiting.map((w) => w.number);
+    expect(await order()).toEqual([1, 2, 3, 4]);
+    await act({ action: "move", ticketId: ids[2], dir: "up" }); // 3 قبل 2
+    expect(await order()).toEqual([1, 3, 2, 4]);
+    await act({ action: "move", ticketId: ids[2], dir: "up" }); // 3 قبل 1
+    expect(await order()).toEqual([3, 1, 2, 4]);
+    await act({ action: "move", ticketId: ids[0], dir: "down" }); // 1 بعد 2
+    expect(await order()).toEqual([3, 2, 1, 4]);
+    // الطرفان: لا شيء
+    await act({ action: "move", ticketId: ids[2], dir: "up" });
+    await act({ action: "move", ticketId: ids[3], dir: "down" });
+    expect(await order()).toEqual([3, 2, 1, 4]);
+    // من يأخذ رقماً الآن يأتي في الآخر
+    const t5 = (await take("زبون 5")).ticketId;
+    expect(await order()).toEqual([3, 2, 1, 4, 5]);
+    expect((await svc.ticketView(ids[2])).ahead).toBe(0);
+    expect((await svc.ticketView(ids[0])).ahead).toBe(2);
+    expect((await svc.ticketView(t5)).ahead).toBe(4);
+    // «التالي» يتبع الترتيب
+    await next();
+    expect((await state()).current?.number).toBe(3);
+    await next();
+    expect((await state()).current?.number).toBe(2);
+    // تذكرة انتهت أو اتّجاه خاطئ ← مرفوض
+    await expect(act({ action: "move", ticketId: ids[2], dir: "up" })).rejects.toThrow("ticket_closed");
+    await expect(act({ action: "move", ticketId: ids[0], dir: "left" as "up" })).rejects.toThrow("invalid_action");
+  });
+
   it("الضغط المزدوج على «التالي» لا يتخطّى أحداً", async () => {
     for (let i = 0; i < 3; i++) await take();
     await next();

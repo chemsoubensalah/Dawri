@@ -103,6 +103,7 @@ export function rowToTicket(r: Row): Ticket {
     reason: (r.reason as string | null) ?? null,
     priority: Boolean(r.priority),
     priorityAt: d(r.priority_at),
+    queuePos: r.queue_pos == null ? null : Number(r.queue_pos),
     createdAt: d(r.created_at)!,
     calledAt: d(r.called_at),
     doneAt: d(r.done_at),
@@ -131,6 +132,8 @@ const PATCH_COLUMNS: Record<keyof TicketPatch, string> = {
   confirmedAt: "confirmed_at",
   notifiedSoonAt: "notified_soon_at",
   closedAt: "closed_at",
+  queuePos: "queue_pos",
+  priorityAt: "priority_at",
 };
 
 // ——— المحلّات ———
