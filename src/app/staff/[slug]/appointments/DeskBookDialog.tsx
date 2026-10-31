@@ -1,9 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import { CalendarPlus, Loader2, Printer } from "lucide-react";
+import { CalendarDays, CalendarPlus, GalleryHorizontal, Loader2, Printer } from "lucide-react";
 import Dialog from "@/components/Dialog";
 import ReasonPicker from "@/components/ReasonPicker";
-import { DayPills, TimeGrid } from "@/components/SlotPicker";
+import { DayCalendar, DayPills, TimeGrid } from "@/components/SlotPicker";
 import { fmtDay } from "@/lib/domain/appointments";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
@@ -40,6 +40,20 @@ export default function DeskBookDialog({
   /** ورقة الموعد بعد الحجز (إعداد هذا الجهاز) */
   const [printAfter, setPrintAfter] = useState(false);
   useEffect(() => setPrintAfter(autoPrint("appt")), []);
+  /** التقويم الشهري أو شريط الأيّام (اختيار السكرتيرة يُحفظ على هذا الجهاز) */
+  const [calendar, setCalendar] = useState<boolean | null>(null);
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("dawri:deskDays");
+      if (v) setCalendar(v === "calendar");
+    } catch {}
+  }, []);
+  const toggleCalendar = (on: boolean) => {
+    setCalendar(on);
+    try {
+      localStorage.setItem("dawri:deskDays", on ? "calendar" : "strip");
+    } catch {}
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -140,16 +154,24 @@ export default function DeskBookDialog({
           </p>
         ) : (
           <>
-            <DayPills
-              lang={lang}
-              days={av.days}
-              value={day}
-              size="sm"
-              onChange={(d) => {
+            {(() => {
+              // مدّة حجز طويلة (أكثر من أسبوعين): التقويم افتراضياً
+              const cal = calendar ?? av.days.length > 14;
+              const pick = (d: string) => {
                 setDay(d);
                 setTime(null);
-              }}
-            />
+              };
+              return (
+                <div className="space-y-2">
+                  <div className="flex justify-end">
+                    <button type="button" className="btn-ghost btn-sm text-brand-700" onClick={() => toggleCalendar(!cal)} data-testid="desk-days-toggle">
+                      {cal ? <GalleryHorizontal size={16} /> : <CalendarDays size={16} />} {t(lang, cal ? "ap_dayStrip" : "ap_calendar")}
+                    </button>
+                  </div>
+                  {cal ? <DayCalendar lang={lang} days={av.days} value={day} onChange={pick} /> : <DayPills lang={lang} days={av.days} value={day} size="sm" onChange={pick} />}
+                </div>
+              );
+            })()}
             {selected ? (
               <div className="max-h-64 overflow-y-auto pe-1">
                 <TimeGrid lang={lang} day={selected} value={time} onChange={setTime} perSlot={av.perSlot} />

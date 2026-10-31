@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useRef } from "react";
-import { Moon, Sun } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Moon, Sun } from "lucide-react";
 import type { DayAvailability } from "@/lib/domain/appointments";
 import type { Lang } from "@/lib/domain/types";
 import { t } from "@/lib/i18n";
@@ -72,6 +72,80 @@ export function DayPills({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * تقويم شهري للأيّام المتاحة (للسكرتيرة حين تكون مدّة الحجز طويلة): شهر بشهر، الأحد أوّل الأسبوع.
+ * اليوم المتاح يُظهر عدد الأماكن الباقية؛ المكتمل والمغلق والعطلة معطّلة مع سببها.
+ */
+export function DayCalendar({ lang, days, value, onChange }: { lang: Lang; days: DayAvailability[]; value: string | null; onChange: (day: string) => void }) {
+  const byDay = new Map(days.map((d) => [d.day, d]));
+  const months = [...new Set(days.map((d) => d.day.slice(0, 7)))];
+  const [month, setMonth] = useState(() => (value && months.includes(value.slice(0, 7)) ? value.slice(0, 7) : months[0]));
+  useEffect(() => {
+    if (value && months.includes(value.slice(0, 7))) setMonth(value.slice(0, 7));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  if (!month) return null;
+  const mi = months.indexOf(month);
+  const [y, m] = month.split("-").map(Number);
+  const first = new Date(Date.UTC(y, m - 1, 1));
+  const count = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const lead = first.getUTCDay(); // الأحد = 0
+  const cells: (string | null)[] = [...Array(lead).fill(null), ...Array.from({ length: count }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`)];
+  const loc = lang === "ar" ? "ar-DZ" : "fr-DZ";
+  const title = new Intl.DateTimeFormat(loc, { month: "long", year: "numeric", timeZone: "UTC", numberingSystem: "latn" }).format(first);
+  const wd = new Intl.DateTimeFormat(loc, { weekday: "short", timeZone: "UTC" });
+  // أسماء الأيّام: من الأحد 4 جانفي 1970
+  const heads = Array.from({ length: 7 }, (_, i) => wd.format(new Date(Date.UTC(1970, 0, 4 + i))));
+  const Prev = lang === "ar" ? ChevronRight : ChevronLeft;
+  const Next = lang === "ar" ? ChevronLeft : ChevronRight;
+  const navBtn = "inline-flex size-9 items-center justify-center rounded-xl text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-30";
+  return (
+    <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200" data-testid="day-calendar">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <button type="button" className={navBtn} disabled={mi <= 0} onClick={() => setMonth(months[mi - 1])} aria-label={t(lang, "ap_prevMonth")}>
+          <Prev size={18} />
+        </button>
+        <div className="num font-bold text-ink">{title}</div>
+        <button type="button" className={navBtn} disabled={mi >= months.length - 1} onClick={() => setMonth(months[mi + 1])} aria-label={t(lang, "ap_nextMonth")} data-testid="cal-next">
+          <Next size={18} />
+        </button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {heads.map((h) => (
+          <div key={h} className="truncate pb-1 text-[11px] font-semibold text-slate-400">
+            {h}
+          </div>
+        ))}
+        {cells.map((day, i) => {
+          if (!day) return <div key={`e${i}`} />;
+          const d = byDay.get(day);
+          const on = day === value;
+          const open = d?.state === "open";
+          const left = d ? Math.max(0, d.capacity - d.booked) : 0;
+          const note = !d ? "" : d.state === "open" ? (d.capacity ? t(lang, "ap_calLeft", { n: left }) : "") : d.state === "full" ? t(lang, "ap_dayFull") : d.state === "off" ? t(lang, "ap_dayOff") : d.state === "closed" ? t(lang, "ap_dayClosed") : t(lang, "ap_dayOver");
+          return (
+            <button
+              type="button"
+              key={day}
+              disabled={!open}
+              aria-pressed={on}
+              onClick={() => onChange(day)}
+              data-testid={`cal-${day}`}
+              title={d ? `${day} — ${note}` : day}
+              className={`flex min-h-12 flex-col items-center justify-center rounded-xl px-0.5 py-1 transition ${
+                on ? "bg-brand-600 text-white shadow-(--shadow-brand)" : open ? "bg-white text-ink ring-1 ring-slate-200 hover:ring-brand-300" : "text-slate-300"
+              }`}
+            >
+              <span className="num text-base leading-tight font-bold">{Number(day.slice(8))}</span>
+              {d && <span className={`max-w-full truncate text-[10px] leading-tight ${on ? "text-brand-100" : open ? "text-brand-700" : d.state === "full" ? "text-rose-400" : ""}`}>{note}</span>}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
