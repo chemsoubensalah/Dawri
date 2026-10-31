@@ -22,6 +22,7 @@ export function rowToAppointment(r: Row): Appointment {
     createdAt: d(r.created_at)!,
     cancelledAt: d(r.cancelled_at),
     arrivedAt: d(r.arrived_at),
+    remindedAt: d(r.reminded_at),
   };
 }
 

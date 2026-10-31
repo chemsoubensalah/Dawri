@@ -14,6 +14,8 @@ export interface GatewayRow {
   sendCalled: boolean;
   sendSoon: boolean;
   sendCodes: boolean;
+  /** تذكير صباح يوم الموعد */
+  sendReminder: boolean;
   deviceName: string | null;
   lastOkAt: Date | null;
   lastError: string | null;
@@ -32,6 +34,7 @@ export function rowToGateway(r: Row): GatewayRow {
     enabled: Boolean(r.enabled),
     sendCalled: Boolean(r.send_called),
     sendSoon: Boolean(r.send_soon),
+    sendReminder: r.send_reminder == null ? true : Boolean(r.send_reminder),
     sendCodes: Boolean(r.send_codes),
     deviceName: (r.device_name as string | null) ?? null,
     lastOkAt: d(r.last_ok_at),
@@ -61,6 +64,7 @@ export interface GatewayWrite {
   sendCalled: boolean;
   sendSoon: boolean;
   sendCodes: boolean;
+  sendReminder: boolean;
   deviceName: string | null;
   /** نتيجة فحص الربط: null = لم نفحص (نُبقي الحالة السابقة) */
   check: { ok: true } | { ok: false; error: string } | null;
@@ -72,8 +76,8 @@ export async function upsertGateway(q: Q, shopId: string, w: GatewayWrite, now: 
   const checked = w.check !== null;
   await q.query(
     `insert into sms_gateways (shop_id, base_url, username, password_enc, enabled, send_called, send_soon, send_codes,
-                               device_name, last_ok_at, last_error, last_error_at, created_at, updated_at)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,case when $11::text is null then null else $12::timestamptz end, $12, $12)
+                               device_name, last_ok_at, last_error, last_error_at, created_at, updated_at, send_reminder)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,case when $11::text is null then null else $12::timestamptz end, $12, $12, $14)
      on conflict (shop_id) do update set
        base_url = excluded.base_url,
        username = excluded.username,
@@ -82,12 +86,13 @@ export async function upsertGateway(q: Q, shopId: string, w: GatewayWrite, now: 
        send_called = excluded.send_called,
        send_soon = excluded.send_soon,
        send_codes = excluded.send_codes,
+       send_reminder = excluded.send_reminder,
        device_name = case when $13 then excluded.device_name else sms_gateways.device_name end,
        last_ok_at = case when $13 then coalesce(excluded.last_ok_at, sms_gateways.last_ok_at) else sms_gateways.last_ok_at end,
        last_error = case when $13 then excluded.last_error else sms_gateways.last_error end,
        last_error_at = case when $13 then excluded.last_error_at else sms_gateways.last_error_at end,
        updated_at = excluded.updated_at`,
-    [shopId, w.baseUrl, w.username, w.passwordEnc, w.enabled, w.sendCalled, w.sendSoon, w.sendCodes, w.deviceName, okAt, err, now, checked],
+    [shopId, w.baseUrl, w.username, w.passwordEnc, w.enabled, w.sendCalled, w.sendSoon, w.sendCodes, w.deviceName, okAt, err, now, checked, w.sendReminder],
   );
 }
 

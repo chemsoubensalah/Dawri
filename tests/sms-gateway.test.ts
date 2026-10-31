@@ -14,6 +14,8 @@ import { sentSms } from "@/lib/server/sms";
 import * as svc from "@/lib/server/service";
 import * as repo from "@/lib/server/repo";
 import * as gate from "@/lib/server/smsgate";
+import * as ap from "@/lib/server/appointments";
+import { sendMorningReminders } from "@/lib/server/reminders";
 import { getGateway } from "@/lib/server/smsgate-repo";
 import { claimRate, IP_LIMITS, rateCount } from "@/lib/server/ratelimit";
 import { hashCode } from "@/lib/server/auth";
@@ -830,5 +832,90 @@ describe("نصوص الرسائل", () => {
     expect(gate.smsSegments(fr)).toBe(1);
     expect(gate.smsSegments("a".repeat(161))).toBe(2);
     expect(gate.smsSegments("ب".repeat(71))).toBe(2);
+  });
+});
+
+// ————————————————————————— تذكير صباح يوم الموعد —————————————————————————
+
+describe("تذكير صباح يوم الموعد (هاتف العيادة)", () => {
+  /** موعد مباشرة في القاعدة: created = يوم الحجز (أمس افتراضياً) */
+  async function appt(o: { time: string; phone?: string | null; day?: string; status?: string; created?: string; lang?: string }) {
+    const rows = await db.query<{ id: string }>(
+      `insert into appointments (shop_id, day, time, name, phone, lang, source, status, created_at)
+       values ($1, $2, $3, 'مريض', $4, $5, 'online', $6, $7) returning id`,
+      [shop.id, o.day ?? "2026-10-11", o.time, o.phone === undefined ? `+2135500${String(Math.floor(Math.random() * 1e5)).padStart(5, "0")}` : o.phone, o.lang ?? "ar", o.status ?? "booked", o.created ?? "2026-10-10T10:00:00Z"],
+    );
+    return rows[0].id;
+  }
+  const remindedAt = async (id: string) => (await db.query<{ r: Date | null }>("select reminded_at as r from appointments where id = $1", [id]))[0].r;
+
+  it("مرّة واحدة بعد السابعة: لمن حجز قبل اليوم وله هاتف ولم يفت موعده", async () => {
+    await connect();
+    calls = [];
+    const a = await appt({ time: "10:00", phone: "+213550000101" });
+    await appt({ time: "09:00", phone: null });
+    await appt({ time: "09:30", status: "cancelled" });
+    await appt({ time: "11:00", created: "2026-10-11T05:00:00Z" }); // حجز اليوم: يعرف موعده
+    await appt({ time: "07:00" }); // فات وقته
+    await appt({ time: "10:00", day: "2026-10-12" }); // غداً
+    const fr = await appt({ time: "12:00", phone: "+213550000102", lang: "fr" });
+
+    clock = new Date("2026-10-11T05:30:00Z"); // 06:30 بالجزائر: مبكّر
+    expect(await sendMorningReminders({ base: "https://dawri.test" })).toEqual({ sent: 0, failed: 0, skipped: 0 });
+    expect(sends()).toHaveLength(0);
+
+    clock = new Date("2026-10-11T06:10:00Z"); // 07:10
+    expect(await sendMorningReminders({ base: "https://dawri.test" })).toEqual({ sent: 2, failed: 0, skipped: 1 });
+    expect(sends().map((c) => c.body!.phoneNumbers)).toEqual([["+213550000101"], ["+213550000102"]]);
+    expect(sentText(sends()[0])).toBe(`عيادة الشفاء: تذكير بموعدك اليوم على الساعة 10:00. للتفاصيل أو الإلغاء: https://dawri.test/a/${a}`);
+    expect(sentText(sends()[1])).toBe(`عيادة الشفاء : rappel de votre rendez-vous aujourd'hui à 12:00. Détails ou annulation : https://dawri.test/a/${fr}`);
+    expect(sends()[0].body).toMatchObject({ ttl: 7200, priority: 50 });
+    // السكرتيرة ترى «وصله التذكير»
+    const items = (await ap.staffAppointments((await repo.getShopBySlug(db, shop.slug))!, "today")).todayItems;
+    expect(items.find((x) => x.id === a)?.reminded).toBe(true);
+
+    // مرّة ثانية: لا شيء
+    calls = [];
+    expect((await sendMorningReminders({ base: "https://dawri.test" })).sent).toBe(0);
+    expect(sends()).toHaveLength(0);
+  });
+
+  it("فشل مؤكَّد ← يُعاد لاحقاً؛ نتيجة مجهولة ← لا نسخة ثانية؛ والطبيب يوقفه", async () => {
+    await connect();
+    clock = new Date("2026-10-11T06:10:00Z");
+    const a = await appt({ time: "11:00" });
+    replies.messages = { status: 400 };
+    expect(await sendMorningReminders()).toMatchObject({ sent: 0, failed: 1 });
+    expect(await remindedAt(a)).toBeNull();
+    replies.messages = { status: 202 };
+    advance(10);
+    expect((await sendMorningReminders()).sent).toBe(1);
+    // بلا عنوان للموقع: رسالة بلا رابط
+    expect(sentText(sends().at(-1)!)).toBe("عيادة الشفاء: تذكير بموعدك اليوم على الساعة 11:00.");
+
+    const b = await appt({ time: "12:00" });
+    replies.messages = "timeout";
+    expect(await sendMorningReminders()).toMatchObject({ failed: 1 });
+    expect(await remindedAt(b)).not.toBeNull(); // ربّما وصلت: لا نعيد
+
+    // الطبيب يوقف التذكير
+    replies.messages = { status: 202 };
+    expect((await gate.saveSmsSettings(shop, { sendReminder: false })).sendReminder).toBe(false);
+    await appt({ time: "13:00" });
+    calls = [];
+    expect((await sendMorningReminders()).sent).toBe(0);
+    expect(sends()).toHaveLength(0);
+  });
+
+  it("بلا هاتف عيادة: لا شيء؛ ومن نشاط العيادة بعد السابعة يُرسل في الخلفية", async () => {
+    clock = new Date("2026-10-11T06:10:00Z");
+    await appt({ time: "10:30", phone: "+213550000103" });
+    expect((await sendMorningReminders()).sent).toBe(0); // لم يربط هاتفه
+    await connect();
+    calls = [];
+    // لوحة السكرتيرة تُفتح: التذكير يُرسل في الخلفية
+    await svc.staffState((await repo.getShopBySlug(db, shop.slug))!);
+    await gate.settled();
+    expect(sends().map((c) => c.body!.phoneNumbers)).toEqual([["+213550000103"]]);
   });
 });

@@ -69,7 +69,7 @@ export const limitKey = {
 const BREAKER_MS = 2 * 60_000;
 const SLOW_ERRORS = new Set(["unreachable", "server"]);
 
-export type GatewayEvent = "called" | "soon" | "codes" | "test";
+export type GatewayEvent = "called" | "soon" | "codes" | "test" | "reminder";
 
 /**
  * مدّة صلاحية الرسالة وأولويتها: إن كان الهاتف مطفأً تُلغى الرسالة بعد ttl ثانية
@@ -80,6 +80,8 @@ const EVENT_OPTS: Record<GatewayEvent, { ttl: number; priority: number }> = {
   called: { ttl: 900, priority: 100 },
   soon: { ttl: 1200, priority: 50 },
   test: { ttl: 600, priority: 100 },
+  // تذكير الصباح: إن كان الهاتف مطفأً ساعتين فقد فات وقته
+  reminder: { ttl: 7200, priority: 50 },
 };
 
 // ————————————————————————— التشفير —————————————————————————
@@ -275,11 +277,18 @@ export function smsSegments(text: string): number {
   return len <= 160 ? 1 : Math.ceil(len / 153);
 }
 
-type TextKind = "called" | "soon" | "code" | "test";
-const TEXT_KEYS = { called: "sg_smsCalled", soon: "sg_smsSoon", code: "sg_smsCode", test: "sg_smsTest" } as const;
+type TextKind = "called" | "soon" | "code" | "test" | "reminder";
+const TEXT_KEYS = { called: "sg_smsCalled", soon: "sg_smsSoon", code: "sg_smsCode", test: "sg_smsTest", reminder: "sg_smsReminder" } as const;
 
-export function clinicSmsText(kind: TextKind, lang: Lang, shopName: string, vars: { n?: number; code?: string } = {}): string {
-  return gsmFriendly(t(lang, TEXT_KEYS[kind], { shop: smsShopName(shopName), n: vars.n ?? "", code: vars.code ?? "" }));
+export function clinicSmsText(
+  kind: TextKind,
+  lang: Lang,
+  shopName: string,
+  vars: { n?: number; code?: string; time?: string; url?: string | null } = {},
+): string {
+  const text = t(lang, TEXT_KEYS[kind], { shop: smsShopName(shopName), n: vars.n ?? "", code: vars.code ?? "", time: vars.time ?? "" });
+  // رابط الموعد (للتفاصيل أو الإلغاء) إن عرفنا عنوان الموقع
+  return gsmFriendly(vars.url ? `${text} ${t(lang, "sg_smsReminderLink", { url: vars.url })}` : text);
 }
 
 // ————————————————————————— الاتّصال بالخادم —————————————————————————
@@ -548,7 +557,14 @@ export async function getShopSmsSender(
   if (!gw) return null;
   if (event !== "test") {
     if (!gw.enabled) return null;
-    if ((event === "called" && !gw.sendCalled) || (event === "soon" && !gw.sendSoon) || (event === "codes" && !gw.sendCodes)) return null;
+    if (
+      (event === "called" && !gw.sendCalled) ||
+      (event === "soon" && !gw.sendSoon) ||
+      (event === "codes" && !gw.sendCodes) ||
+      (event === "reminder" && !gw.sendReminder)
+    ) {
+      return null;
+    }
     if (!opts.ignoreBreaker && breakerOpen(gw, clockNow())) return null;
   }
   const password = decryptSecret(gw.passwordEnc, gw.shopId);
@@ -714,6 +730,7 @@ export async function smsSettingsView(shop: Pick<Shop, "id">) {
     sendCalled: gw?.sendCalled ?? true,
     sendSoon: gw?.sendSoon ?? true,
     sendCodes: gw?.sendCodes ?? true,
+    sendReminder: gw?.sendReminder ?? true,
     deviceName: gw?.deviceName ?? null,
     status: !gw ? ("off" as const) : failing ? ("error" as const) : gw.lastOkAt ? ("ok" as const) : ("unknown" as const),
     lastError: failing ? gw!.lastError : null,
@@ -751,6 +768,7 @@ export async function saveSmsSettings(shop: Pick<Shop, "id">, body: Record<strin
   const sendCalled = bool(body.sendCalled, cur?.sendCalled ?? true);
   const sendSoon = bool(body.sendSoon, cur?.sendSoon ?? true);
   const sendCodes = bool(body.sendCodes, cur?.sendCodes ?? true);
+  const sendReminder = bool(body.sendReminder, cur?.sendReminder ?? true);
 
   const credsChanged = !cur || typed !== null || baseUrl !== cur.baseUrl || username !== cur.username;
   let check: GatewayWrite["check"] = null;
@@ -785,6 +803,7 @@ export async function saveSmsSettings(shop: Pick<Shop, "id">, body: Record<strin
       sendCalled,
       sendSoon,
       sendCodes,
+      sendReminder,
       deviceName,
       check,
     },

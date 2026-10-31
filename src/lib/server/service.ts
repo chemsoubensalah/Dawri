@@ -59,6 +59,7 @@ import { REPORT_BUDGET_MS, sendDailyReports } from "./report";
 import { guardClientIp } from "./ratelimit";
 import { phoneCheckRequired } from "./verify";
 import { checkNewTicket, fullReasons, limitsOf, PATIENT } from "./limits";
+import { remindInBackground } from "./reminders";
 import { getSms } from "./sms";
 import { clinicSendsCodes, codeSender } from "./smsgate";
 import {
@@ -298,6 +299,8 @@ export async function publicShop(slug: string) {
   const db = await getDb();
   const shop = await shopOr404(db, slug);
   const { tickets, closed, now } = await refreshDay(shop);
+  // تذكير صباح يوم الموعد (احتياط إن لم تعمل المهمّة اليومية) — في الخلفية
+  remindInBackground(shop.id);
   const cur = currentTicket(tickets);
   const lt = localTime(now);
   const avg = averageServiceMinutes(tickets, shop.settings.defaultServiceMin);
@@ -791,6 +794,7 @@ export function sessionFor(shop: Shop, now: Date, role: "owner" | "assistant" = 
 
 export async function staffState(shop: Shop) {
   await closeStaleTickets(shop.id);
+  remindInBackground(shop.id);
   const { tickets, closed, qd, now } = await refreshDay(shop);
   const db = await getDb();
   const since = new Date(now.getTime() - NO_SHOW_RETENTION_DAYS * DAY_MS);

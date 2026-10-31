@@ -24,6 +24,8 @@ export interface Appointment {
   createdAt: Date;
   cancelledAt: Date | null;
   arrivedAt: Date | null;
+  /** أُرسل تذكير صباح يوم الموعد (src/lib/server/reminders.ts) */
+  remindedAt?: Date | null;
 }
 
 export interface BookingSettings {

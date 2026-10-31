@@ -124,6 +124,7 @@ export default function SmsSection({ lang, slug }: { lang: Lang; slug: string })
   const [sendCalled, setSendCalled] = useState(true);
   const [sendSoon, setSendSoon] = useState(true);
   const [sendCodes, setSendCodes] = useState(true);
+  const [sendReminder, setSendReminder] = useState(true);
   const [testPhone, setTestPhone] = useState("");
   // الحالة
   const [busy, setBusy] = useState<"save" | "test" | "remove" | null>(null);
@@ -140,6 +141,7 @@ export default function SmsSection({ lang, slug }: { lang: Lang; slug: string })
     setSendCalled(v.sendCalled);
     setSendSoon(v.sendSoon);
     setSendCodes(v.sendCodes);
+    setSendReminder(v.sendReminder);
     setPassword("");
   }, []);
 
@@ -168,6 +170,7 @@ export default function SmsSection({ lang, slug }: { lang: Lang; slug: string })
         sendCalled,
         sendSoon,
         sendCodes,
+        sendReminder,
         ...(credsOpen ? { username, baseUrl, password: password || undefined } : {}),
       });
       apply(v);
@@ -469,11 +472,12 @@ export default function SmsSection({ lang, slug }: { lang: Lang; slug: string })
 
           <div>
             <div className="mb-2 text-sm font-semibold text-slate-600">{t(lang, "sg_events")}</div>
-            <div className={`grid gap-2 ${view.codesActive ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+            <div className="grid gap-2 sm:grid-cols-2">
               {(
                 [
                   ["sg_evCalled", "sg_evCalledHint", sendCalled, setSendCalled],
                   ["sg_evSoon", "sg_evSoonHint", sendSoon, setSendSoon],
+                  ["sg_evReminder", "sg_evReminderHint", sendReminder, setSendReminder],
                   ...(view.codesActive ? [["sg_evCodes", "sg_evCodesHint", sendCodes, setSendCodes]] : []),
                 ] as [DictKey, DictKey, boolean, (v: boolean) => void][]
               ).map(([k, h, on, set]) => (

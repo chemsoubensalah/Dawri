@@ -47,6 +47,8 @@ export const ar = {
   sg_evSoonHint: "ليأتي المريض في الوقت المناسب.",
   sg_evCodes: "رمز التحقّق عند أخذ رقم",
   sg_evCodesHint: "يؤكّد أنّ رقم الهاتف حقيقي (لا أرقام وهمية).",
+  sg_evReminder: "تذكير صباح يوم الموعد",
+  sg_evReminderHint: "رسالة واحدة بين 7 و8 صباحاً لكلّ من له موعد اليوم (وحجز قبل اليوم) — يقلّ الغياب.",
   sg_statusOk: "متّصل ✓",
   sg_statusUnknown: "لم نتحقّق بعد — أرسل رسالة تجريبية",
   sg_statusError: "مشكلة في الربط",
@@ -84,6 +86,9 @@ export const ar = {
   sg_smsSoon: "{shop}: اقترب دورك، رقمك {n}. تعال الآن.",
   sg_smsCode: "{shop}: رمز التحقق {code}. لا تعطه لأحد.",
   sg_smsTest: "دوري: تم ربط هاتف {shop} بنجاح. ستصل رسائل المرضى من هذا الرقم.",
+  sg_smsReminder: "{shop}: تذكير بموعدك اليوم على الساعة {time}.",
+  sg_smsReminderLink: "للتفاصيل أو الإلغاء: {url}",
+  sg_reminded: "وصله التذكير",
 
   // ——— الأخطاء ———
   err_sg_invalid_url: "عنوان الخادم غير صالح (يجب أن يبدأ بـ https://).",
@@ -146,6 +151,8 @@ export const fr: Record<keyof typeof ar, string> = {
   sg_evSoonHint: "Pour que le patient arrive à temps.",
   sg_evCodes: "Code de vérification à la prise de numéro",
   sg_evCodesHint: "Confirme que le numéro est réel (pas de faux numéros).",
+  sg_evReminder: "Rappel le matin du rendez-vous",
+  sg_evReminderHint: "Un SMS entre 7 h et 8 h à chaque patient qui a rendez-vous aujourd'hui (réservé avant) — moins d'absences.",
   sg_statusOk: "Connecté ✓",
   sg_statusUnknown: "Pas encore vérifié — envoyez un SMS d'essai",
   sg_statusError: "Problème de connexion",
@@ -182,6 +189,9 @@ export const fr: Record<keyof typeof ar, string> = {
   sg_smsSoon: "{shop} : votre tour approche, numéro {n}. Venez.",
   sg_smsCode: "{shop} : votre code {code}. Ne le partagez pas.",
   sg_smsTest: "Dawri : le téléphone de {shop} est bien connecté. Les SMS aux patients partiront de ce numéro.",
+  sg_smsReminder: "{shop} : rappel de votre rendez-vous aujourd'hui à {time}.",
+  sg_smsReminderLink: "Détails ou annulation : {url}",
+  sg_reminded: "Rappel envoyé",
 
   err_sg_invalid_url: "Adresse du serveur invalide (doit commencer par https://).",
   err_sg_invalid_credentials: "Identifiant ou mot de passe invalide. Copiez-les tels qu'affichés dans l'application.",

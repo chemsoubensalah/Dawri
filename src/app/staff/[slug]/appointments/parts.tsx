@@ -1,5 +1,5 @@
 "use client";
-import { CalendarCheck2, Globe, Phone, Printer, Stethoscope, UserCheck, X } from "lucide-react";
+import { BellRing, CalendarCheck2, Globe, Phone, Printer, Stethoscope, UserCheck, X } from "lucide-react";
 import { Chip } from "@/components/ui";
 import { parseHHMM } from "@/lib/domain/time";
 import type { Lang } from "@/lib/domain/types";
@@ -89,6 +89,11 @@ export function ApptRow({
           <ReasonChip lang={lang} reason={a.reason} />
           <StatusChip lang={lang} a={a} late={late} />
           {a.walkIn !== null && <Chip tone="sky">{t(lang, "ap_walkIn", { n: a.walkIn })}</Chip>}
+          {a.reminded && a.status === "booked" && (
+            <Chip tone="slate">
+              <BellRing size={12} /> {t(lang, "sg_reminded")}
+            </Chip>
+          )}
         </span>
       </span>
       <span className="flex shrink-0 gap-1">

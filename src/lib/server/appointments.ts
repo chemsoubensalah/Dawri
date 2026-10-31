@@ -625,6 +625,8 @@ function staffRow(a: ar.StaffApptRow, walkIns: Map<string, number>) {
     source: a.source,
     status: a.status,
     ticketNumber: a.ticketNumber,
+    /** وصله تذكير الصباح (رسالة من هاتف العيادة) */
+    reminded: Boolean(a.remindedAt),
     /** للمحجوز: له رقم عادي اليوم؟ («حضر» يجعله ذا أولوية) */
     walkIn: a.status === "booked" && a.phone ? (walkIns.get(a.phone) ?? null) : null,
   };
