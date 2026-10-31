@@ -4,7 +4,7 @@ import { fmtDay } from "@/lib/domain/appointments";
 import { PRINTABLE_MM, readPrintConfig, TEXT_SCALE } from "@/lib/domain/printing";
 import { dayKey } from "@/lib/domain/time";
 import { DomainError, type Lang } from "@/lib/domain/types";
-import { dirOf, drTitle, t } from "@/lib/i18n";
+import { dirOf, t } from "@/lib/i18n";
 import { appointmentView } from "@/lib/server/appointments";
 import { isUuid } from "@/lib/server/appointments-repo";
 import { baseUrl, getLang, staffAccess } from "@/lib/server/http";
@@ -55,7 +55,8 @@ export default async function PrintPage({
   /** مقاس مصمَّم لعرض 72 مم وكتابة «عادية» ← المقاس الفعلي */
   const k = (width / 72) * TEXT_SCALE[cfg.size];
   const fs = (n: number) => ({ fontSize: `${(n * k).toFixed(2)}mm` });
-  const qrMm = Math.max(20, (25 * width) / 72);
+  // صغير بما يكفي لتوفير الورق، وكافٍ لكاميرا الهاتف (18 مم على ورق 80، 16 مم على 58)
+  const qrMm = Math.max(16, (18 * width) / 72);
   const qr = (url: string) => QRCode.toString(url, { type: "svg", errorCorrectionLevel: "M", margin: 0, color: { dark: "#000000", light: "#ffffff" } });
   const time = (iso: string) =>
     new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Algiers", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
@@ -71,23 +72,13 @@ export default async function PrintPage({
     }
   };
 
-  const doctor = drTitle(lang, shop.kind, shop.profile.doctorName);
   const rule = <hr className="my-[2.5mm] border-0 border-t-[0.4mm] border-dashed border-black" />;
+  // اسم العيادة فقط: اسم الطبيب وتخصّصه يطيلان الورقة بلا فائدة للمريض الواقف في القاعة
   const header = (
     <header className="text-center">
       <div className="leading-tight font-bold break-words" style={fs(5.6)}>
         {shop.name}
       </div>
-      {doctor && (
-        <div className="mt-[0.5mm] leading-snug" style={fs(3.5)}>
-          {bi((l) => drTitle(l, shop.kind, shop.profile.doctorName))}
-        </div>
-      )}
-      {shop.profile.specialty && (
-        <div className="leading-snug" style={fs(3.5)}>
-          {shop.profile.specialty}
-        </div>
-      )}
     </header>
   );
   // بلا QR (إعداد الطبيب): لا قسم ولا خطّ فاصل
