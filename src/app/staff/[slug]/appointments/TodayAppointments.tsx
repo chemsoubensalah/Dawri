@@ -8,6 +8,7 @@ import { parseHHMM } from "@/lib/domain/time";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
 import { api, ApiError, usePoll } from "@/lib/client";
+import { printReceipt, receiptUrl } from "@/lib/print";
 import type { StaffAppointments, StaffAppt } from "@/lib/server/appointments";
 import DeskBookDialog from "./DeskBookDialog";
 import { ApptRow } from "./parts";
@@ -96,6 +97,7 @@ export default function TodayAppointments({ lang, slug, onQueueChange }: { lang:
               busy={busy}
               onCheckin={(x) => act({ action: "checkin", id: x.id }, (r) => t(lang, "ap_checkedIn", { n: r.number ?? "" }))}
               onCancel={setCancel}
+              onPrint={(x) => printReceipt(receiptUrl(slug, { appt: x.id }))}
             />
           ))}
         </ul>

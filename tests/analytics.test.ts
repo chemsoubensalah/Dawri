@@ -49,6 +49,8 @@ describe("التصنيف", () => {
     expect(classifyPath("/d/dr-ali")).toEqual({ section: "tv", shop: "dr-ali" });
     expect(classifyPath("/t/123")).toEqual({ section: "ticket", shop: "" });
     expect(classifyPath("/admin")).toBeNull();
+    expect(classifyPath("/staff/dr-ali")).toEqual({ section: "staff", shop: "dr-ali" });
+    expect(classifyPath("/staff/dr-ali/print")).toBeNull(); // ورقة الطباعة (إطار مخفيّ)
     expect(classifyPath("/api/x")).toBeNull();
     expect(classifyPath("/s/<script>")).toBeNull();
     expect(classifyPath("https://evil")).toBeNull();

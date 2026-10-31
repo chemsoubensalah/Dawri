@@ -4,6 +4,7 @@ import * as clinics from "./i18n-parts/clinics";
 import * as daysoff from "./i18n-parts/daysoff";
 import * as reasons from "./i18n-parts/reasons";
 import * as limits from "./i18n-parts/limits";
+import * as printing from "./i18n-parts/print";
 import * as visits from "./i18n-parts/visits";
 import * as growth from "./i18n-parts/growth";
 import * as plans from "./i18n-parts/plans";
@@ -670,6 +671,7 @@ const ar = {
   ...daysoff.ar,
   ...reasons.ar,
   ...limits.ar,
+  ...printing.ar,
   ...visits.ar,
 };
 
@@ -1321,6 +1323,7 @@ const fr: Dict = {
   ...daysoff.fr,
   ...reasons.fr,
   ...limits.fr,
+  ...printing.fr,
   ...visits.fr,
 };
 

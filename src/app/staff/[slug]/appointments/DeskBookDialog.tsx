@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { CalendarPlus, Loader2 } from "lucide-react";
+import { CalendarPlus, Loader2, Printer } from "lucide-react";
 import Dialog from "@/components/Dialog";
 import ReasonPicker from "@/components/ReasonPicker";
 import { DayPills, TimeGrid } from "@/components/SlotPicker";
@@ -8,6 +8,7 @@ import { fmtDay } from "@/lib/domain/appointments";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
+import { autoPrint, printReceipt, receiptUrl, setAutoPrint } from "@/lib/print";
 import type { DeskAvailability, StaffAppointments } from "@/lib/server/appointments";
 
 /** موعد هاتفي أو عند المكتب: الاسم، الهاتف (اختياري)، اليوم والساعة من الأوقات الحرّة. بلا رمز تحقّق. */
@@ -36,6 +37,9 @@ export default function DeskBookDialog({
   const [error, setError] = useState("");
   /** حدّ الطبيب بلغ (حالة مكتملة، أو مهلة الهاتف) ويُسمح للسكرتيرة بالتجاوز */
   const [canForce, setCanForce] = useState(false);
+  /** ورقة الموعد بعد الحجز (إعداد هذا الجهاز) */
+  const [printAfter, setPrintAfter] = useState(false);
+  useEffect(() => setPrintAfter(autoPrint("appt")), []);
 
   useEffect(() => {
     if (!open) return;
@@ -66,7 +70,7 @@ export default function DeskBookDialog({
     setError("");
     setCanForce(false);
     try {
-      const r = await api<{ state: StaffAppointments }>(`/api/staff/${slug}/appointments?scope=${scope}`, {
+      const r = await api<{ result: { id?: string }; state: StaffAppointments }>(`/api/staff/${slug}/appointments?scope=${scope}`, {
         action: "book",
         name,
         phone: phone || undefined,
@@ -76,6 +80,7 @@ export default function DeskBookDialog({
         force,
       });
       onBooked(r.state, `${t(lang, "ap_booked")} — ${fmtDay(lang, day)} ${time}`);
+      if (printAfter && r.result.id) printReceipt(receiptUrl(slug, { appt: r.result.id }));
       setName("");
       setPhone("");
       setReason(null);
@@ -154,6 +159,19 @@ export default function DeskBookDialog({
             )}
           </>
         )}
+        <label className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            className="size-5 accent-brand-600"
+            checked={printAfter}
+            onChange={(e) => {
+              setPrintAfter(e.target.checked);
+              setAutoPrint("appt", e.target.checked);
+            }}
+            data-testid="ap-print"
+          />
+          <Printer size={17} className="shrink-0 text-slate-500" /> {t(lang, "pr_autoAppt")}
+        </label>
         {error && (
           <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">
             {error}

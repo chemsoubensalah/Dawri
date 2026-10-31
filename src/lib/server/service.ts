@@ -894,7 +894,7 @@ export async function staffAction(
       await checkNewTicket(q, shop, { phone, reason, day }, { staff: true, force: body.force === true });
       const number = await repo.allocateNumber(q, shop.id, day);
       const flags = initialFlags(tickets, shop.settings, now, { arrived: present, source: "desk" });
-      await repo.insertTicket(q, {
+      const tk = await repo.insertTicket(q, {
         shopId: shop.id,
         day,
         number,
@@ -909,9 +909,10 @@ export async function staffAction(
         confirmedAt: flags.confirmedAt ?? null,
         notifiedSoonAt: flags.notifiedSoonAt ?? null,
       });
-      return { actions: [], result: number };
+      return { actions: [], result: { number, ticketId: tk.id } };
     });
-    return { ok: true, number: result };
+    // ticketId: لطباعة التذكرة مباشرة (طابعة الاستقبال)
+    return { ok: true, number: result.number, ticketId: result.ticketId };
   }
 
   await mutate(shop, ({ tickets, now }) => {

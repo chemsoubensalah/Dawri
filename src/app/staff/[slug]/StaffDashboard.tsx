@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Ban, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, Mail, Phone, Plus, ShieldAlert, Smartphone, Timer, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Ban, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, Mail, Phone, Plus, Printer, ShieldAlert, Smartphone, Timer, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
 import Dialog, { ConfirmDialog } from "@/components/Dialog";
 import ReasonPicker from "@/components/ReasonPicker";
 import SoundGate from "@/components/SoundGate";
@@ -8,6 +8,7 @@ import { Avatar, Chip, Empty, LiveDot, Stat } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, reasonText, t, tn } from "@/lib/i18n";
 import { api, ApiError, playSound, usePoll } from "@/lib/client";
+import { autoPrint, printReceipt, receiptUrl, setAutoPrint } from "@/lib/print";
 import type { StaffState } from "@/lib/server/service";
 import TodayAppointments, { ApptBadge } from "./appointments/TodayAppointments";
 import { ReasonChip } from "./appointments/parts";
@@ -28,6 +29,10 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   const [addPhone, setAddPhone] = useState("");
   const [addPresent, setAddPresent] = useState(true);
   const [addReason, setAddReason] = useState<string | null>(null);
+  /** طباعة التذكرة بعد الإضافة (إعداد هذا الجهاز: الطابعة موصولة به) */
+  const [addPrint, setAddPrint] = useState(false);
+  useEffect(() => setAddPrint(autoPrint("ticket")), []);
+  const printTicket = (id: string) => printReceipt(receiptUrl(slug, { ticket: id }));
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [newcomer, setNewcomer] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -86,13 +91,14 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   }, [notice]);
 
   const act = useCallback(
-    async (body: Record<string, unknown>, okText?: (r: { number?: number }) => string) => {
+    async (body: Record<string, unknown>, okText?: (r: { number?: number }) => string, onOk?: (r: { number?: number; ticketId?: string }) => void) => {
       setBusy(true);
       setMsg(null);
       try {
-        const r = await api<{ result: { number?: number }; state: StaffState }>(`/api/staff/${slug}/action`, body);
+        const r = await api<{ result: { number?: number; ticketId?: string }; state: StaffState }>(`/api/staff/${slug}/action`, body);
         setS(r.state);
         if (okText) setMsg({ text: okText(r.result), ok: true });
+        onOk?.(r.result);
         return true;
       } catch (e) {
         const err = e as ApiError;
@@ -112,6 +118,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
     const ok = await act(
       { action: "add", name: addName, phone: addPhone || undefined, present: addPresent, reason: addReason, force },
       (r) => t(lang, "added", { n: r.number ?? "" }),
+      (r) => addPrint && r.ticketId && printTicket(r.ticketId),
     );
     if (ok) {
       setAddName("");
@@ -435,6 +442,15 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                       <span className="num hidden text-xs whitespace-nowrap text-slate-500 sm:inline">≈ {t(lang, "sp_min", { n: r.eta })}</span>
                     )}
                     <span className="flex shrink-0 gap-2">
+                      <button
+                        className="inline-flex size-10 items-center justify-center rounded-xl text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+                        onClick={() => printTicket(r.id)}
+                        title={t(lang, "pr_ticketBtn")}
+                        aria-label={`${t(lang, "pr_ticketBtn")} ${r.number}`}
+                        data-testid="print-ticket"
+                      >
+                        <Printer size={17} />
+                      </button>
                       {!r.arrived && (
                         <button
                           className="inline-flex size-10 items-center justify-center rounded-xl text-brand-700 ring-1 ring-brand-200 hover:bg-brand-50"
@@ -594,6 +610,19 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
           <label className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 text-slate-700">
             <input type="checkbox" className="size-5 accent-brand-600" checked={addPresent} onChange={(e) => setAddPresent(e.target.checked)} />
             {t(lang, "presentNow")}
+          </label>
+          <label className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 text-slate-700">
+            <input
+              type="checkbox"
+              className="size-5 accent-brand-600"
+              checked={addPrint}
+              onChange={(e) => {
+                setAddPrint(e.target.checked);
+                setAutoPrint("ticket", e.target.checked);
+              }}
+              data-testid="add-print"
+            />
+            <Printer size={18} className="shrink-0 text-slate-500" /> {t(lang, "pr_autoTicket")}
           </label>
           {msg && !msg.ok && (
             <div className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700" role="alert">

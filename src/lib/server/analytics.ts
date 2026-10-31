@@ -32,7 +32,8 @@ export function classifyPath(path: string): { section: Section; shop: string } |
     case "d":
       return slug ? { section: "tv", shop: slug } : null;
     case "staff":
-      return slug ? { section: "staff", shop: slug } : null;
+      // ورقة الطباعة (إطار مخفيّ) ليست زيارة
+      return slug && c !== "print" ? { section: "staff", shop: slug } : null;
     case "c":
       return slug ? { section: "clinic", shop: slug } : null;
     case "t":

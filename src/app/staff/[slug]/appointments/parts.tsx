@@ -1,5 +1,5 @@
 "use client";
-import { CalendarCheck2, Globe, Phone, Stethoscope, UserCheck, X } from "lucide-react";
+import { CalendarCheck2, Globe, Phone, Printer, Stethoscope, UserCheck, X } from "lucide-react";
 import { Chip } from "@/components/ui";
 import { parseHHMM } from "@/lib/domain/time";
 import type { Lang } from "@/lib/domain/types";
@@ -51,6 +51,7 @@ export function ApptRow({
   busy,
   onCheckin,
   onCancel,
+  onPrint,
 }: {
   lang: Lang;
   a: StaffAppt;
@@ -60,6 +61,8 @@ export function ApptRow({
   busy: boolean;
   onCheckin: (a: StaffAppt) => void;
   onCancel: (a: StaffAppt) => void;
+  /** ورقة الموعد على طابعة التذاكر */
+  onPrint?: (a: StaffAppt) => void;
 }) {
   const late = today && a.status === "booked" && nowMin > parseHHMM(a.time)!;
   const closed = a.status === "cancelled" || a.status === "no_show";
@@ -92,6 +95,17 @@ export function ApptRow({
         {today && (a.status === "booked" || a.status === "no_show") && (
           <button className="btn-primary btn-sm" onClick={() => onCheckin(a)} disabled={busy} data-testid="appt-staff-checkin">
             <UserCheck size={15} /> {t(lang, "ap_checkin")}
+          </button>
+        )}
+        {onPrint && (a.status === "booked" || a.status === "arrived") && (
+          <button
+            className="inline-flex size-9 items-center justify-center rounded-xl text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+            onClick={() => onPrint(a)}
+            title={t(lang, "pr_apptBtn")}
+            aria-label={`${t(lang, "pr_apptBtn")} ${a.time}`}
+            data-testid="print-appt"
+          >
+            <Printer size={16} />
           </button>
         )}
         {a.status === "booked" && (

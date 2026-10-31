@@ -1,0 +1,38 @@
+/** نصوص طباعة التذاكر وأوراق المواعيد (طابعة حرارية 80 مم) — src/app/staff/[slug]/print. */
+export const ar = {
+  pr_yourNumber: "رقمك",
+  pr_ahead: "عدد من قبلك: {n}",
+  pr_wait: "الانتظار التقريبي: {n} د",
+  pr_current: "الرقم الحالي: {n}",
+  pr_priority: "صاحب موعد (أولوية)",
+  pr_scanTicket: "امسح الرمز لتتابع دورك على هاتفك",
+  pr_keepTicket: "احتفظ بهذه الورقة — سننادي رقمك.",
+  pr_yourAppt: "موعدك",
+  pr_scanAppt: "امسح الرمز لترى موعدك أو تلغيه",
+  pr_comeEarly: "احضر قبل موعدك ببضع دقائق وقدّم هذه الورقة للاستقبال.",
+  pr_print: "طباعة",
+  pr_ticketBtn: "طباعة التذكرة",
+  pr_apptBtn: "طباعة ورقة الموعد",
+  pr_autoTicket: "اطبع التذكرة بعد الإضافة (طابعة التذاكر)",
+  pr_autoAppt: "اطبع ورقة الموعد بعد الحجز (طابعة التذاكر)",
+  pr_notFound: "لم نجد هذه التذكرة أو هذا الموعد.",
+};
+
+export const fr: Record<keyof typeof ar, string> = {
+  pr_yourNumber: "Votre numéro",
+  pr_ahead: "Avant vous : {n}",
+  pr_wait: "Attente estimée : {n} min",
+  pr_current: "Numéro actuel : {n}",
+  pr_priority: "Rendez-vous (prioritaire)",
+  pr_scanTicket: "Scannez pour suivre votre tour sur votre téléphone",
+  pr_keepTicket: "Gardez ce ticket — nous appellerons votre numéro.",
+  pr_yourAppt: "Votre rendez-vous",
+  pr_scanAppt: "Scannez pour voir ou annuler votre rendez-vous",
+  pr_comeEarly: "Présentez-vous quelques minutes avant l'heure et remettez ce ticket à l'accueil.",
+  pr_print: "Imprimer",
+  pr_ticketBtn: "Imprimer le ticket",
+  pr_apptBtn: "Imprimer le rendez-vous",
+  pr_autoTicket: "Imprimer le ticket après l'ajout (imprimante tickets)",
+  pr_autoAppt: "Imprimer le rendez-vous après la réservation (imprimante tickets)",
+  pr_notFound: "Ticket ou rendez-vous introuvable.",
+};

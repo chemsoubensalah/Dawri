@@ -1054,7 +1054,9 @@ describe("حدود التسجيل: حدّ يوميّ لكلّ حالة، ومه�
     expect((await fails(svc.staffAction(await fresh(), { action: "add", name: "كريم", phone: p }))).vars?.override).toBe(1);
     await svc.staffAction(await fresh(), { action: "add", name: "كريم", phone: p, force: true });
     // بلا هاتف (كبار السنّ): لا مهلة
-    await svc.staffAction(await fresh(), { action: "add", name: "بلا هاتف" });
+    const added = await svc.staffAction(await fresh(), { action: "add", name: "بلا هاتف" });
+    // رقم التذكرة ومعرّفها: للطباعة مباشرة بعد الإضافة
+    expect((await svc.ticketView(added.ticketId!)).number).toBe(added.number);
 
     // صاحب موعد اليوم (حُجز قبل أيّام) يأخذ رقمه عادياً: زيارة واحدة
     const r = newPhone();
