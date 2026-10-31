@@ -25,6 +25,9 @@ function announce(lang: Lang, n: number) {
   } catch {}
 }
 
+/** أقلّ عرض تُرسم به شاشة القاعة على تلفاز أفقي (تصاميم القاعة مصمَّمة لـ 1280 فما فوق) */
+const TV_WIDTH = 1280;
+
 /** غلاف شاشة القاعة: البيانات الحيّة، الساعة، الأصوات والنداء — والتصميم المختار يرسم الباقي. */
 export default function DisplayClient({
   lang,
@@ -47,6 +50,25 @@ export default function DisplayClient({
   const last = useRef(initial.currentNumber);
 
   usePoll(async () => setV(await api<PublicShopView>(`/api/s/${v.slug}`)), 4000);
+
+  // علب التلفاز (Android TV) تعلن شاشة صغيرة (960×540 بدل 1920×1080) فتظهر الشاشة مكبّرة ومقطوعة:
+  // شاشة أفقية أضيق من 1280 ← نرسم بعرض 1280 ويصغّرها المتصفّح لتملأ التلفاز. الشاشات العمودية كما هي.
+  useEffect(() => {
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    if (!meta) return;
+    const original = meta.content;
+    const fit = () => {
+      const w = screen.width;
+      const h = screen.height;
+      meta.content = w > h && w < TV_WIDTH && h >= 400 ? `width=${TV_WIDTH}` : original;
+    };
+    fit();
+    window.addEventListener("orientationchange", fit);
+    return () => {
+      window.removeEventListener("orientationchange", fit);
+      meta.content = original;
+    };
+  }, []);
 
   useEffect(() => {
     try {
