@@ -1,19 +1,23 @@
 import { notFound, redirect } from "next/navigation";
 import QRCode from "qrcode";
 import { fmtDay } from "@/lib/domain/appointments";
+import { PRINTABLE_MM, readPrintConfig, TEXT_SCALE } from "@/lib/domain/printing";
 import { dayKey } from "@/lib/domain/time";
 import { DomainError } from "@/lib/domain/types";
 import { dirOf, drTitle, t } from "@/lib/i18n";
 import { appointmentView } from "@/lib/server/appointments";
 import { isUuid } from "@/lib/server/appointments-repo";
 import { baseUrl, getLang, staffAccess } from "@/lib/server/http";
+import { printConfigOf } from "@/lib/server/print-settings";
 import { ticketView } from "@/lib/server/service";
 import PrintReady from "./PrintReady";
 
 export const metadata = { title: "Ticket", robots: { index: false } };
 
 /**
- * ورقة لطابعة التذاكر الحرارية (80 مم، مساحة طباعة 72 مم): تذكرة الطابور (?t=) أو ورقة الموعد (?a=).
+ * ورقة لطابعة التذاكر الحرارية: تذكرة الطابور (?t=) أو ورقة الموعد (?a=)،
+ * أو تذكرة تجريبية (?sample=1، مع p/s/qr لتجربة إعداد قبل حفظه؛ preview=1 = معاينة الإعدادات بلا زرّ).
+ * العرض وحجم الكتابة من إعداد الطبيب («طباعة التذاكر»): كلّ المقاسات تُضرب في معامل واحد.
  * أسود فقط وخطوط كبيرة (الرماديّ يخرج باهتاً على الورق الحراري). لا يُطبع سبب الزيارة: الورقة في يد المريض.
  */
 export default async function PrintPage({
@@ -21,7 +25,7 @@ export default async function PrintPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ t?: string; a?: string }>;
+  searchParams: Promise<{ t?: string; a?: string; sample?: string; preview?: string; p?: string; s?: string; qr?: string }>;
 }) {
   const { slug } = await params;
   const q = await searchParams;
@@ -30,6 +34,14 @@ export default async function PrintPage({
   const shop = access.shop;
   const lang = await getLang(shop.defaultLang);
   const base = await baseUrl();
+  const sample = q.sample === "1";
+  // التجربة تقبل إعداداً لم يُحفظ بعد (من صفحة الإعدادات)
+  const cfg = sample ? readPrintConfig({ ...printConfigOf(shop), ...(q.p ? { paper: Number(q.p) } : {}), ...(q.s ? { size: q.s } : {}), ...(q.qr ? { qr: q.qr === "1" } : {}) }) : printConfigOf(shop);
+  const width = PRINTABLE_MM[cfg.paper];
+  /** مقاس مصمَّم لعرض 72 مم وكتابة «عادية» ← المقاس الفعلي */
+  const k = (width / 72) * TEXT_SCALE[cfg.size];
+  const fs = (n: number) => ({ fontSize: `${(n * k).toFixed(2)}mm` });
+  const qrMm = Math.max(20, (25 * width) / 72);
   const qr = (url: string) => QRCode.toString(url, { type: "svg", errorCorrectionLevel: "M", margin: 0, color: { dark: "#000000", light: "#ffffff" } });
   const time = (iso: string) =>
     new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Algiers", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
@@ -49,34 +61,66 @@ export default async function PrintPage({
   const rule = <hr className="my-[2.5mm] border-0 border-t-[0.4mm] border-dashed border-black" />;
   const header = (
     <header className="text-center">
-      <div className="text-[5.6mm] leading-tight font-bold break-words">{shop.name}</div>
-      {sub && <div className="mt-[0.5mm] text-[3.5mm] leading-snug">{sub}</div>}
+      <div className="leading-tight font-bold break-words" style={fs(5.6)}>
+        {shop.name}
+      </div>
+      {sub && (
+        <div className="mt-[0.5mm] leading-snug" style={fs(3.5)}>
+          {sub}
+        </div>
+      )}
     </header>
   );
-  const scan = (svg: string, text: string) => (
-    <div className="flex items-center gap-[3mm]">
-      <div className="w-[25mm] shrink-0 [&>svg]:h-auto [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: svg }} />
-      <div className="text-[3.6mm] leading-snug font-bold">{text}</div>
+  // بلا QR (إعداد الطبيب): لا قسم ولا خطّ فاصل
+  const scan = async (url: string, text: string) =>
+    cfg.qr ? (
+      <>
+        <div className="flex items-center gap-[3mm]">
+          <div className="shrink-0 [&>svg]:h-auto [&>svg]:w-full" style={{ width: `${qrMm}mm` }} dangerouslySetInnerHTML={{ __html: await qr(url) }} />
+          <div className="leading-snug font-bold" style={fs(3.6)}>
+            {text}
+          </div>
+        </div>
+        {rule}
+      </>
+    ) : null;
+  const footer = (
+    <div className="mt-[2mm] text-center" style={fs(3)}>
+      دوري · Dawri
     </div>
   );
-  const footer = <div className="mt-[2mm] text-center text-[3mm]">دوري · Dawri</div>;
-
-  let body: React.ReactNode;
-  const tk = q.t ? await load(q.t, ticketView) : null;
-  const ap = !tk && q.a ? await load(q.a, appointmentView) : null;
-  if (tk) {
+  const ticketBody = (tk: {
+    id: string;
+    number: number;
+    name: string;
+    priority: boolean;
+    status: string;
+    ahead: number | null;
+    etaMin: number | null;
+    currentNumber: number | null;
+    createdAt: string;
+    url: string;
+  }) => {
     const open = ["pending_approval", "waiting", "called", "deferred"].includes(tk.status);
-    body = (
+    return (async () => (
       <>
         {header}
         {rule}
-        <div className="text-center text-[4.4mm] font-bold">{t(lang, "pr_yourNumber")}</div>
-        <div className="num text-center text-[26mm] leading-none font-bold" data-testid="receipt-number">
+        <div className="text-center font-bold" style={fs(4.4)}>
+          {t(lang, "pr_yourNumber")}
+        </div>
+        <div className="num text-center leading-none font-bold" style={fs(26)} data-testid="receipt-number">
           {tk.number}
         </div>
-        <div className="mt-[1.5mm] text-center text-[5mm] leading-tight font-bold break-words">{tk.name}</div>
-        {tk.priority && <div className="mt-[0.5mm] text-center text-[3.6mm] font-bold">★ {t(lang, "pr_priority")}</div>}
-        <div className="mt-[2mm] space-y-[0.8mm] text-center text-[3.8mm]">
+        <div className="mt-[1.5mm] text-center leading-tight font-bold break-words" style={fs(5)}>
+          {tk.name}
+        </div>
+        {tk.priority && (
+          <div className="mt-[0.5mm] text-center font-bold" style={fs(3.6)}>
+            ★ {t(lang, "pr_priority")}
+          </div>
+        )}
+        <div className="mt-[2mm] space-y-[0.8mm] text-center" style={fs(3.8)}>
           {open && tk.ahead !== null && (
             <div className="font-bold">
               {t(lang, "pr_ahead", { n: tk.ahead })}
@@ -89,26 +133,53 @@ export default async function PrintPage({
           </div>
         </div>
         {rule}
-        {scan(await qr(`${base}/t/${tk.id}`), t(lang, "pr_scanTicket"))}
-        {rule}
-        <div className="text-center text-[3.8mm] font-bold">{t(lang, "pr_keepTicket")}</div>
+        {await scan(tk.url, t(lang, "pr_scanTicket"))}
+        <div className="text-center font-bold" style={fs(3.8)}>
+          {t(lang, "pr_keepTicket")}
+        </div>
         {footer}
       </>
-    );
+    ))();
+  };
+
+  let body: React.ReactNode;
+  const tk = q.t ? await load(q.t, ticketView) : null;
+  const ap = !tk && q.a ? await load(q.a, appointmentView) : null;
+  if (sample) {
+    body = await ticketBody({
+      id: "sample",
+      number: 12,
+      name: t(lang, "pr_sampleName"),
+      priority: false,
+      status: "waiting",
+      ahead: 3,
+      etaMin: 20,
+      currentNumber: 9,
+      createdAt: new Date().toISOString(),
+      url: `${base}/s/${shop.slug}`,
+    });
+  } else if (tk) {
+    body = await ticketBody({ ...tk, url: `${base}/t/${tk.id}` });
   } else if (ap) {
     const contact = [ap.shop.profile.address, ap.shop.profile.phone].filter(Boolean);
     body = (
       <>
         {header}
         {rule}
-        <div className="text-center text-[4.4mm] font-bold">{t(lang, "pr_yourAppt")}</div>
-        <div className="mt-[1mm] text-center text-[6mm] leading-tight font-bold">{fmtDay(lang, ap.day)}</div>
-        <div className="num text-center text-[17mm] leading-none font-bold" dir="ltr" data-testid="receipt-time">
+        <div className="text-center font-bold" style={fs(4.4)}>
+          {t(lang, "pr_yourAppt")}
+        </div>
+        <div className="mt-[1mm] text-center leading-tight font-bold" style={fs(6)}>
+          {fmtDay(lang, ap.day)}
+        </div>
+        <div className="num text-center leading-none font-bold" dir="ltr" style={fs(17)} data-testid="receipt-time">
           {ap.time}
         </div>
-        <div className="mt-[1.5mm] text-center text-[5mm] leading-tight font-bold break-words">{ap.name}</div>
+        <div className="mt-[1.5mm] text-center leading-tight font-bold break-words" style={fs(5)}>
+          {ap.name}
+        </div>
         {contact.length > 0 && (
-          <div className="mt-[2mm] space-y-[0.5mm] text-center text-[3.6mm] leading-snug">
+          <div className="mt-[2mm] space-y-[0.5mm] text-center leading-snug" style={fs(3.6)}>
             {ap.shop.profile.address && <div className="break-words">{ap.shop.profile.address}</div>}
             {ap.shop.profile.phone && (
               <div className="num font-bold" dir="ltr">
@@ -118,9 +189,10 @@ export default async function PrintPage({
           </div>
         )}
         {rule}
-        {scan(await qr(`${base}/a/${ap.id}`), t(lang, "pr_scanAppt"))}
-        {rule}
-        <div className="text-center text-[3.8mm] font-bold">{t(lang, "pr_comeEarly")}</div>
+        {await scan(`${base}/a/${ap.id}`, t(lang, "pr_scanAppt"))}
+        <div className="text-center font-bold" style={fs(3.8)}>
+          {t(lang, "pr_comeEarly")}
+        </div>
         {footer}
       </>
     );
@@ -131,10 +203,16 @@ export default async function PrintPage({
 
   return (
     <main className="min-h-dvh bg-slate-100 py-6 print:min-h-0 print:bg-white print:py-0">
-      <div id="receipt" dir={dirOf(lang)} className="mx-auto w-[72mm] bg-white px-[1mm] py-[3mm] text-black shadow-sm print:shadow-none" data-testid="receipt">
+      <div
+        id="receipt"
+        dir={dirOf(lang)}
+        className="mx-auto bg-white px-[1mm] py-[3mm] text-black shadow-sm print:shadow-none"
+        style={{ width: `${width}mm` }}
+        data-testid="receipt"
+      >
         {body}
       </div>
-      <PrintReady label={t(lang, "pr_print")} />
+      <PrintReady label={t(lang, "pr_print")} paper={cfg.paper} button={q.preview !== "1"} />
     </main>
   );
 }

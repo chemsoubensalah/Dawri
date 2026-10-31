@@ -16,6 +16,7 @@ import BookingSection from "./BookingSection";
 import DaysOffSection from "./DaysOffSection";
 import VisitReasonSection from "./VisitReasonSection";
 import LimitsSection from "./LimitsSection";
+import PrintSection from "./PrintSection";
 import AssistantPin from "./AssistantPin";
 import ReportSection from "./ReportSection";
 
@@ -154,6 +155,7 @@ export default function SettingsForm({
               ["reason", "vs_nav"],
               ["limits", "lm_nav"],
               ["booking", "ap_se_title"],
+              ["printing", "ps_nav"],
               ["rules", "se_rules"],
               ["report", "gr_reportNav"],
               ["alerts", "se_alerts"],
@@ -380,6 +382,7 @@ export default function SettingsForm({
         <VisitReasonSection lang={lang} slug={slug} />
         <LimitsSection lang={lang} slug={slug} />
         <BookingSection lang={lang} slug={slug} />
+        <PrintSection lang={lang} slug={slug} />
 
         <Section id="rules" icon={<ListChecks size={20} />} title={t(lang, "se_rules")} sub={t(lang, "se_rulesSub")}>
           <div className="space-y-3">

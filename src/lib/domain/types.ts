@@ -204,6 +204,8 @@ export interface Shop {
   reasonCfg?: unknown;
   /** «حدود التسجيل» كما حُفظت (null = افتراضي) — اقرأها بـ readLimits (src/lib/domain/limits.ts) */
   limitsCfg?: unknown;
+  /** «طباعة التذاكر» كما حُفظت (null = افتراضي) — اقرأها بـ readPrintConfig (src/lib/domain/printing.ts) */
+  printCfg?: unknown;
 }
 
 export interface DayOff {

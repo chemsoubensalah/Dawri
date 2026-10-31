@@ -20,6 +20,8 @@ import { cleanDaysOff, dayRange, upcomingFixedHolidays } from "@/lib/domain/days
 import { activeReasonConfig, cleanReason, cleanReasonConfig, defaultReasonConfig, readReasonConfig, reasonCap } from "@/lib/domain/reasons";
 import { cleanLimits, DEFAULT_LIMITS, phoneWaitUntil, readLimits } from "@/lib/domain/limits";
 import { limitsSettingsView, saveLimitsSettings } from "@/lib/server/limits";
+import { cleanPrintConfig, DEFAULT_PRINT, readPrintConfig } from "@/lib/domain/printing";
+import { printSettingsView, savePrintSettings } from "@/lib/server/print-settings";
 import { saveReasonSettings } from "@/lib/server/reason-settings";
 import * as apr from "@/lib/server/appointments-repo";
 import { errorText, reasonText } from "@/lib/i18n";
@@ -1071,5 +1073,19 @@ describe("حدود التسجيل: حدّ يوميّ لكلّ حالة، ومه�
     const tk = await svc.takeTicket(shop.slug, { name: "سارة", phone: s2 });
     await svc.ticketAction(tk.ticketId, { action: "cancel" });
     await ap.bookOnline(shop.slug, { name: "سارة", phone: s2, day: "2026-10-18", time: "10:00" });
+  });
+});
+
+describe("طباعة التذاكر: عرض الورق وحجم الكتابة (إعداد الطبيب)", () => {
+  it("قراءة الإعداد والتحقّق منه والحفظ", async () => {
+    expect(readPrintConfig(null)).toEqual(DEFAULT_PRINT);
+    expect(readPrintConfig({ paper: "58", size: "l", qr: false })).toEqual({ paper: 58, size: "l", qr: false });
+    expect(readPrintConfig({ paper: 76, size: "xl" })).toEqual(DEFAULT_PRINT);
+    for (const bad of [{ paper: 76, size: "m", qr: true }, { paper: 80, size: "xl", qr: true }, { paper: 80, size: "m" }, null]) {
+      expect(() => cleanPrintConfig(bad)).toThrow("invalid_settings");
+    }
+    expect(printSettingsView(await fresh()).config).toEqual(DEFAULT_PRINT);
+    await savePrintSettings(await fresh(), { paper: 58, size: "s", qr: false });
+    expect(printSettingsView(await fresh()).config).toEqual({ paper: 58, size: "s", qr: false });
   });
 });
