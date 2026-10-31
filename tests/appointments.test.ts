@@ -1079,13 +1079,17 @@ describe("حدود التسجيل: حدّ يوميّ لكلّ حالة، ومه�
 describe("طباعة التذاكر: عرض الورق وحجم الكتابة (إعداد الطبيب)", () => {
   it("قراءة الإعداد والتحقّق منه والحفظ", async () => {
     expect(readPrintConfig(null)).toEqual(DEFAULT_PRINT);
-    expect(readPrintConfig({ paper: "58", size: "l", qr: false })).toEqual({ paper: 58, size: "l", qr: false });
+    expect(readPrintConfig({ paper: "58", size: "l", qr: false })).toEqual({ paper: 58, size: "l", qr: false, lang: "auto" });
+    expect(readPrintConfig({ lang: "both" }).lang).toBe("both");
+    expect(readPrintConfig({ lang: "en" }).lang).toBe("auto");
+    expect(cleanPrintConfig({ paper: 80, size: "m", qr: true }).lang).toBe("auto"); // صفحة إعدادات قديمة بلا لغة
+    expect(() => cleanPrintConfig({ paper: 80, size: "m", qr: true, lang: "en" })).toThrow("invalid_settings");
     expect(readPrintConfig({ paper: 76, size: "xl" })).toEqual(DEFAULT_PRINT);
     for (const bad of [{ paper: 76, size: "m", qr: true }, { paper: 80, size: "xl", qr: true }, { paper: 80, size: "m" }, null]) {
       expect(() => cleanPrintConfig(bad)).toThrow("invalid_settings");
     }
     expect(printSettingsView(await fresh()).config).toEqual(DEFAULT_PRINT);
-    await savePrintSettings(await fresh(), { paper: 58, size: "s", qr: false });
-    expect(printSettingsView(await fresh()).config).toEqual({ paper: 58, size: "s", qr: false });
+    await savePrintSettings(await fresh(), { paper: 58, size: "s", qr: false, lang: "fr" });
+    expect(printSettingsView(await fresh()).config).toEqual({ paper: 58, size: "s", qr: false, lang: "fr" });
   });
 });

@@ -3,7 +3,7 @@ import QRCode from "qrcode";
 import { fmtDay } from "@/lib/domain/appointments";
 import { PRINTABLE_MM, readPrintConfig, TEXT_SCALE } from "@/lib/domain/printing";
 import { dayKey } from "@/lib/domain/time";
-import { DomainError } from "@/lib/domain/types";
+import { DomainError, type Lang } from "@/lib/domain/types";
 import { dirOf, drTitle, t } from "@/lib/i18n";
 import { appointmentView } from "@/lib/server/appointments";
 import { isUuid } from "@/lib/server/appointments-repo";
@@ -25,18 +25,32 @@ export default async function PrintPage({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ t?: string; a?: string; sample?: string; preview?: string; p?: string; s?: string; qr?: string }>;
+  searchParams: Promise<{ t?: string; a?: string; sample?: string; preview?: string; p?: string; s?: string; qr?: string; l?: string }>;
 }) {
   const { slug } = await params;
   const q = await searchParams;
   const access = await staffAccess(slug);
   if (!access) redirect(`/staff/${slug}`);
   const shop = access.shop;
-  const lang = await getLang(shop.defaultLang);
+  const uiLang = await getLang(shop.defaultLang);
   const base = await baseUrl();
   const sample = q.sample === "1";
   // التجربة تقبل إعداداً لم يُحفظ بعد (من صفحة الإعدادات)
-  const cfg = sample ? readPrintConfig({ ...printConfigOf(shop), ...(q.p ? { paper: Number(q.p) } : {}), ...(q.s ? { size: q.s } : {}), ...(q.qr ? { qr: q.qr === "1" } : {}) }) : printConfigOf(shop);
+  const cfg = sample ? readPrintConfig({ ...printConfigOf(shop), ...(q.p ? { paper: Number(q.p) } : {}), ...(q.s ? { size: q.s } : {}), ...(q.qr ? { qr: q.qr === "1" } : {}), ...(q.l ? { lang: q.l } : {}) }) : printConfigOf(shop);
+  // لغة الورقة (إعداد الطبيب): «الاثنتان» = العربية ثمّ الفرنسية تحتها
+  const langs: Lang[] = cfg.lang === "both" ? ["ar", "fr"] : [cfg.lang === "auto" ? uiLang : cfg.lang];
+  const lang = langs[0];
+  const bi = (text: (l: Lang) => string | null) =>
+    langs.length === 1 ? (
+      text(lang)
+    ) : (
+      <>
+        {text("ar")}
+        <span className="block font-semibold" dir="ltr" style={{ fontSize: "0.8em" }}>
+          {text("fr")}
+        </span>
+      </>
+    );
   const width = PRINTABLE_MM[cfg.paper];
   /** مقاس مصمَّم لعرض 72 مم وكتابة «عادية» ← المقاس الفعلي */
   const k = (width / 72) * TEXT_SCALE[cfg.size];
@@ -57,22 +71,27 @@ export default async function PrintPage({
     }
   };
 
-  const sub = [drTitle(lang, shop.kind, shop.profile.doctorName), shop.profile.specialty].filter(Boolean).join(" · ");
+  const doctor = drTitle(lang, shop.kind, shop.profile.doctorName);
   const rule = <hr className="my-[2.5mm] border-0 border-t-[0.4mm] border-dashed border-black" />;
   const header = (
     <header className="text-center">
       <div className="leading-tight font-bold break-words" style={fs(5.6)}>
         {shop.name}
       </div>
-      {sub && (
+      {doctor && (
         <div className="mt-[0.5mm] leading-snug" style={fs(3.5)}>
-          {sub}
+          {bi((l) => drTitle(l, shop.kind, shop.profile.doctorName))}
+        </div>
+      )}
+      {shop.profile.specialty && (
+        <div className="leading-snug" style={fs(3.5)}>
+          {shop.profile.specialty}
         </div>
       )}
     </header>
   );
   // بلا QR (إعداد الطبيب): لا قسم ولا خطّ فاصل
-  const scan = async (url: string, text: string) =>
+  const scan = async (url: string, text: React.ReactNode) =>
     cfg.qr ? (
       <>
         <div className="flex items-center gap-[3mm]">
@@ -107,7 +126,7 @@ export default async function PrintPage({
         {header}
         {rule}
         <div className="text-center font-bold" style={fs(4.4)}>
-          {t(lang, "pr_yourNumber")}
+          {bi((l) => t(l, "pr_yourNumber"))}
         </div>
         <div className="num text-center leading-none font-bold" style={fs(26)} data-testid="receipt-number">
           {tk.number}
@@ -117,25 +136,20 @@ export default async function PrintPage({
         </div>
         {tk.priority && (
           <div className="mt-[0.5mm] text-center font-bold" style={fs(3.6)}>
-            ★ {t(lang, "pr_priority")}
+            ★ {bi((l) => t(l, "pr_priority"))}
           </div>
         )}
         <div className="mt-[2mm] space-y-[0.8mm] text-center" style={fs(3.8)}>
           {open && tk.ahead !== null && (
-            <div className="font-bold">
-              {t(lang, "pr_ahead", { n: tk.ahead })}
-              {tk.etaMin ? ` · ${t(lang, "pr_wait", { n: tk.etaMin })}` : ""}
-            </div>
+            <div className="font-bold">{bi((l) => `${t(l, "pr_ahead", { n: tk.ahead! })}${tk.etaMin ? ` · ${t(l, "pr_wait", { n: tk.etaMin })}` : ""}`)}</div>
           )}
-          {open && tk.currentNumber !== null && <div>{t(lang, "pr_current", { n: tk.currentNumber })}</div>}
-          <div className="num">
-            {fmtDay(lang, dayKey(new Date(tk.createdAt)))} · <span dir="ltr">{time(tk.createdAt)}</span>
-          </div>
+          {open && tk.currentNumber !== null && <div>{bi((l) => t(l, "pr_current", { n: tk.currentNumber! }))}</div>}
+          <div className="num">{bi((l) => `${fmtDay(l, dayKey(new Date(tk.createdAt)))} · ${time(tk.createdAt)}`)}</div>
         </div>
         {rule}
-        {await scan(tk.url, t(lang, "pr_scanTicket"))}
+        {await scan(tk.url, bi((l) => t(l, "pr_scanTicket")))}
         <div className="text-center font-bold" style={fs(3.8)}>
-          {t(lang, "pr_keepTicket")}
+          {bi((l) => t(l, "pr_keepTicket"))}
         </div>
         {footer}
       </>
@@ -167,10 +181,10 @@ export default async function PrintPage({
         {header}
         {rule}
         <div className="text-center font-bold" style={fs(4.4)}>
-          {t(lang, "pr_yourAppt")}
+          {bi((l) => t(l, "pr_yourAppt"))}
         </div>
         <div className="mt-[1mm] text-center leading-tight font-bold" style={fs(6)}>
-          {fmtDay(lang, ap.day)}
+          {bi((l) => fmtDay(l, ap.day))}
         </div>
         <div className="num text-center leading-none font-bold" dir="ltr" style={fs(17)} data-testid="receipt-time">
           {ap.time}
@@ -189,15 +203,15 @@ export default async function PrintPage({
           </div>
         )}
         {rule}
-        {await scan(`${base}/a/${ap.id}`, t(lang, "pr_scanAppt"))}
+        {await scan(`${base}/a/${ap.id}`, bi((l) => t(l, "pr_scanAppt")))}
         <div className="text-center font-bold" style={fs(3.8)}>
-          {t(lang, "pr_comeEarly")}
+          {bi((l) => t(l, "pr_comeEarly"))}
         </div>
         {footer}
       </>
     );
   } else {
-    if (q.t || q.a) return <main className="p-10 text-center text-slate-500">{t(lang, "pr_notFound")}</main>;
+    if (q.t || q.a) return <main className="p-10 text-center text-slate-500">{t(uiLang, "pr_notFound")}</main>;
     notFound();
   }
 
@@ -212,7 +226,7 @@ export default async function PrintPage({
       >
         {body}
       </div>
-      <PrintReady label={t(lang, "pr_print")} paper={cfg.paper} button={q.preview !== "1"} />
+      <PrintReady label={t(uiLang, "pr_print")} paper={cfg.paper} button={q.preview !== "1"} />
     </main>
   );
 }

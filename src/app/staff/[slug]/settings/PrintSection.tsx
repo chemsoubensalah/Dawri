@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Printer, Save } from "lucide-react";
-import type { PaperWidth, PrintConfig, TextSize } from "@/lib/domain/printing";
+import type { PaperWidth, PrintConfig, PrintLang, TextSize } from "@/lib/domain/printing";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t, type DictKey } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
@@ -11,6 +11,12 @@ import type { PrintSettingsView } from "@/lib/server/print-settings";
 const PAPERS: { paper: PaperWidth; title: DictKey; sub: DictKey }[] = [
   { paper: 80, title: "ps_paper80", sub: "ps_paper80Sub" },
   { paper: 58, title: "ps_paper58", sub: "ps_paper58Sub" },
+];
+const LANGS: { lang: PrintLang; title: DictKey }[] = [
+  { lang: "auto", title: "ps_langAuto" },
+  { lang: "ar", title: "ps_langAr" },
+  { lang: "fr", title: "ps_langFr" },
+  { lang: "both", title: "ps_langBoth" },
 ];
 const SIZES: { size: TextSize; title: DictKey }[] = [
   { size: "s", title: "ps_s" },
@@ -38,7 +44,7 @@ export default function PrintSection({ lang, slug }: { lang: Lang; slug: string 
   };
   // تذكرة تجريبية بالإعداد المعروض (قبل حفظه)
   const sampleUrl = (preview: boolean) =>
-    `/staff/${encodeURIComponent(slug)}/print?sample=1&p=${cfg.paper}&s=${cfg.size}&qr=${cfg.qr ? 1 : 0}${preview ? "&preview=1" : ""}`;
+    `/staff/${encodeURIComponent(slug)}/print?sample=1&p=${cfg.paper}&s=${cfg.size}&qr=${cfg.qr ? 1 : 0}&l=${cfg.lang}${preview ? "&preview=1" : ""}`;
 
   async function save() {
     if (!cfg) return;
@@ -104,6 +110,21 @@ export default function PrintSection({ lang, slug }: { lang: Lang; slug: string 
                   style={{ fontSize: `${0.8 + i * 0.12}rem` }}
                 >
                   <input type="radio" name="print-size" className="sr-only" checked={cfg.size === x.size} onChange={() => set({ size: x.size })} data-testid={`print-size-${x.size}`} />
+                  {t(lang, x.title)}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="label">{t(lang, "ps_lang")}</div>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t(lang, "ps_lang")}>
+              {LANGS.map((x) => (
+                <label
+                  key={x.lang}
+                  className="cursor-pointer rounded-xl bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 transition hover:ring-brand-300 has-checked:bg-brand-50 has-checked:text-brand-800 has-checked:ring-2 has-checked:ring-brand-500"
+                >
+                  <input type="radio" name="print-lang" className="sr-only" checked={cfg.lang === x.lang} onChange={() => set({ lang: x.lang })} data-testid={`print-lang-${x.lang}`} />
                   {t(lang, x.title)}
                 </label>
               ))}
