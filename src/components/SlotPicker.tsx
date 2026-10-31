@@ -77,7 +77,7 @@ export function DayPills({
 }
 
 /**
- * تقويم شهري للأيّام المتاحة (للسكرتيرة حين تكون مدّة الحجز طويلة): شهر بشهر، الأحد أوّل الأسبوع.
+ * تقويم شهري للأيّام المتاحة (للسكرتيرة حين تكون مدّة الحجز طويلة): شهر بشهر، السبت أوّل الأسبوع (كما في الجزائر).
  * اليوم المتاح يُظهر عدد الأماكن الباقية؛ المكتمل والمغلق والعطلة معطّلة مع سببها.
  */
 export function DayCalendar({ lang, days, value, onChange }: { lang: Lang; days: DayAvailability[]; value: string | null; onChange: (day: string) => void }) {
@@ -93,13 +93,13 @@ export function DayCalendar({ lang, days, value, onChange }: { lang: Lang; days:
   const [y, m] = month.split("-").map(Number);
   const first = new Date(Date.UTC(y, m - 1, 1));
   const count = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const lead = first.getUTCDay(); // الأحد = 0
+  const lead = (first.getUTCDay() + 1) % 7; // السبت = 0
   const cells: (string | null)[] = [...Array(lead).fill(null), ...Array.from({ length: count }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`)];
   const loc = lang === "ar" ? "ar-DZ" : "fr-DZ";
   const title = new Intl.DateTimeFormat(loc, { month: "long", year: "numeric", timeZone: "UTC", numberingSystem: "latn" }).format(first);
   const wd = new Intl.DateTimeFormat(loc, { weekday: "short", timeZone: "UTC" });
-  // أسماء الأيّام: من الأحد 4 جانفي 1970
-  const heads = Array.from({ length: 7 }, (_, i) => wd.format(new Date(Date.UTC(1970, 0, 4 + i))));
+  // أسماء الأيّام: من السبت 3 جانفي 1970
+  const heads = Array.from({ length: 7 }, (_, i) => wd.format(new Date(Date.UTC(1970, 0, 3 + i))));
   const Prev = lang === "ar" ? ChevronRight : ChevronLeft;
   const Next = lang === "ar" ? ChevronLeft : ChevronRight;
   const navBtn = "inline-flex size-9 items-center justify-center rounded-xl text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-30";
