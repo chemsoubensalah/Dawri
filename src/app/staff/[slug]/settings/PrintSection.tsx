@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Printer, Save } from "lucide-react";
-import type { PaperWidth, PrintConfig, PrintLang, TextSize } from "@/lib/domain/printing";
+import type { Layout, PaperWidth, PrintConfig, PrintLang, TextSize } from "@/lib/domain/printing";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t, type DictKey } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
 import { printReceipt } from "@/lib/print";
 import type { PrintSettingsView } from "@/lib/server/print-settings";
+import TicketDesigner from "./TicketDesigner";
 
 const PAPERS: { paper: PaperWidth; title: DictKey; sub: DictKey }[] = [
   { paper: 80, title: "ps_paper80", sub: "ps_paper80Sub" },
@@ -24,11 +25,13 @@ const SIZES: { size: TextSize; title: DictKey }[] = [
   { size: "l", title: "ps_l" },
 ];
 
-/** «طباعة التذاكر»: عرض الورق، حجم الكتابة، رمز QR — مع معاينة حيّة وطباعة تجريبية قبل الحفظ. */
+/** «طباعة التذاكر»: عرض الورق، حجم الكتابة، اللغة، وتصميم كلّ ورقة — مع معاينة حيّة وطباعة تجريبية قبل الحفظ. */
 export default function PrintSection({ lang, slug }: { lang: Lang; slug: string }) {
   const [cfg, setCfg] = useState<PrintConfig | null>(null);
+  const [tab, setTab] = useState<Layout>("ticket");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
 
   useEffect(() => {
     api<PrintSettingsView>(`/api/staff/${slug}/print-settings`)
@@ -36,22 +39,33 @@ export default function PrintSection({ lang, slug }: { lang: Lang; slug: string 
       .catch((e) => setMsg({ ok: false, text: errorText(lang, (e as ApiError).code) }));
   }, [slug, lang]);
 
+  // ورقة تجريبية بالإعداد المعروض (قبل حفظه): الورقة المفتوحة وحدها، لرابط قصير
+  const sampleUrl = (c: PrintConfig, kind: Layout, preview: boolean) =>
+    `/staff/${encodeURIComponent(slug)}/print?sample=${kind}&cfg=${encodeURIComponent(
+      JSON.stringify({ paper: c.paper, size: c.size, qr: c.qr, lang: c.lang, [kind]: c[kind] }),
+    )}${preview ? "&preview=1" : ""}`;
+  // المعاينة تُحدَّث بعد توقّف الكتابة قليلاً (لا طلب مع كلّ حرف)
+  useEffect(() => {
+    if (!cfg) return;
+    const id = setTimeout(() => setPreviewSrc(sampleUrl(cfg, tab, true)), 350);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg, tab]);
+
   if (!cfg) return <section id="printing" className="card scroll-mt-28 p-6" aria-busy="true" />;
 
   const set = (patch: Partial<PrintConfig>) => {
     setCfg({ ...cfg, ...patch });
     setMsg(null);
   };
-  // تذكرة تجريبية بالإعداد المعروض (قبل حفظه)
-  const sampleUrl = (preview: boolean) =>
-    `/staff/${encodeURIComponent(slug)}/print?sample=1&p=${cfg.paper}&s=${cfg.size}&qr=${cfg.qr ? 1 : 0}&l=${cfg.lang}${preview ? "&preview=1" : ""}`;
 
   async function save() {
     if (!cfg) return;
     setBusy(true);
     setMsg(null);
     try {
-      const r = await api<PrintSettingsView>(`/api/staff/${slug}/print-settings`, cfg);
+      const qrShown = cfg.ticket.find((b) => b.key === "qr")?.show ?? cfg.qr;
+      const r = await api<PrintSettingsView>(`/api/staff/${slug}/print-settings`, { ...cfg, qr: qrShown });
       setCfg(r.config);
       setMsg({ ok: true, text: t(lang, "ps_saved") });
     } catch (e) {
@@ -131,10 +145,26 @@ export default function PrintSection({ lang, slug }: { lang: Lang; slug: string 
             </div>
           </div>
 
-          <label className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">
-            <input type="checkbox" className="size-5 shrink-0 accent-brand-600" checked={cfg.qr} onChange={(e) => set({ qr: e.target.checked })} data-testid="print-qr" />
-            {t(lang, "ps_qr")}
-          </label>
+          <div>
+            <div className="label">{t(lang, "ps_design")}</div>
+            <p className="mb-2.5 text-xs leading-relaxed text-slate-500">{t(lang, "ps_designHint")}</p>
+            <div className="mb-3 inline-flex rounded-2xl bg-slate-100 p-1" role="tablist">
+              {(["ticket", "appt"] as Layout[]).map((k) => (
+                <button
+                  type="button"
+                  key={k}
+                  role="tab"
+                  aria-selected={tab === k}
+                  onClick={() => setTab(k)}
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${tab === k ? "bg-white text-brand-800 shadow-sm" : "text-slate-600"}`}
+                  data-testid={`print-tab-${k}`}
+                >
+                  {t(lang, k === "ticket" ? "ps_tabTicket" : "ps_tabAppt")}
+                </button>
+              ))}
+            </div>
+            <TicketDesigner key={tab} lang={lang} kind={tab} blocks={cfg[tab]} onChange={(b) => set({ [tab]: b } as Partial<PrintConfig>)} />
+          </div>
           <p className="text-xs leading-relaxed text-slate-500">{t(lang, "ps_hint")}</p>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -142,7 +172,7 @@ export default function PrintSection({ lang, slug }: { lang: Lang; slug: string 
             <button type="button" className="btn-primary btn-sm" disabled={busy} onClick={save} data-testid="print-save">
               <Save size={15} /> {t(lang, "ps_save")}
             </button>
-            <button type="button" className="btn-secondary btn-sm" onClick={() => printReceipt(sampleUrl(false))} data-testid="print-test">
+            <button type="button" className="btn-secondary btn-sm" onClick={() => printReceipt(sampleUrl(cfg, tab, false))} data-testid="print-test">
               <Printer size={15} /> {t(lang, "ps_test")}
             </button>
           </div>
@@ -153,16 +183,18 @@ export default function PrintSection({ lang, slug }: { lang: Lang; slug: string 
           )}
         </div>
 
-        <div>
+        <div className="md:sticky md:top-32 md:self-start">
           <div className="label">{t(lang, "ps_preview")}</div>
-          {/* معاينة بالمقاس الحقيقي (مم) — تتغيّر فور تغيير الاختيار */}
-          <iframe
-            key={sampleUrl(true)}
-            src={sampleUrl(true)}
-            title={t(lang, "ps_preview")}
-            className="h-[30rem] w-full rounded-2xl bg-slate-100 ring-1 ring-slate-200 md:w-[20rem]"
-            data-testid="print-preview"
-          />
+          {/* معاينة بالمقاس الحقيقي (مم) — تتغيّر بعد كلّ تعديل */}
+          {previewSrc && (
+            <iframe
+              key={previewSrc}
+              src={previewSrc}
+              title={t(lang, "ps_preview")}
+              className="h-[34rem] w-full rounded-2xl bg-slate-100 ring-1 ring-slate-200 md:w-[20rem]"
+              data-testid="print-preview"
+            />
+          )}
         </div>
       </div>
     </section>

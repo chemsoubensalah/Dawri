@@ -20,7 +20,7 @@ import { cleanDaysOff, dayRange, upcomingFixedHolidays } from "@/lib/domain/days
 import { activeReasonConfig, cleanReason, cleanReasonConfig, defaultReasonConfig, readReasonConfig, reasonCap } from "@/lib/domain/reasons";
 import { cleanLimits, DEFAULT_LIMITS, phoneWaitUntil, readLimits } from "@/lib/domain/limits";
 import { limitsSettingsView, saveLimitsSettings } from "@/lib/server/limits";
-import { cleanPrintConfig, DEFAULT_PRINT, readPrintConfig } from "@/lib/domain/printing";
+import { cleanPrintConfig, DEFAULT_PRINT, defaultLayout, readPrintConfig } from "@/lib/domain/printing";
 import { printSettingsView, savePrintSettings } from "@/lib/server/print-settings";
 import { saveReasonSettings } from "@/lib/server/reason-settings";
 import * as apr from "@/lib/server/appointments-repo";
@@ -1079,7 +1079,7 @@ describe("حدود التسجيل: حدّ يوميّ لكلّ حالة، ومه�
 describe("طباعة التذاكر: عرض الورق وحجم الكتابة (إعداد الطبيب)", () => {
   it("قراءة الإعداد والتحقّق منه والحفظ", async () => {
     expect(readPrintConfig(null)).toEqual(DEFAULT_PRINT);
-    expect(readPrintConfig({ paper: "58", size: "l", qr: false })).toEqual({ paper: 58, size: "l", qr: false, lang: "auto" });
+    expect(readPrintConfig({ paper: "58", size: "l", qr: false })).toMatchObject({ paper: 58, size: "l", qr: false, lang: "auto" });
     expect(readPrintConfig({ lang: "both" }).lang).toBe("both");
     expect(readPrintConfig({ lang: "en" }).lang).toBe("auto");
     expect(cleanPrintConfig({ paper: 80, size: "m", qr: true }).lang).toBe("auto"); // صفحة إعدادات قديمة بلا لغة
@@ -1090,6 +1090,64 @@ describe("طباعة التذاكر: عرض الورق وحجم الكتابة (
     }
     expect(printSettingsView(await fresh()).config).toEqual(DEFAULT_PRINT);
     await savePrintSettings(await fresh(), { paper: 58, size: "s", qr: false, lang: "fr" });
-    expect(printSettingsView(await fresh()).config).toEqual({ paper: 58, size: "s", qr: false, lang: "fr" });
+    expect(printSettingsView(await fresh()).config).toMatchObject({ paper: 58, size: "s", qr: false, lang: "fr" });
+  });
+
+  it("تصميم الورقة: العناصر والترتيب والنصوص، والرقم لا يُخفى", async () => {
+    // قبل المصمّم: التصميم الأصلي، واسم الطبيب وتخصّصه مخفيّان، وQR حسب الإعداد القديم
+    const old = readPrintConfig({ paper: 80, size: "m", qr: false });
+    expect(old.ticket.map((b) => b.key)).toEqual(defaultLayout("ticket").map((b) => b.key));
+    expect(old.ticket.find((b) => b.key === "doctor")?.show).toBe(false);
+    expect(old.ticket.find((b) => b.key === "qr")?.show).toBe(false);
+    expect(old.appt.find((b) => b.key === "time")?.show).toBe(true);
+
+    const blk = (key: string, o: Record<string, unknown> = {}) => ({ key, show: true, size: "m", bold: false, align: "center", text: null, ...o });
+    const ticket = [
+      blk("text-1", { text: "  هاتف العيادة   023 00 00 00 ", bold: true, align: "right" }),
+      blk("number", { show: false, size: "xl" }), // الرقم لا يُخفى
+      blk("label", { text: "Votre tour", size: "l" }),
+      blk("name", { text: "يُتجاهل" }), // نصّ لعنصر لا يُكتب
+      blk("line-1"),
+      blk("text-2", { text: "   " }), // فارغ: يسقط
+      blk("clinic"),
+      blk("clinic", { size: "xl" }), // مكرّر: يسقط
+      blk("hacker"), // غير معروف: يسقط
+    ];
+    const c = cleanPrintConfig({ paper: 80, size: "m", qr: true, lang: "ar", ticket });
+    const keys = c.ticket.map((b) => b.key);
+    expect(keys.slice(0, 5)).toEqual(["text-1", "number", "label", "name", "line-1"]);
+    expect(keys).not.toContain("text-2");
+    expect(keys).not.toContain("hacker");
+    expect(keys.filter((k) => k === "clinic")).toHaveLength(1);
+    // عناصر لم تُرسل تُضاف مخفيّة (لا تختفي من القائمة)
+    expect(c.ticket.find((b) => b.key === "qr")).toMatchObject({ show: false });
+    expect(c.ticket.find((b) => b.key === "text-1")).toMatchObject({ text: "هاتف العيادة 023 00 00 00", bold: true, align: "right" });
+    expect(c.ticket.find((b) => b.key === "number")).toMatchObject({ show: true, size: "xl" });
+    expect(c.ticket.find((b) => b.key === "label")?.text).toBe("Votre tour");
+    expect(c.ticket.find((b) => b.key === "name")?.text).toBeNull();
+    // ورقة الموعد لم تُرسل: التصميم الأصلي
+    expect(c.appt.map((b) => b.key)).toEqual(defaultLayout("appt").map((b) => b.key));
+
+    // قيم خاطئة من صفحة الإعدادات ← رفض
+    for (const bad of [
+      [blk("label", { size: "huge" })],
+      [blk("label", { align: "start" })],
+      [blk("label", { text: "x".repeat(61) })],
+      [blk("text-1", { text: "x".repeat(121) })],
+      "not a list",
+      Array.from({ length: 30 }, (_, i) => blk(`line-${i + 1}`)),
+    ]) {
+      expect(() => cleanPrintConfig({ paper: 80, size: "m", qr: true, ticket: bad })).toThrow("invalid_settings");
+    }
+    // المحفوظ التالف لا يكسر الطباعة: يُصلَح بهدوء
+    expect(readPrintConfig({ ticket: [blk("label", { size: "huge", text: "x".repeat(200) }), 5, null] }).ticket[0]).toMatchObject({ key: "label", size: "m" });
+    expect((readPrintConfig({ ticket: [blk("label", { text: "x".repeat(200) })] }).ticket[0].text ?? "").length).toBe(60);
+    // حدّ الأسطر المضافة
+    const many = Array.from({ length: 12 }, (_, i) => blk(`text-${i + 1}`, { text: `سطر ${i + 1}` }));
+    expect(readPrintConfig({ ticket: many }).ticket.filter((b) => b.key.startsWith("text-"))).toHaveLength(8);
+
+    // الحفظ والقراءة
+    await savePrintSettings(await fresh(), { paper: 80, size: "m", qr: true, lang: "fr", ticket });
+    expect(printSettingsView(await fresh()).config.ticket[0]).toMatchObject({ key: "text-1", bold: true });
   });
 });
