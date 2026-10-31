@@ -27,6 +27,7 @@ import {
   planCloseStale,
   planConfirm,
   planNext,
+  planCallTicket,
   planReject,
   planTick,
 } from "../domain/queue";
@@ -926,6 +927,14 @@ export async function staffAction(
       const expected = body.current ?? null;
       if ((cur?.id ?? null) !== expected) throw new DomainError("conflict", 409);
       return { actions: planNext(tickets, now, action === "next" ? "done" : "no_show"), result: null };
+    }
+    if (action === "call") {
+      // نفس حماية «التالي» من الضغط المزدوج: الطلب يذكر من كان «الحالي»
+      if ((cur?.id ?? null) !== (body.current ?? null)) throw new DomainError("conflict", 409);
+      const t = tickets.find((x) => x.id === body.ticketId);
+      if (!t) throw new DomainError("ticket_not_found", 404);
+      if (t.status !== "waiting") throw new DomainError("ticket_closed", 409);
+      return { actions: planCallTicket(tickets, now, t), result: null };
     }
     if (action === "recall") {
       if (!cur) throw new DomainError("ticket_closed", 409);

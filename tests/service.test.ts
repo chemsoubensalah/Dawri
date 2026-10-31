@@ -318,6 +318,31 @@ describe("يوم عمل كامل", () => {
     expect(st.waiting.map((w) => w.number)).toEqual([4, 5, 6, 7, 8]);
   });
 
+  it("«نادِ الآن»: رقم قبل دوره، ومن تُخطّي يبقى أوّل الطابور (17 ثمّ 16 ثمّ 18)", async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 4; i++) ids.push((await take(`زبون ${i + 1}`)).ticketId);
+    await next(); // ينادي 1
+    sent.length = 0;
+    // 2 لم يصل: السكرتيرة تنادي 3 مباشرة — 1 يُنهى، و2 لا يُنادى ولا تصله رسالة
+    let s = await state();
+    await act({ action: "call", ticketId: ids[2], current: s.current!.id });
+    s = await state();
+    expect(s.current?.number).toBe(3);
+    expect(s.stats.served).toBe(1);
+    expect(s.waiting.map((w) => w.number)).toEqual([2, 4]);
+    expect(sentTypes()).toContain("3:called");
+    expect(sentTypes()).not.toContain("2:called");
+    // «التالي»: 2 (بقي أوّل الطابور) ثمّ 4
+    await next();
+    expect((await state()).current?.number).toBe(2);
+    await next();
+    expect((await state()).current?.number).toBe(4);
+    // ضغط مزدوج أو رقم انتهى: مرفوض
+    s = await state();
+    await expect(act({ action: "call", ticketId: ids[0], current: s.current!.id })).rejects.toThrow("ticket_closed");
+    await expect(act({ action: "call", ticketId: ids[3], current: null })).rejects.toThrow("conflict");
+  });
+
   it("الضغط المزدوج على «التالي» لا يتخطّى أحداً", async () => {
     for (let i = 0; i < 3; i++) await take();
     await next();

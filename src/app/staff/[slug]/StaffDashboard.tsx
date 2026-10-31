@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Ban, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, Mail, Phone, Plus, Printer, ShieldAlert, Smartphone, Timer, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Ban, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, Mail, Megaphone, Phone, Plus, Printer, ShieldAlert, Smartphone, Timer, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
 import Dialog, { ConfirmDialog } from "@/components/Dialog";
 import ReasonPicker from "@/components/ReasonPicker";
 import SoundGate from "@/components/SoundGate";
@@ -442,8 +442,23 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                       <span className="num hidden text-xs whitespace-nowrap text-slate-500 sm:inline">≈ {t(lang, "sp_min", { n: r.eta })}</span>
                     )}
                     <span className="flex shrink-0 gap-2">
+                      {/* «نادِ الآن»: قبل دوره (صاحب الدور لم يصل) — من تُخطّي يبقى أوّل الطابور */}
+                      {r.id !== upNext?.id && (
+                        <button
+                          className="inline-flex size-10 items-center justify-center rounded-xl text-brand-700 ring-1 ring-brand-200 hover:bg-brand-50"
+                          onClick={async () => {
+                            if (await act({ action: "call", ticketId: r.id, current: s.current?.id ?? null }, () => t(lang, "db_calledNow", { n: r.number }))) playSound("next");
+                          }}
+                          disabled={busy}
+                          title={t(lang, "callNow")}
+                          aria-label={`${t(lang, "callNow")} ${r.number}`}
+                          data-testid="call-now"
+                        >
+                          <Megaphone size={17} className="rtl:-scale-x-100" />
+                        </button>
+                      )}
                       <button
-                        className="inline-flex size-10 items-center justify-center rounded-xl text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+                        className="hidden size-10 items-center justify-center rounded-xl text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 sm:inline-flex"
                         onClick={() => printTicket(r.id)}
                         title={t(lang, "pr_ticketBtn")}
                         aria-label={`${t(lang, "pr_ticketBtn")} ${r.number}`}

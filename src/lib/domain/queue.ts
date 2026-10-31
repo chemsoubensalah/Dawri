@@ -145,6 +145,18 @@ export function planNext(tickets: Ticket[], now: Date, mode: NextMode): Action[]
   return actions;
 }
 
+/**
+ * «نادِ الآن»: السكرتيرة تنادي رقماً بعينه قبل دوره (صاحب الدور لم يصل بعد مثلاً).
+ * الحالي يُنهى (تمّ) كما في «التالي»؛ من تُخطّي يبقى في مكانه أوّل الطابور — 17 ثمّ 16 ثمّ 18.
+ */
+export function planCallTicket(tickets: Ticket[], now: Date, ticket: Ticket): Action[] {
+  const actions: Action[] = [];
+  const cur = currentTicket(tickets);
+  if (cur) actions.push(update(cur, ["called"], { status: "done", doneAt: now, closedAt: now }));
+  actions.push(update(ticket, ["waiting"], { status: "called", calledAt: now, held: false }), { kind: "notify", id: ticket.id, type: "called" });
+  return actions;
+}
+
 function planCallNext(tickets: Ticket[], now: Date): Action[] {
   const nxt = nextEligible(tickets);
   if (!nxt) return [];
