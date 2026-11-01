@@ -250,7 +250,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
           <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-rose-600 text-white">
             <Ban size={20} />
           </span>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 basis-[calc(100%-3.5rem)] sm:basis-0 sm:flex-1">
             <p className="font-bold">{t(lang, "db_stoppedBanner")}</p>
             <p className="text-sm text-rose-800/80">
               {closedSince && (
@@ -263,7 +263,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
               {t(lang, "db_stoppedKeep")}
             </p>
           </div>
-          <button type="button" className="btn bg-white text-rose-800 ring-1 ring-rose-300 hover:bg-rose-100" onClick={() => setAccepting(true)} disabled={busy}>
+          <button type="button" className="btn w-full bg-white text-rose-800 ring-1 ring-rose-300 hover:bg-rose-100 sm:w-auto" onClick={() => setAccepting(true)} disabled={busy}>
             {t(lang, "db_reopen")}
           </button>
         </div>
