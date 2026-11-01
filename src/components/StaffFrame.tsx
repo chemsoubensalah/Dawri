@@ -47,7 +47,7 @@ export default function StaffFrame({
   children: ReactNode;
 }) {
   return (
-    <div className="min-h-dvh bg-[#f3f5f8]" dir={dirOf(lang)} lang={lang} style={themeVars(look)} data-theme-root>
+    <div className="min-h-dvh overflow-x-clip bg-[#f3f5f8]" dir={dirOf(lang)} lang={lang} style={themeVars(look)} data-theme-root>
       <header className="no-print sticky top-0 z-30 border-b border-slate-200/70 bg-white/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-3 pt-3 sm:px-5">
           <Link href={`/staff/${slug}`} className="flex min-w-0 items-center gap-2.5">
@@ -95,7 +95,7 @@ export default function StaffFrame({
           })}
         </nav>
       </header>
-      <main className="mx-auto max-w-6xl px-3 py-5 sm:px-5 sm:py-7">{children}</main>
+      <main className="mx-auto w-full min-w-0 max-w-6xl px-3 py-5 sm:px-5 sm:py-7">{children}</main>
     </div>
   );
 }

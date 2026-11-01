@@ -317,7 +317,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
         </button>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.35fr_1fr] [&>*]:min-w-0">
         {/* ——— العمود الرئيسي ——— */}
         <div className="space-y-4">
           <section className="relative overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-ink to-slate-800 p-5 text-white shadow-(--shadow-lift) sm:p-6">
