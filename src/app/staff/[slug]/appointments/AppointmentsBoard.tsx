@@ -1,9 +1,10 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { CalendarCheck2, CalendarClock, CalendarPlus, CalendarRange, Copy, Link2, Settings, UserRoundX } from "lucide-react";
+import { CalendarCheck2, CalendarClock, CalendarPlus, CalendarRange, Copy, Link2, Search, Settings, UserRoundX, X } from "lucide-react";
 import { ConfirmDialog } from "@/components/Dialog";
 import { Chip, Empty, Stat } from "@/components/ui";
 import { daysBetween, fmtDay } from "@/lib/domain/appointments";
+import { nameKey } from "@/lib/domain/names";
 import { parseHHMM } from "@/lib/domain/time";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, t, tn } from "@/lib/i18n";
@@ -22,6 +23,8 @@ export default function AppointmentsBoard({ lang, slug, initial }: { lang: Lang;
   const [deskOpen, setDeskOpen] = useState(false);
   const [cancel, setCancel] = useState<StaffAppt | null>(null);
   const [copied, setCopied] = useState(false);
+  /** بحث بالاسم أو رقم الهاتف أو رقم التذكرة */
+  const [query, setQuery] = useState("");
   const [bookingUrl, setBookingUrl] = useState(`/s/${slug}/book`);
   useEffect(() => setBookingUrl(`${location.origin}/s/${slug}/book`), [slug]);
 
@@ -53,6 +56,14 @@ export default function AppointmentsBoard({ lang, slug, initial }: { lang: Lang;
   );
 
   const total = s.days.reduce((n, d) => n + d.items.length, 0);
+  const q = query.trim();
+  const qName = nameKey(q);
+  const qDigits = q.replace(/\D/g, "");
+  const match = (a: StaffAppt) =>
+    (qName !== "" && nameKey(a.name).includes(qName)) ||
+    (qDigits.length >= 2 && (a.phone ?? "").replace(/\D/g, "").includes(qDigits)) ||
+    (qDigits !== "" && a.ticketNumber != null && String(a.ticketNumber) === qDigits);
+  const shown = q ? s.days.map((d) => ({ ...d, items: d.items.filter(match) })).filter((d) => d.items.length > 0) : s.days;
   const nextId = s.todayItems.find((a) => a.status === "booked" && parseHHMM(a.time)! + s.arrivalGraceMin >= s.nowMin)?.id;
 
   return (
@@ -140,8 +151,30 @@ export default function AppointmentsBoard({ lang, slug, initial }: { lang: Lang;
         </section>
       ) : null}
 
+      {total > 0 && (
+        <div className="relative">
+          <Search size={18} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-slate-400 ltr:left-4 rtl:right-4" />
+          <input
+            className="input ps-11 pe-11"
+            type="search"
+            inputMode="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t(lang, "ap_searchPh")}
+            aria-label={t(lang, "ap_search")}
+            data-testid="ap-search"
+          />
+          {query && (
+            <button type="button" className="absolute top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 ltr:right-3 rtl:left-3" onClick={() => setQuery("")} aria-label={t(lang, "ap_searchClear")}>
+              <X size={16} />
+            </button>
+          )}
+        </div>
+      )}
+      {query.trim() && shown.length === 0 && <p className="rounded-2xl bg-white p-4 text-center text-sm text-slate-500 ring-1 ring-slate-200" data-testid="ap-search-empty">{t(lang, "ap_searchNone")}</p>}
+
       <div className="space-y-3">
-        {s.days.map((d) => {
+        {shown.map((d) => {
           const offset = daysBetween(s.today, d.day);
           const title = offset === 0 ? `${t(lang, "ap_today")} — ${fmtDay(lang, d.day)}` : offset === 1 ? `${t(lang, "ap_tomorrow")} — ${fmtDay(lang, d.day)}` : fmtDay(lang, d.day);
           const pct = d.capacity > 0 ? Math.min(100, Math.round((d.booked / d.capacity) * 100)) : 0;

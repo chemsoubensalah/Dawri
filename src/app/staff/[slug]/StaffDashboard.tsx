@@ -1,12 +1,12 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, Ban, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, Mail, Megaphone, Phone, Plus, Printer, ShieldAlert, Smartphone, Timer, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, Ban, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, DoorOpen, Mail, Megaphone, Phone, Plus, Printer, ShieldAlert, Smartphone, Timer, Undo2, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
 import Dialog, { ConfirmDialog } from "@/components/Dialog";
 import ReasonPicker from "@/components/ReasonPicker";
 import SoundGate from "@/components/SoundGate";
 import { Avatar, Chip, Empty, LiveDot, Stat } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
-import { errorText, reasonText, t, tn } from "@/lib/i18n";
+import { errorText, reasonText, t, tn, type DictKey } from "@/lib/i18n";
 import { api, ApiError, playSound, usePoll } from "@/lib/client";
 import { autoPrint, printReceipt, receiptUrl, setAutoPrint } from "@/lib/print";
 import type { StaffState } from "@/lib/server/service";
@@ -398,6 +398,23 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                 >
                   <Bell size={16} /> {t(lang, "recall")}
                 </button>
+                {/* الطبيب مشغول: يخرج الحالي دون نداء التالي، أو يعود إلى الطابور (نودي بالخطأ) */}
+                <button
+                  className="btn btn-sm col-span-2 h-11 gap-1.5 bg-white/10 px-2 text-sm text-white ring-1 ring-white/15 hover:bg-white/20"
+                  onClick={() => act({ action: "finish", current: cur.id }, () => t(lang, "db_finished"))}
+                  disabled={busy}
+                  data-testid="finish"
+                >
+                  <DoorOpen size={16} /> {t(lang, "db_finish")}
+                </button>
+                <button
+                  className="btn btn-sm h-11 gap-1.5 bg-white/10 px-1 text-sm text-white ring-1 ring-white/15 hover:bg-white/20"
+                  onClick={() => act({ action: "restore", ticketId: cur.id }, () => t(lang, "db_restoredMsg", { n: cur.number }))}
+                  disabled={busy}
+                  data-testid="put-back"
+                >
+                  <Undo2 size={16} /> {t(lang, "db_putBack")}
+                </button>
               </div>
             )}
             {msg && (
@@ -461,8 +478,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                         {(["up", "down"] as const).map((dir) => {
                           const j = dir === "up" ? i - 1 : i + 1;
                           const other = s.waiting[j];
-                          // أصحاب المواعيد يبقون أوّلاً: لا انتقال بين المجموعتين
-                          const can = Boolean(other) && Boolean(other.priority) === Boolean(r.priority);
+                          const can = Boolean(other);
                           return (
                             <button
                               key={dir}
@@ -573,6 +589,34 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
             </section>
           )}
 
+          {s.recent.length > 0 && (
+            <details className="card p-0" data-testid="recent">
+              <summary className="flex cursor-pointer items-center gap-2 px-5 py-3 font-bold [&::-webkit-details-marker]:hidden">
+                <Undo2 size={18} className="text-slate-500" /> {t(lang, "db_recent")}
+                <span className="num rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{s.recent.length}</span>
+              </summary>
+              <p className="px-5 pb-2 text-xs text-slate-500">{t(lang, "db_recentHint")}</p>
+              <ul className="divide-y divide-slate-100 border-t border-slate-100">
+                {s.recent.map((r) => (
+                  <li key={r.id} className="flex items-center gap-3 px-5 py-2.5">
+                    <span className="num w-9 text-center text-lg font-bold text-slate-500">{r.number}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">{r.name}</span>
+                      <Chip tone={r.status === "done" ? "green" : r.status === "no_show" ? "amber" : "slate"}>{t(lang, `db_st_${r.status}` as DictKey)}</Chip>
+                    </span>
+                    <button
+                      className="btn-secondary btn-sm shrink-0"
+                      onClick={() => act({ action: "restore", ticketId: r.id }, () => t(lang, "db_restoredMsg", { n: r.number }))}
+                      disabled={busy}
+                      data-testid="restore"
+                    >
+                      <Undo2 size={15} /> {t(lang, "db_restore")}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           {s.deferred.length > 0 && (
             <section className="card space-y-2">
               <h2 className="flex items-center gap-2 font-bold text-amber-800">

@@ -374,6 +374,38 @@ describe("يوم عمل كامل", () => {
     await expect(act({ action: "move", ticketId: ids[0], dir: "left" as "up" })).rejects.toThrow("invalid_action");
   });
 
+  it("إنهاء دون نداء التالي (غرفة فارغة)، وإعادة من مرّ بالخطأ إلى الطابور", async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) ids.push((await take(`زبون ${i + 1}`, newPhone())).ticketId);
+    await next(); // 1 في الداخل
+    let s = await state();
+    await act({ action: "finish", current: s.current!.id });
+    s = await state();
+    expect(s.current).toBeNull(); // الغرفة فارغة ولم يُنادَ 2
+    expect(s.waiting.map((w) => w.number)).toEqual([2, 3]);
+    expect(s.recent.map((r) => [r.number, r.status])).toEqual([[1, "done"]]);
+    await expect(act({ action: "finish", current: null })).resolves.toBeTruthy(); // لا حالي: لا شيء
+    // 1 مرّ بالخطأ ← يعود أوّل الطابور
+    await act({ action: "restore", ticketId: ids[0] });
+    s = await state();
+    expect(s.waiting.map((w) => w.number)).toEqual([1, 2, 3]);
+    expect(s.recent).toEqual([]);
+    // نودي 1 ثمّ «غائب» بالخطأ ← يعود، ويُمحى غيابه
+    await next();
+    await next("no_show_next");
+    expect((await state()).current?.number).toBe(2);
+    await act({ action: "restore", ticketId: ids[0] });
+    s = await state();
+    expect(s.waiting.map((w) => w.number)).toEqual([1, 3]);
+    // من يعمل حالياً (نودي) يمكن إعادته إلى الطابور أيضاً
+    await act({ action: "restore", ticketId: ids[1] });
+    s = await state();
+    expect(s.current).toBeNull();
+    expect(s.waiting.map((w) => w.number)).toEqual([2, 1, 3]);
+    // تذكرة في الطابور لا تُعاد
+    await expect(act({ action: "restore", ticketId: ids[2] })).rejects.toThrow("ticket_not_closed");
+  });
+
   it("الضغط المزدوج على «التالي» لا يتخطّى أحداً", async () => {
     for (let i = 0; i < 3; i++) await take();
     await next();

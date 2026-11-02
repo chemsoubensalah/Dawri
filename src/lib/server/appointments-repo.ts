@@ -192,7 +192,7 @@ export async function listRange(q: Q, shopId: string, fromDay: string, toDay: st
 export async function setTicketPriority(q: Q, ticketId: string, now: Date) {
   // أولوية ممنوحة الآن (حتى لتذكرة عادية أُخذت صباحاً)؛ إن كانت ذات أولوية من قبل نُبقي لحظتها الأولى
   await q.query(
-    "update tickets set priority_at = case when priority then coalesce(priority_at, $2) else $2 end, priority = true where id = $1",
+    "update tickets set priority_at = case when priority then coalesce(priority_at, $2) else $2 end, priority = true, queue_pos = null where id = $1",
     [ticketId, now],
   );
 }

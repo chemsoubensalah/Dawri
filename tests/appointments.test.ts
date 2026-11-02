@@ -14,7 +14,7 @@ import * as repo from "@/lib/server/repo";
 import * as gate from "@/lib/server/smsgate";
 import { sentSms } from "@/lib/server/sms";
 import { claimRate, clientIp, ipBucket, IP_LIMITS, rateCount } from "@/lib/server/ratelimit";
-import { estimateWaitMinutes, initialFlags, lineup, nextEligible, peopleAhead, planMove, planNext } from "@/lib/domain/queue";
+import { estimateWaitMinutes, initialFlags, lineup, nextEligible, peopleAhead, planMove, planNext, planRestore } from "@/lib/domain/queue";
 import { addDays, availability, checkinWindow, daySlots, DEFAULT_BOOKING, slotInstant } from "@/lib/domain/appointments";
 import { cleanDaysOff, dayRange, upcomingFixedHolidays } from "@/lib/domain/daysoff";
 import { activeReasonConfig, cleanReason, cleanReasonConfig, defaultReasonConfig, readReasonConfig, reasonCap } from "@/lib/domain/reasons";
@@ -131,21 +131,36 @@ describe("ترتيب الطابور يدوياً (planMove)", () => {
   /** يطبّق الإجراءات على نسخة من التذاكر (كما يفعل الخادم) */
   const apply = (ts: Ticket[], acts: ReturnType<typeof planMove>) =>
     ts.map((t) => acts.reduce((x, a) => (a.kind === "update" && a.id === x.id ? { ...x, ...a.patch } : x), t));
-  it("أصحاب المواعيد يبقون أوّلاً ويُرتَّبون بينهم؛ العاديّون يتبادلون أماكنهم", () => {
+  it("يمكن نقل أيّ شخص قبل أيّ شخص، حتى صاحب موعد وعاديّ؛ وصاحب موعد يصل بعدها يتقدّم", () => {
     let ts = [mk(1), mk(2), mk(3), mk(7, { priority: true, priorityAt: min(5) }), mk(8, { priority: true, priorityAt: min(9) })];
     expect(lineup(ts).map((t) => t.number)).toEqual([7, 8, 1, 2, 3]);
-    // أوّل عاديّ لا يتقدّم على صاحب موعد، وآخر صاحب موعد لا يتأخّر بين العاديّين
-    expect(planMove(ts, "t1", -1)).toEqual([]);
-    expect(planMove(ts, "t8", 1)).toEqual([]);
-    // بين أصحاب المواعيد: 8 قبل 7
-    ts = apply(ts, planMove(ts, "t8", -1));
-    expect(lineup(ts).map((t) => t.number)).toEqual([8, 7, 1, 2, 3]);
-    // بين العاديّين: 3 ثمّ 3 مرّة أخرى
+    expect(planMove(ts, "t7", -1)).toEqual([]); // أوّل الطابور
+    // عاديّ قبل صاحب موعد (كان ممنوعاً)
+    ts = apply(ts, planMove(ts, "t1", -1));
+    expect(lineup(ts).map((t) => t.number)).toEqual([7, 1, 8, 2, 3]);
+    ts = apply(ts, planMove(ts, "t1", -1));
+    expect(lineup(ts).map((t) => t.number)).toEqual([1, 7, 8, 2, 3]);
+    // صاحب موعد بعد عاديّ
+    ts = apply(ts, planMove(ts, "t8", 1));
+    expect(lineup(ts).map((t) => t.number)).toEqual([1, 7, 2, 8, 3]);
+    expect(nextEligible(ts)?.number).toBe(1);
+    expect(peopleAhead(ts, ts.find((t) => t.number === 3)!)).toBe(4);
+    // الترتيب اليدويّ ثابت، ومن يصل بعده يُرتَّب بالرقم في الآخر
+    ts = [...ts, mk(9)];
+    expect(lineup(ts).map((t) => t.number)).toEqual([1, 7, 2, 8, 3, 9]);
+    // صاحب موعد جديد (لم يُرتَّب يدوياً) يتقدّم الجميع
+    ts = [...ts, mk(10, { priority: true, priorityAt: min(30) })];
+    expect(lineup(ts)[0].number).toBe(10);
+  });
+  it("«أعده إلى الطابور» يضعه أوّل المنتظرين", () => {
+    let ts = [mk(1, { status: "done", doneAt: min(5) }), mk(2), mk(3)];
+    ts = apply(ts, planRestore(ts, ts[0]));
+    expect(lineup(ts).map((t) => t.number)).toEqual([1, 2, 3]);
     ts = apply(ts, planMove(ts, "t3", -1));
-    ts = apply(ts, planMove(ts, "t3", -1));
-    expect(lineup(ts).map((t) => t.number)).toEqual([8, 7, 3, 1, 2]);
-    expect(nextEligible(ts)?.number).toBe(8);
-    expect(peopleAhead(ts, ts.find((t) => t.number === 1)!)).toBe(3);
+    ts = apply(ts, planMove(ts, "t3", -1)); // 3 ثمّ 1 ثمّ 2
+    const gone = { ...ts[1], status: "no_show" as const };
+    const ts2 = [ts[0], gone, ts[2]];
+    expect(lineup(apply(ts2, planRestore(ts2, gone))).map((t) => t.number)).toEqual([2, 3, 1]);
   });
 });
 

@@ -373,6 +373,11 @@ export async function countNoShows(q: Q, shopId: string, phone: string, since: D
   return Number(rows[0].n);
 }
 
+/** إعادة غائب إلى الطابور: يُمحى غيابه المسجَّل (لا يُحسب عليه). */
+export async function deleteNoShow(q: Q, ticketId: string) {
+  await q.query("delete from no_shows where ticket_id = $1", [ticketId]);
+}
+
 export async function insertNoShow(q: Q, shopId: string, phone: string, ticketId: string, now: Date) {
   await q.query("insert into no_shows (shop_id, phone, ticket_id, created_at) values ($1,$2,$3,$4)", [
     shopId,

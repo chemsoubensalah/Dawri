@@ -29,6 +29,9 @@ import {
   planNext,
   planCallTicket,
   planMove,
+  planRestore,
+  planFinish,
+  RESTORABLE,
   planReject,
   planTick,
 } from "../domain/queue";
@@ -868,6 +871,12 @@ export async function staffState(shop: Shop) {
         ...row(t),
         minutesLeft: Math.max(0, Math.ceil(shop.settings.lateWindowMin - minutesBetween(t.deferredAt!, now))),
       })),
+    /** من مرّ عليهم اليوم (انتهوا، غابوا، أُلغوا): يمكن إعادتهم إلى الطابور إن حدث ذلك بالخطأ */
+    recent: tickets
+      .filter((t) => t.status === "done" || t.status === "no_show" || t.status === "cancelled")
+      .sort((a, b) => (b.closedAt?.getTime() ?? 0) - (a.closedAt?.getTime() ?? 0))
+      .slice(0, 15)
+      .map((t) => ({ ...row(t), status: t.status })),
     stats: dayStats(tickets),
     avgServiceMin: Math.round(averageServiceMinutes(tickets, shop.settings.defaultServiceMin)),
     history: await repo.dailyStats(db, shop.id, from),
@@ -921,7 +930,7 @@ export async function staffAction(
     return { ok: true, number: result.number, ticketId: result.ticketId };
   }
 
-  await mutate(shop, ({ tickets, now }) => {
+  await mutate(shop, async ({ q, tickets, now }) => {
     const cur = currentTicket(tickets);
     if (action === "next" || action === "no_show_next") {
       // حماية من الضغط المزدوج على شبكة بطيئة: الطلب يذكر من كان «الحالي» عند الضغط
@@ -936,6 +945,19 @@ export async function staffAction(
       if (!t) throw new DomainError("ticket_not_found", 404);
       if (t.status !== "waiting") throw new DomainError("ticket_closed", 409);
       return { actions: planCallTicket(tickets, now, t), result: null };
+    }
+    if (action === "finish") {
+      // نفس حماية «التالي» من الضغط المزدوج
+      if ((cur?.id ?? null) !== (body.current ?? null)) throw new DomainError("conflict", 409);
+      return { actions: planFinish(tickets, now), result: null };
+    }
+    if (action === "restore") {
+      const t = tickets.find((x) => x.id === body.ticketId);
+      if (!t) throw new DomainError("ticket_not_found", 404);
+      if (!RESTORABLE.includes(t.status)) throw new DomainError("ticket_not_closed", 409);
+      // من نودي: يعود إلى الطابور فتبقى غرفة الطبيب فارغة؛ الغائب: يُمحى سجلّ غيابه
+      if (t.status === "no_show") await repo.deleteNoShow(q, t.id);
+      return { actions: planRestore(tickets, t), result: null };
     }
     if (action === "move") {
       const t = tickets.find((x) => x.id === body.ticketId);

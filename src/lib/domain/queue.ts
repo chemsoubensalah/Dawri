@@ -38,52 +38,76 @@ function priorityTime(t: Ticket): number {
   return (t.priorityAt ?? t.createdAt).getTime();
 }
 
-/** مكان التذكرة العادية في الطابور: رقمها، إلّا إن نقلتها السكرتيرة (queuePos). */
-function queuePlace(t: Ticket): number {
-  return t.queuePos ?? t.number;
+/**
+ * ترتيب الطابور، ثلاث طبقات:
+ *  0) صاحب موعد وصل ولم تحرّكه السكرتيرة: أوّلاً، بترتيب وصوله (priorityAt).
+ *  1) من رتّبته السكرتيرة يدوياً (queuePos): بترتيبها، أيّاً كان نوعه (موعد أو رقم عادي).
+ *  2) البقيّة (أرقام جديدة): بالرقم.
+ * فصاحب الموعد الذي يصل بعد إعادة الترتيب يتقدّم، ويمكن للسكرتيرة نقل أيّ شخص قبل أيّ شخص.
+ */
+function tier(t: Ticket): number {
+  if (t.queuePos != null) return 1;
+  return t.priority ? 0 : 2;
 }
 
-/**
- * ترتيب الطابور: أصحاب المواعيد الذين وصلوا (priority) أوّلاً بترتيب وصولهم (priorityAt —
- * لا وقت أخذ رقمه العادي قبل ذلك)، ثمّ البقيّة بأرقامهم أو بالمكان الذي نقلتهم إليه السكرتيرة.
- */
 export function queueOrder(a: Ticket, b: Ticket): number {
-  const pa = a.priority ? 1 : 0;
-  const pb = b.priority ? 1 : 0;
-  if (pa !== pb) return pb - pa;
-  if (pa) {
+  const ta = tier(a);
+  const tb = tier(b);
+  if (ta !== tb) return ta - tb;
+  if (ta === 0) {
     const d = priorityTime(a) - priorityTime(b);
     if (d) return d;
-  } else {
-    const d = queuePlace(a) - queuePlace(b);
+  } else if (ta === 1) {
+    const d = (a.queuePos as number) - (b.queuePos as number);
     if (d) return d;
   }
   return byNumber(a, b);
 }
 
 /**
- * السكرتيرة تنقل منتظراً مكاناً واحداً (↑ dir=-1، ↓ dir=1): يتبادل مكانه مع جاره في الطابور.
- * أصحاب المواعيد يبقون أوّلاً: لا انتقال بين المجموعتين. [] = لا جار (أوّل/آخر المجموعة).
+ * السكرتيرة تنقل منتظراً مكاناً واحداً (↑ dir=-1، ↓ dir=1): يتبادل مكانه مع جاره.
+ * يُكتب مكان كلّ منتظر (queuePos = ترتيبه) كي يثبت الترتيب. بلا جار (أوّل/آخر الطابور) ← [].
  */
 export function planMove(tickets: Ticket[], id: string, dir: -1 | 1): Action[] {
   const line = lineup(tickets);
   const i = line.findIndex((t) => t.id === id);
   const j = i + dir;
   if (i < 0 || j < 0 || j >= line.length) return [];
-  const a = line[i];
-  const b = line[j];
-  if (Boolean(a.priority) !== Boolean(b.priority)) return [];
-  if (a.priority) {
-    const ta = new Date(priorityTime(a));
-    const tb = new Date(priorityTime(b));
-    // نفس اللحظة (نادر): نصف ثانية تكفي للفصل
-    const nb = ta.getTime() === tb.getTime() ? new Date(tb.getTime() + dir * 500) : tb;
-    return [update(a, ["waiting"], { priorityAt: nb }), update(b, ["waiting"], { priorityAt: ta })];
-  }
-  const qa = queuePlace(a);
-  const qb = queuePlace(b);
-  if (qa === qb) return [update(a, ["waiting"], { queuePos: qb + dir * 0.5 })];
-  return [update(a, ["waiting"], { queuePos: qb }), update(b, ["waiting"], { queuePos: qa })];
+  [line[i], line[j]] = [line[j], line[i]];
+  const acts: Action[] = [];
+  line.forEach((t, k) => {
+    if (t.queuePos !== k) acts.push(update(t, ["waiting"], { queuePos: k }));
+  });
+  return acts;
+}
+
+/** الحالات التي يمكن إعادتها إلى الطابور (مرّ عليها المريض بالخطأ) */
+export const RESTORABLE: TicketStatus[] = ["called", "done", "no_show", "cancelled", "deferred"];
+
+/**
+ * «أعده إلى الطابور»: من نودي أو انتهى أو غاب أو أُلغي أو أُجِّل يعود أوّل المنتظرين.
+ * (حذف سجلّ الغياب إن كان غائباً يتمّ في الخدمة.)
+ */
+export function planRestore(tickets: Ticket[], ticket: Ticket): Action[] {
+  const queued = tickets.filter((t) => t.status === "waiting" && t.queuePos != null).map((t) => t.queuePos as number);
+  const front = queued.length ? Math.min(...queued) - 1 : -1;
+  return [
+    update(ticket, [ticket.status], {
+      status: "waiting",
+      held: false,
+      calledAt: null,
+      doneAt: null,
+      deferredAt: null,
+      closedAt: null,
+      queuePos: front,
+    }),
+  ];
+}
+
+/** «أنهِ دون نداء التالي»: الحالي يخرج وتبقى غرفة الطبيب فارغة. */
+export function planFinish(tickets: Ticket[], now: Date): Action[] {
+  const cur = currentTicket(tickets);
+  return cur ? [update(cur, ["called"], { status: "done", doneAt: now, closedAt: now })] : [];
 }
 
 /** الطابور مرتّباً (queueOrder). المؤجَّل الذي عاد يحتفظ برقمه الصغير فيدخل بعد الحالي مباشرة. */
