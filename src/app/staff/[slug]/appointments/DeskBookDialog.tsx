@@ -19,6 +19,7 @@ export default function DeskBookDialog({
   open,
   onClose,
   onBooked,
+  prefill = null,
 }: {
   lang: Lang;
   slug: string;
@@ -26,6 +27,8 @@ export default function DeskBookDialog({
   open: boolean;
   onClose: () => void;
   onBooked: (state: StaffAppointments, label: string) => void;
+  /** موعد تالٍ لمريض خرج للتوّ من عند الطبيب: الاسم والهاتف جاهزان */
+  prefill?: { name: string; phone: string } | null;
 }) {
   const [av, setAv] = useState<DeskAvailability | null>(null);
   const [day, setDay] = useState<string | null>(null);
@@ -57,6 +60,10 @@ export default function DeskBookDialog({
 
   useEffect(() => {
     if (!open) return;
+    if (prefill) {
+      setName(prefill.name);
+      setPhone(prefill.phone);
+    }
     setError("");
     setTime(null);
     let alive = true;

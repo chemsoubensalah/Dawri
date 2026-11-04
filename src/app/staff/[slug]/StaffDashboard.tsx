@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, Ban, Bell, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, DoorOpen, Mail, Megaphone, Phone, Plus, Printer, ShieldAlert, Smartphone, Timer, Undo2, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, Ban, Bell, CalendarPlus, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, DoorOpen, Mail, Megaphone, Phone, Plus, Printer, ShieldAlert, Smartphone, Timer, Undo2, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
 import Dialog, { ConfirmDialog } from "@/components/Dialog";
 import ReasonPicker from "@/components/ReasonPicker";
 import SoundGate from "@/components/SoundGate";
@@ -11,6 +11,7 @@ import { api, ApiError, playSound, usePoll } from "@/lib/client";
 import { autoPrint, printReceipt, receiptUrl, setAutoPrint } from "@/lib/print";
 import type { StaffState } from "@/lib/server/service";
 import TodayAppointments, { ApptBadge } from "./appointments/TodayAppointments";
+import DeskBookDialog from "./appointments/DeskBookDialog";
 import { ReasonChip } from "./appointments/parts";
 
 type Row = StaffState["waiting"][number];
@@ -31,6 +32,8 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   const [addReason, setAddReason] = useState<string | null>(null);
   /** وضع «ترتيب الطابور»: سهما ↑ ↓ بدل أزرار السطر */
   const [reorder, setReorder] = useState(false);
+  /** «موعد تالٍ» لمريض خرج من عند الطبيب (الاسم والهاتف جاهزان) */
+  const [nextAppt, setNextAppt] = useState<{ name: string; phone: string } | null>(null);
   /** طباعة التذكرة بعد الإضافة (إعداد هذا الجهاز: الطابعة موصولة به) */
   const [addPrint, setAddPrint] = useState(false);
   useEffect(() => setAddPrint(autoPrint("ticket")), []);
@@ -408,6 +411,13 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                   <DoorOpen size={16} /> {t(lang, "db_finish")}
                 </button>
                 <button
+                  className="btn btn-sm col-span-3 h-11 gap-1.5 bg-white/10 px-2 text-sm text-white ring-1 ring-white/15 hover:bg-white/20"
+                  onClick={() => setNextAppt({ name: cur.name, phone: cur.phone ?? "" })}
+                  data-testid="next-appt"
+                >
+                  <CalendarPlus size={16} /> {t(lang, "db_nextAppt")}
+                </button>
+                <button
                   className="btn btn-sm h-11 gap-1.5 bg-white/10 px-1 text-sm text-white ring-1 ring-white/15 hover:bg-white/20"
                   onClick={() => act({ action: "restore", ticketId: cur.id }, () => t(lang, "db_restoredMsg", { n: cur.number }))}
                   disabled={busy}
@@ -604,6 +614,17 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                       <span className="block truncate font-semibold">{r.name}</span>
                       <Chip tone={r.status === "done" ? "green" : r.status === "no_show" ? "amber" : "slate"}>{t(lang, `db_st_${r.status}` as DictKey)}</Chip>
                     </span>
+                    {r.status === "done" && (
+                      <button
+                        className="btn-secondary btn-sm shrink-0"
+                        onClick={() => setNextAppt({ name: r.name, phone: r.phone ?? "" })}
+                        title={t(lang, "db_nextAppt")}
+                        aria-label={`${t(lang, "db_nextAppt")} ${r.number}`}
+                        data-testid="next-appt-recent"
+                      >
+                        <CalendarPlus size={15} />
+                      </button>
+                    )}
                     <button
                       className="btn-secondary btn-sm shrink-0"
                       onClick={() => act({ action: "restore", ticketId: r.id }, () => t(lang, "db_restoredMsg", { n: r.number }))}
@@ -737,6 +758,19 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
           </button>
         </form>
       </Dialog>
+
+      <DeskBookDialog
+        lang={lang}
+        slug={slug}
+        scope="today"
+        open={nextAppt !== null}
+        prefill={nextAppt}
+        onClose={() => setNextAppt(null)}
+        onBooked={(_, label) => {
+          setMsg({ ok: true, text: label });
+          api<StaffState>(`/api/staff/${slug}/state`).then(setS).catch(() => {});
+        }}
+      />
 
       <ConfirmDialog
         open={stopAsk}
