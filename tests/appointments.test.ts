@@ -1137,6 +1137,10 @@ describe("طباعة التذاكر: عرض الورق وحجم الكتابة (
     expect(old.ticket.find((b) => b.key === "doctor")?.show).toBe(false);
     expect(old.ticket.find((b) => b.key === "qr")?.show).toBe(false);
     expect(old.appt.find((b) => b.key === "time")?.show).toBe(true);
+    // سبب الزيارة: ظاهر في التصميم الأصلي، ومخفيّ عند من حفظ تصميماً قديماً قبل وجوده
+    expect(old.ticket.find((b) => b.key === "reason")?.show).toBe(true);
+    const saved = readPrintConfig({ ticket: defaultLayout("ticket").filter((b) => b.key !== "reason") });
+    expect(saved.ticket.find((b) => b.key === "reason")).toMatchObject({ show: false });
 
     const blk = (key: string, o: Record<string, unknown> = {}) => ({ key, show: true, size: "m", bold: false, align: "center", text: null, ...o });
     const ticket = [

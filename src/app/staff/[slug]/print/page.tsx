@@ -4,7 +4,7 @@ import { addDays, fmtDay } from "@/lib/domain/appointments";
 import { BLOCK_SCALE, PRINTABLE_MM, readPrintConfig, TEXT_SCALE, type Layout, type PrintBlock } from "@/lib/domain/printing";
 import { dayKey } from "@/lib/domain/time";
 import { DomainError, type Lang } from "@/lib/domain/types";
-import { dirOf, drTitle, t, type DictKey } from "@/lib/i18n";
+import { dirOf, drTitle, reasonText, t, type DictKey } from "@/lib/i18n";
 import { appointmentView } from "@/lib/server/appointments";
 import { isUuid } from "@/lib/server/appointments-repo";
 import { baseUrl, getLang, staffAccess } from "@/lib/server/http";
@@ -16,8 +16,8 @@ export const metadata = { title: "Ticket", robots: { index: false } };
 
 /** حجم كلّ عنصر (مم) بالتصميم الأصلي: عرض 72 مم، كتابة «عادية»، حجم العنصر «m» */
 const BASE_MM: Record<Layout, Record<string, number>> = {
-  ticket: { clinic: 5.6, doctor: 3.5, specialty: 3.5, label: 4.4, number: 26, name: 5, priority: 3.6, ahead: 3.8, current: 3.8, date: 3.8, qr: 3.6, note: 3.8, footer: 3, text: 3.8 },
-  appt: { clinic: 5.6, doctor: 3.5, specialty: 3.5, label: 4.4, date: 6, time: 17, name: 5, address: 3.6, phone: 3.6, qr: 3.6, note: 3.8, footer: 3, text: 3.8 },
+  ticket: { clinic: 5.6, doctor: 3.5, specialty: 3.5, label: 4.4, number: 26, name: 5, reason: 4.2, priority: 3.6, ahead: 3.8, current: 3.8, date: 3.8, qr: 3.6, note: 3.8, footer: 3, text: 3.8 },
+  appt: { clinic: 5.6, doctor: 3.5, specialty: 3.5, label: 4.4, date: 6, time: 17, name: 5, reason: 4.2, address: 3.6, phone: 3.6, qr: 3.6, note: 3.8, footer: 3, text: 3.8 },
 };
 const ALIGN = { right: "text-right", center: "text-center", left: "text-left" } as const;
 
@@ -43,6 +43,7 @@ function ltrNumbers(text: string): React.ReactNode {
 interface TicketData {
   number: number;
   name: string;
+  reason?: string | null;
   priority: boolean;
   status: string;
   ahead: number | null;
@@ -55,6 +56,7 @@ interface ApptData {
   day: string;
   time: string;
   name: string;
+  reason?: string | null;
   address: string | null;
   phone: string | null;
   url: string;
@@ -145,6 +147,10 @@ export default async function PrintPage({
         return tk ? <span className="num leading-none">{tk.number}</span> : null;
       case "name":
         return (tk ?? ap)?.name ?? null;
+      case "reason": {
+        const r = (tk ?? ap)?.reason;
+        return r ? reasonText(lang, r) : null;
+      }
       case "priority":
         return tk?.priority ? <>★ {bi((l) => t(l, "pr_priority"))}</> : null;
       case "ahead":
@@ -219,7 +225,7 @@ export default async function PrintPage({
       ) : (
         <div
           key={b.key}
-          className={`${ALIGN[b.align]} ${b.bold ? "font-bold" : "font-normal"} leading-tight break-words ${i > 0 && !kept[i - 1].b.key.startsWith("line-") ? "mt-[1.2mm]" : ""}`}
+          className={`${ALIGN[b.align]} ${b.bold ? "font-bold" : "font-normal"} ${b.key === "reason" ? "line-clamp-2" : ""} leading-tight break-words ${i > 0 && !kept[i - 1].b.key.startsWith("line-") ? "mt-[1.2mm]" : ""}`}
           style={{ fontSize: `${((BASE_MM[kind][b.key.replace(/-\d+$/, "")] ?? 3.8) * k * BLOCK_SCALE[b.size]).toFixed(2)}mm` }}
           data-block={b.key}
         >
@@ -235,6 +241,7 @@ export default async function PrintPage({
       tk: {
         number: 12,
         name: t(lang, "pr_sampleName"),
+        reason: t(lang, "pr_sampleReason"),
         priority: false,
         status: "waiting",
         ahead: 3,
@@ -250,6 +257,7 @@ export default async function PrintPage({
         day: addDays(dayKey(new Date()), 1),
         time: "10:30",
         name: t(lang, "pr_sampleName"),
+        reason: t(lang, "pr_sampleReason"),
         address: shop.profile.address,
         phone: shop.profile.phone,
         url: `${base}/s/${shop.slug}`,

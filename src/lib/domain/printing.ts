@@ -43,8 +43,8 @@ export const TEXT_SCALE: Record<TextSize, number> = { s: 0.85, m: 1, l: 1.2 };
 export const BLOCK_SCALE: Record<BlockSize, number> = { xs: 0.7, s: 0.85, m: 1, l: 1.2, xl: 1.45 };
 
 export const ELEMENTS: Record<Layout, readonly string[]> = {
-  ticket: ["clinic", "doctor", "specialty", "label", "number", "name", "priority", "ahead", "current", "date", "qr", "note", "footer"],
-  appt: ["clinic", "doctor", "specialty", "label", "date", "time", "name", "address", "phone", "qr", "note", "footer"],
+  ticket: ["clinic", "doctor", "specialty", "label", "number", "name", "reason", "priority", "ahead", "current", "date", "qr", "note", "footer"],
+  appt: ["clinic", "doctor", "specialty", "label", "date", "time", "name", "reason", "address", "phone", "qr", "note", "footer"],
 };
 /** لا يُخفى أبداً: الرقم في التذكرة، والساعة في ورقة الموعد */
 export const REQUIRED: Record<Layout, string> = { ticket: "number", appt: "time" };
@@ -64,13 +64,13 @@ export function defaultLayout(kind: Layout, qr = true): PrintBlock[] {
   return kind === "ticket"
     ? [
         blk("clinic", true, true), blk("doctor", false), blk("specialty", false), blk("line-1"),
-        blk("label", true, true), blk("number", true, true), blk("name", true, true), blk("priority", true, true),
+        blk("label", true, true), blk("number", true, true), blk("name", true, true), blk("reason", true), blk("priority", true, true),
         blk("ahead", true, true), blk("current"), blk("date"), blk("line-2"),
         blk("qr", qr, true), blk("line-3"), blk("note", true, true), blk("footer"),
       ]
     : [
         blk("clinic", true, true), blk("doctor", false), blk("specialty", false), blk("line-1"),
-        blk("label", true, true), blk("date", true, true), blk("time", true, true), blk("name", true, true),
+        blk("label", true, true), blk("date", true, true), blk("time", true, true), blk("name", true, true), blk("reason", true),
         blk("address"), blk("phone", true, true), blk("line-2"),
         blk("qr", qr, true), blk("line-3"), blk("note", true, true), blk("footer"),
       ];
