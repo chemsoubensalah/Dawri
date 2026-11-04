@@ -411,13 +411,6 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                   <DoorOpen size={16} /> {t(lang, "db_finish")}
                 </button>
                 <button
-                  className="btn btn-sm col-span-3 h-11 gap-1.5 bg-white/10 px-2 text-sm text-white ring-1 ring-white/15 hover:bg-white/20"
-                  onClick={() => setNextAppt({ name: cur.name, phone: cur.phone ?? "" })}
-                  data-testid="next-appt"
-                >
-                  <CalendarPlus size={16} /> {t(lang, "db_nextAppt")}
-                </button>
-                <button
                   className="btn btn-sm h-11 gap-1.5 bg-white/10 px-1 text-sm text-white ring-1 ring-white/15 hover:bg-white/20"
                   onClick={() => act({ action: "restore", ticketId: cur.id }, () => t(lang, "db_restoredMsg", { n: cur.number }))}
                   disabled={busy}
@@ -600,7 +593,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
           )}
 
           {s.recent.length > 0 && (
-            <details className="card p-0" data-testid="recent">
+            <details className="card p-0" data-testid="recent" open>
               <summary className="flex cursor-pointer items-center gap-2 px-5 py-3 font-bold [&::-webkit-details-marker]:hidden">
                 <Undo2 size={18} className="text-slate-500" /> {t(lang, "db_recent")}
                 <span className="num rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{s.recent.length}</span>
@@ -608,7 +601,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
               <p className="px-5 pb-2 text-xs text-slate-500">{t(lang, "db_recentHint")}</p>
               <ul className="divide-y divide-slate-100 border-t border-slate-100">
                 {s.recent.map((r) => (
-                  <li key={r.id} className="flex items-center gap-3 px-5 py-2.5">
+                  <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-5 py-2.5">
                     <span className="num w-9 text-center text-lg font-bold text-slate-500">{r.number}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-semibold">{r.name}</span>
@@ -616,13 +609,11 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                     </span>
                     {r.status === "done" && (
                       <button
-                        className="btn-secondary btn-sm shrink-0"
+                        className="btn-primary btn-sm shrink-0"
                         onClick={() => setNextAppt({ name: r.name, phone: r.phone ?? "" })}
-                        title={t(lang, "db_nextAppt")}
-                        aria-label={`${t(lang, "db_nextAppt")} ${r.number}`}
                         data-testid="next-appt-recent"
                       >
-                        <CalendarPlus size={15} />
+                        <CalendarPlus size={15} /> {t(lang, "db_nextAppt")}
                       </button>
                     )}
                     <button
@@ -631,7 +622,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                       disabled={busy}
                       data-testid="restore"
                     >
-                      <Undo2 size={15} /> {t(lang, "db_restore")}
+                      <Undo2 size={15} /> <span className="max-sm:sr-only">{t(lang, "db_restore")}</span>
                     </button>
                   </li>
                 ))}
