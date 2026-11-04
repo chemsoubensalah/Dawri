@@ -429,7 +429,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
 
           {/* ——— الطابور ——— */}
           <section className="card p-0">
-            <div className="flex items-center justify-between px-5 pt-4 pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4 pb-3">
               <h2 className="flex items-center gap-2 font-bold">
                 <Users size={18} className="text-brand-600" /> {t(lang, "queue")}
                 <span className="num rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{s.waiting.length}</span>

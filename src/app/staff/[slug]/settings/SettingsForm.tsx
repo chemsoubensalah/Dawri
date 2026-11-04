@@ -136,7 +136,7 @@ export default function SettingsForm({
 
   return (
     <form
-      className="grid gap-5 lg:grid-cols-[220px_1fr]"
+      className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_1fr] [&>*]:min-w-0"
       onSubmit={(e) => {
         e.preventDefault();
         save();

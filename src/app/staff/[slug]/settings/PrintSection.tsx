@@ -87,7 +87,7 @@ export default function PrintSection({ lang, slug }: { lang: Lang; slug: string 
         </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-[1fr_auto]">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-[1fr_auto] [&>*]:min-w-0">
         <div className="space-y-4">
           <div>
             <div className="label">{t(lang, "ps_paper")}</div>

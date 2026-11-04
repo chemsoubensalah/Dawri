@@ -155,8 +155,8 @@ export default async function Home() {
           <div className="flex items-center gap-2">
             <LangSwitch lang={lang} />
             {/* زرّ الدخول ظاهر دائماً (بنصّ) — على الهاتف يأخذ مكان «ابدأ مجّاناً» الموجود أصلاً في أعلى الصفحة */}
-            <Link href="/login" className="btn-secondary btn-sm gap-1.5" data-testid="home-login">
-              <LogIn size={16} className="rtl:-scale-x-100" /> <span className="sm:hidden">{t(lang, "l_loginShort")}</span>
+            <Link href="/login" className="btn-secondary btn-sm gap-1.5" data-testid="home-login" aria-label={t(lang, "l_loginShort")}>
+              <LogIn size={16} className="rtl:-scale-x-100" /> <span className="max-[359px]:hidden sm:hidden">{t(lang, "l_loginShort")}</span>
               <span className="hidden sm:inline">{t(lang, "l_login")}</span>
             </Link>
             <Link href="/new" className="btn-primary btn-sm hidden sm:inline-flex">{t(lang, "l_startFree")}</Link>
@@ -170,10 +170,10 @@ export default async function Home() {
         {/* ——— البطل ——— */}
         <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pt-12 pb-16 md:grid-cols-[1.15fr_1fr] md:pt-20">
           <div className="animate-fade-up">
-            <Chip tone="green" className="mb-5 text-sm">
+            <Chip tone="green" className="mb-5 max-w-full text-sm !whitespace-normal">
               <HeartPulse size={14} /> {t(lang, "l_eyebrow")}
             </Chip>
-            <h1 className="text-4xl leading-[1.15] font-bold tracking-tight text-ink sm:text-5xl md:text-[3.4rem]">
+            <h1 className="text-[2rem] leading-[1.15] font-bold tracking-tight break-words text-ink min-[380px]:text-4xl sm:text-5xl md:text-[3.4rem]">
               {t(lang, "l_heroTitle")}
             </h1>
             <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600">{t(lang, "l_heroSub")}</p>
