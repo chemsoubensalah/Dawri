@@ -47,7 +47,7 @@ export function DayPills({
         const on = d.day === value;
         const disabled = d.state !== "open";
         const date = new Date(`${d.day}T12:00:00Z`);
-        const reason = d.state === "closed" ? t(lang, "ap_dayClosed") : d.state === "off" ? t(lang, "ap_dayOff") : d.state === "full" ? t(lang, "ap_dayFull") : d.state === "over" ? t(lang, "ap_dayOver") : null;
+        const reason = d.state === "closed" ? t(lang, "ap_dayClosed") : d.state === "off" ? t(lang, "ap_dayOff") : d.state === "full" ? t(lang, "ap_dayFull") : d.state === "over" ? t(lang, "ap_dayOver") : d.state === "walkin" ? t(lang, "ap_dayWalkin") : null;
         return (
           <button
             type="button"
@@ -126,7 +126,7 @@ export function DayCalendar({ lang, days, value, onChange }: { lang: Lang; days:
           const on = day === value;
           const open = d?.state === "open";
           const left = d ? Math.max(0, d.capacity - d.booked) : 0;
-          const note = !d ? "" : d.state === "open" ? (d.capacity ? t(lang, "ap_calLeft", { n: left }) : "") : d.state === "full" ? t(lang, "ap_dayFull") : d.state === "off" ? t(lang, "ap_dayOff") : d.state === "closed" ? t(lang, "ap_dayClosed") : t(lang, "ap_dayOver");
+          const note = !d ? "" : d.state === "open" ? (d.capacity ? t(lang, "ap_calLeft", { n: left }) : "") : d.state === "full" ? t(lang, "ap_dayFull") : d.state === "off" ? t(lang, "ap_dayOff") : d.state === "closed" ? t(lang, "ap_dayClosed") : d.state === "walkin" ? t(lang, "ap_dayWalkin") : t(lang, "ap_dayOver");
           return (
             <button
               type="button"

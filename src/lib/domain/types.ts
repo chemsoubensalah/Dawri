@@ -210,6 +210,8 @@ export interface Shop {
   limitsCfg?: unknown;
   /** «طباعة التذاكر» كما حُفظت (null = افتراضي) — اقرأها بـ readPrintConfig (src/lib/domain/printing.ts) */
   printCfg?: unknown;
+  /** «يوم مفتوح»: أيّام بلا حجز إلكتروني — اقرأه بـ readWalkIn (src/lib/domain/walkin.ts) */
+  walkIn?: unknown;
 }
 
 export interface DayOff {

@@ -4,6 +4,7 @@
  */
 import { localTime, parseHHMM } from "./time";
 import type { Lang, WeeklyHours } from "./types";
+import { isWalkInDay, type WalkIn } from "./walkin";
 
 export type ApptStatus = "booked" | "cancelled" | "arrived" | "no_show";
 export type ApptSource = "online" | "desk";
@@ -149,7 +150,7 @@ export function bucketOf(grid: string[], time: string, slotMin: number): string 
   return null;
 }
 
-export type DayState = "open" | "closed" | "off" | "full" | "over";
+export type DayState = "open" | "closed" | "off" | "full" | "over" | "walkin";
 
 export interface DayAvailability {
   day: string;
@@ -186,6 +187,8 @@ export function availability(o: {
   onlyDay?: string;
   /** أيّام العطل: لا أوقات فيها (src/lib/domain/daysoff.ts) */
   daysOff?: readonly { day: string }[];
+  /** يوم مفتوح: في وضع الحجز عبر الإنترنت لا أوقات فيه (السكرتيرة تحجز) — src/lib/domain/walkin.ts */
+  walkIn?: WalkIn;
 }): DayAvailability[] {
   const s = o.settings;
   const hours = bookingHours(s, o.shopHours);
@@ -203,7 +206,8 @@ export function availability(o: {
     const day = addDays(lt.day, i);
     if (o.onlyDay && day !== o.onlyDay) continue;
     const off = Boolean(o.daysOff?.some((x) => x.day === day));
-    const grid = off ? [] : daySlots(hours, day, s.slotMin);
+    const walk = !off && o.mode === "online" && isWalkInDay(o.walkIn, day);
+    const grid = off || walk ? [] : daySlots(hours, day, s.slotMin);
     const counts = byDay.get(day) ?? [];
     const perBucket = new Map<string, number>();
     let booked = 0;
@@ -224,6 +228,8 @@ export function availability(o: {
       .map((t) => ({ time: t, left: dayFull ? 0 : Math.max(0, s.perSlot - (perBucket.get(t) ?? 0)) }));
     const state: DayState = off
       ? "off"
+      : walk
+      ? "walkin"
       : !grid.length
       ? "closed"
       : dayFull

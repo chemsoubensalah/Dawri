@@ -20,6 +20,7 @@ import { cleanDaysOff, dayRange, upcomingFixedHolidays } from "@/lib/domain/days
 import { activeReasonConfig, cleanReason, cleanReasonConfig, defaultReasonConfig, readReasonConfig, reasonCap } from "@/lib/domain/reasons";
 import { cleanLimits, DEFAULT_LIMITS, phoneWaitUntil, readLimits } from "@/lib/domain/limits";
 import { limitsSettingsView, saveLimitsSettings } from "@/lib/server/limits";
+import { cleanWalkIn, isWalkInDay, readWalkIn } from "@/lib/domain/walkin";
 import { cleanPrintConfig, DEFAULT_PRINT, defaultLayout, readPrintConfig } from "@/lib/domain/printing";
 import { printSettingsView, savePrintSettings } from "@/lib/server/print-settings";
 import { saveReasonSettings } from "@/lib/server/reason-settings";
@@ -1190,5 +1191,62 @@ describe("طباعة التذاكر: عرض الورق وحجم الكتابة (
     // الحفظ والقراءة
     await savePrintSettings(await fresh(), { paper: 80, size: "m", qr: true, lang: "fr", ticket });
     expect(printSettingsView(await fresh()).config.ticket[0]).toMatchObject({ key: "text-1", bold: true });
+  });
+});
+
+describe("يوم مفتوح: بلا حجز إلكتروني، والسكرتيرة وحدها تحجز", () => {
+  async function fails(p: Promise<unknown>): Promise<DomainError> {
+    try {
+      await p;
+    } catch (e) {
+      return e as DomainError;
+    }
+    throw new Error("expected a DomainError");
+  }
+  it("قواعد صافية: القراءة والتحقّق والتعرّف على اليوم", () => {
+    expect(readWalkIn(null)).toEqual({ weekdays: [], dates: [] });
+    expect(readWalkIn({ weekdays: [6, 6, 9, "x", 0], dates: ["2026-10-14", "bad", "2026-10-12"] })).toEqual({ weekdays: [0, 6], dates: ["2026-10-12", "2026-10-14"] });
+    expect(() => cleanWalkIn({ weekdays: [7], dates: [] })).toThrow("invalid_settings");
+    expect(() => cleanWalkIn({ weekdays: [], dates: ["2026-13-40x"] })).toThrow("invalid_settings");
+    expect(() => cleanWalkIn("nope")).toThrow("invalid_settings");
+    const w = cleanWalkIn({ weekdays: [6], dates: ["2026-10-14"] });
+    expect(isWalkInDay(w, "2026-10-17")).toBe(true); // سبت
+    expect(isWalkInDay(w, "2026-10-14")).toBe(true); // تاريخ محدّد
+    expect(isWalkInDay(w, "2026-10-15")).toBe(false);
+  });
+
+  it("المريض لا يحجز في يوم مفتوح، والسكرتيرة تحجز، والطابور مفتوح، ومواعيد سابقة تبقى", async () => {
+    process.env.PHONE_VERIFICATION = "off";
+    await enable();
+    const before = await ap.bookOnline(shop.slug, { name: "سابق", phone: newPhone(), day: "2026-10-13", time: "10:00" });
+    expect((await ap.publicAvailability(shop.slug)).days.find((d) => d.day === "2026-10-13")?.state).toBe("open");
+    // الثلاثاء 13 (تاريخ) والأحد (كلّ أسبوع): مفتوحان
+    const saved = await ap.saveBookingSettings(shop, { walkIn: { weekdays: [0], dates: ["2026-10-13"] } });
+    expect(saved.enabled).toBe(true);
+    const view = await ap.bookingSettingsView(shop);
+    expect(view.walkIn).toEqual({ weekdays: [0], dates: ["2026-10-13"] });
+    expect(view.walkInBooked).toBe(1); // الموعد السابق لم يُلغَ
+    expect((await ap.appointmentView(before.appointmentId)).status).toBe("booked");
+
+    const days = (await ap.publicAvailability(shop.slug)).days;
+    expect(days.find((d) => d.day === "2026-10-13")).toMatchObject({ state: "walkin", slots: [] });
+    expect(days.find((d) => d.day === "2026-10-18")?.state).toBe("walkin"); // أحد
+    expect(days.find((d) => d.day === "2026-10-14")?.state).toBe("open");
+    // الحجز الإلكتروني مرفوض (رمزاً وحجزاً)
+    expect((await fails(ap.bookOnline(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-13", time: "11:00" }))).code).toBe("ap_walkin");
+    expect((await fails(ap.requestBookingCode(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-13", time: "11:00" }))).code).toBe("ap_walkin");
+    // السكرتيرة تحجز في اليوم نفسه
+    await desk({ day: "2026-10-13", time: "11:00" });
+    const upcoming = (await ap.staffAppointments(await fresh(), "upcoming")).days.find((d) => d.day === "2026-10-13");
+    expect(upcoming).toMatchObject({ walkIn: true });
+    expect(upcoming?.items).toHaveLength(2);
+    // الطابور اليوم (أحد، يوم مفتوح): الرقم يؤخذ عادياً، والصفحة تُعلن «يوم مفتوح»
+    expect((await svc.publicShop(shop.slug)).view.walkInToday).toBe(true);
+    await svc.takeTicket(shop.slug, { name: "زائر", phone: newPhone() });
+    // الإطفاء يعيد كلّ شيء
+    await ap.saveBookingSettings(await fresh(), { walkIn: { weekdays: [], dates: [] } });
+    expect((await svc.publicShop(shop.slug)).view.walkInToday).toBe(false);
+    await ap.bookOnline(shop.slug, { name: "بعد الإطفاء", phone: newPhone(), day: "2026-10-13", time: "12:00" });
+    await expect(ap.saveBookingSettings(await fresh(), { walkIn: { weekdays: [8], dates: [] } })).rejects.toThrow("invalid_settings");
   });
 });

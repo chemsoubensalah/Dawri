@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BellRing, CheckCircle2, Hourglass, KeyRound, Loader2, MessageCircle, Phone, QrCode, ShieldCheck, Ticket, User, Users } from "lucide-react";
+import { BellRing, CheckCircle2, Hourglass, KeyRound, Loader2, MessageCircle, Phone, QrCode, ShieldCheck, Ticket, User, Users, DoorOpen } from "lucide-react";
 import ClinicCard from "@/components/ClinicCard";
 import ReasonPicker from "@/components/ReasonPicker";
 import { Stat } from "@/components/ui";
@@ -183,6 +183,13 @@ export default function ShopClient({ lang, initial, door, booking = null }: { la
         hoursToday={view.hoursToday}
         rating={view.rating}
       />
+
+      {view.walkInToday && (
+        <section className="flex items-start gap-3 rounded-2xl bg-sky-50 p-4 text-sky-900 ring-1 ring-sky-200" data-testid="walkin-banner">
+          <DoorOpen size={20} className="mt-0.5 shrink-0" />
+          <p className="font-semibold">{t(lang, "wk_today")}</p>
+        </section>
+      )}
 
       <ShopBooking lang={lang} slug={view.slug} door={door} teaser={booking} blocker={view.blocker} onHideForm={setApptAtDoor} />
 

@@ -65,6 +65,7 @@ import { guardClientIp } from "./ratelimit";
 import { phoneCheckRequired } from "./verify";
 import { checkNewTicket, fullReasons, limitsOf, PATIENT } from "./limits";
 import { remindInBackground } from "./reminders";
+import { isWalkInDay, readWalkIn } from "../domain/walkin";
 import { getSms } from "./sms";
 import { clinicSendsCodes, codeSender } from "./smsgate";
 import {
@@ -333,6 +334,8 @@ export async function publicShop(slug: string) {
       verifyPhone: await phoneCheckRequired(shop.id, { whatsapp: true }),
       /** كيف يُسأل المريض عن سبب زيارته (إعداد الطبيب) */
       reason: activeReasonConfig(reasonConfigOf(shop)),
+      /** يوم مفتوح اليوم: تعال دون موعد (الحجز الإلكتروني متوقّف، والطابور مفتوح) */
+      walkInToday: isWalkInDay(readWalkIn(shop.walkIn), dayKey(now)),
       /** الحالات التي اكتمل عددها اليوم (حدّ الطبيب اليوميّ) */
       reasonFull: (await fullReasons(db, shop, dayKey(now), dayKey(now)))[dayKey(now)] ?? [],
       waVerify: waConfig().enabled,

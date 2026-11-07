@@ -55,6 +55,7 @@ import { getSms } from "./sms";
 import { clinicSendsCodes, codeSender } from "./smsgate";
 import { shortCode } from "./whatsapp";
 import { phoneCheckRequired } from "./verify";
+import { cleanWalkIn, isWalkInDay, readWalkIn } from "../domain/walkin";
 import { activeReasonConfig, cleanReason, reasonConfigOf } from "../domain/reasons";
 import { checkPhoneGap, checkReasonCap, fullReasons, limitsOf, PATIENT, type Who } from "./limits";
 
@@ -148,6 +149,8 @@ async function checkCode(q: Q, shop: Shop, phone: string, code: unknown, now: Da
 }
 
 async function slotCheck(q: Q, shop: Shop, s: BookingSettings, day: string, time: string, now: Date, mode: "online" | "desk", closedToday: boolean) {
+  // «يوم مفتوح»: لا حجز إلكتروني فيه (السكرتيرة وحدها تسجّل الموعد)
+  if (mode === "online" && isWalkInDay(readWalkIn(shop.walkIn), day)) throw new DomainError("ap_walkin", 409);
   const counts = await ar.activeCounts(q, shop.id, day, day);
   const days = availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode, closedToday, onlyDay: day });
   const v = slotVerdict(days, day, time);
@@ -229,7 +232,7 @@ export async function bookingTeaser(shop: Shop): Promise<BookingTeaser | null> {
   if (!s.enabled || !isSubscriptionActive(shop, now) || (await verifyMode(shop.id)) === "unavailable") return null;
   const today = dayKey(now);
   const [counts, qd] = await Promise.all([ar.activeCounts(db, shop.id, today, addDays(today, s.daysAhead)), repo.getDay(db, shop.id, today)]);
-  const days = availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "online", closedToday: qd.closed });
+  const days = availability({ settings: s, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "online", closedToday: qd.closed, walkIn: readWalkIn(shop.walkIn) });
   return { today, next: firstFree(days) };
 }
 
@@ -253,7 +256,7 @@ export async function publicAvailability(slug: string) {
     perSlot: settings.perSlot,
     minLeadMin: settings.minLeadMin,
     verify,
-    days: availability({ settings, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "online", closedToday: qd.closed }),
+    days: availability({ settings, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "online", closedToday: qd.closed, walkIn: readWalkIn(shop.walkIn) }),
     /** الحالات المكتملة لكلّ يوم (حدّ الطبيب اليوميّ) */
     full,
   };
@@ -647,6 +650,8 @@ export interface StaffDay {
   state: DayAvailability["state"];
   booked: number;
   capacity: number;
+  /** يوم مفتوح: لا حجز إلكتروني (السكرتيرة وحدها تحجز) */
+  walkIn: boolean;
   items: StaffAppt[];
 }
 
@@ -682,13 +687,13 @@ export async function staffAppointments(shop: Shop, scope: "today" | "upcoming")
       ? []
       : days
           .filter((d) => d.state !== "closed" || byDay.has(d.day))
-          .map((d) => ({ day: d.day, state: d.state, booked: d.booked, capacity: d.capacity, items: byDay.get(d.day) ?? [] }));
+          .map((d) => ({ day: d.day, state: d.state, booked: d.booked, capacity: d.capacity, walkIn: isWalkInDay(readWalkIn(shop.walkIn), d.day), items: byDay.get(d.day) ?? [] }));
   let beyond = 0;
   for (const [day, list] of byDay) {
     if (day > to) {
       const booked = list.filter((x) => x.status === "booked" || x.status === "arrived").length;
       beyond += booked;
-      grouped.push({ day, state: "open", booked, capacity: 0, items: list });
+      grouped.push({ day, state: "open", booked, capacity: 0, walkIn: false, items: list });
     }
   }
   return {
@@ -781,8 +786,18 @@ export async function staffAppointmentAction(
 
 export async function bookingSettingsView(shop: Shop) {
   const db = await getDb();
+  const walkIn = readWalkIn(shop.walkIn);
+  // مواعيد محجوزة مسبقاً في «أيّام مفتوحة»: لا تُلغى، لكن نُعلم الطبيب بعددها
+  let walkInBooked = 0;
+  if (walkIn.weekdays.length || walkIn.dates.length) {
+    const today = dayKey(clockNow());
+    const rows = await ar.listRange(db, shop.id, today, addDays(today, 90));
+    walkInBooked = rows.filter((a) => a.status === "booked" && isWalkInDay(walkIn, a.day)).length;
+  }
   return {
     settings: await ar.getSettings(db, shop.id),
+    walkIn,
+    walkInBooked,
     shopHours: shop.hours,
     verify: await verifyMode(shop.id),
     active: isSubscriptionActive(shop, clockNow()),
@@ -793,6 +808,11 @@ export type BookingSettingsView = Awaited<ReturnType<typeof bookingSettingsView>
 
 export async function saveBookingSettings(shop: Shop, body: Record<string, unknown>): Promise<BookingSettings> {
   const db = await getDb();
+  if (body.walkIn !== undefined) {
+    const walkIn = cleanWalkIn(body.walkIn);
+    await repo.updateShop(db, shop.id, { walkIn });
+    shop.walkIn = walkIn; // الواجهة تُقرأ بعد الحفظ من نفس الكائن
+  }
   const next: BookingSettings = { ...(await ar.getSettings(db, shop.id)) };
   if (body.enabled !== undefined) {
     if (typeof body.enabled !== "boolean") throw new DomainError("invalid_settings");

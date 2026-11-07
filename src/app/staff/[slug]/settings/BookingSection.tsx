@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CalendarClock, Check, Copy, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarClock, Check, Copy, DoorOpen, Loader2, Plus, Save, Trash2, X } from "lucide-react";
 import { BOOKING_LIMITS, daySlots, type BookingNumberKey, type BookingSettings } from "@/lib/domain/appointments";
 import type { Interval, Lang, WeeklyHours } from "@/lib/domain/types";
+import { fmtDay } from "@/lib/domain/appointments";
+import { NO_WALKIN, WALKIN_DATES_MAX, type WalkIn } from "@/lib/domain/walkin";
 import { errorText, t, type DictKey } from "@/lib/i18n";
 import { api, ApiError } from "@/lib/client";
 import type { BookingSettingsView } from "@/lib/server/appointments";
@@ -30,10 +32,14 @@ export default function BookingSection({ lang, slug }: { lang: Lang; slug: strin
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  /** «أيّام مفتوحة»: بلا حجز إلكتروني */
+  const [walk, setWalk] = useState<WalkIn>(NO_WALKIN);
+  const [walkDate, setWalkDate] = useState("");
 
   const load = (v: BookingSettingsView) => {
     setView(v);
     setS(v.settings);
+    setWalk(v.walkIn);
     setCustom(v.settings.hours !== null);
     setHours(v.settings.hours ?? v.shopHours);
   };
@@ -84,6 +90,7 @@ export default function BookingSection({ lang, slug }: { lang: Lang; slug: strin
         dailyMax: s.dailyMax,
         arrivalGraceMin: s.arrivalGraceMin,
         hours: custom ? hours : null,
+        walkIn: walk,
       });
       load(r);
       setMsg({ ok: true, text: t(lang, "saved") });
@@ -302,6 +309,62 @@ export default function BookingSection({ lang, slug }: { lang: Lang; slug: strin
           </button>
         </div>
       )}
+
+      {/* ——— أيّام مفتوحة: بلا حجز إلكتروني ——— */}
+      <div className="mt-5 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200/70" data-testid="walkin-settings">
+        <div className="flex items-center gap-2 font-semibold text-ink">
+          <DoorOpen size={18} className="text-brand-700" /> {t(lang, "wk_title")}
+        </div>
+        <p className="mt-1 text-xs leading-relaxed text-slate-500">{t(lang, "wk_sub")}</p>
+        <div className="label mt-3">{t(lang, "wk_weekdays")}</div>
+        <div className="flex flex-wrap gap-1.5">
+          {DAYS.map((d) => {
+            const on = walk.weekdays.includes(Number(d));
+            const name = new Intl.DateTimeFormat(lang === "ar" ? "ar-DZ" : "fr-DZ", { weekday: "long", timeZone: "UTC" }).format(new Date(`${sampleDay(d)}T12:00:00Z`));
+            return (
+              <button
+                type="button"
+                key={d}
+                aria-pressed={on}
+                onClick={() => setWalk((w) => ({ ...w, weekdays: on ? w.weekdays.filter((x) => x !== Number(d)) : [...w.weekdays, Number(d)].sort() }))}
+                className={`rounded-xl px-3 py-1.5 text-sm font-semibold ring-1 transition ${on ? "bg-brand-50 text-brand-800 ring-2 ring-brand-500" : "bg-white text-slate-600 ring-slate-200 hover:ring-brand-300"}`}
+                data-testid={`walkin-day-${d}`}
+              >
+                {name}
+              </button>
+            );
+          })}
+        </div>
+        <div className="label mt-3">{t(lang, "wk_dates")}</div>
+        <div className="flex gap-2">
+          <input type="date" dir="ltr" className="input num max-w-48" value={walkDate} onChange={(e) => setWalkDate(e.target.value)} data-testid="walkin-date" />
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            disabled={!walkDate || walk.dates.includes(walkDate) || walk.dates.length >= WALKIN_DATES_MAX}
+            onClick={() => {
+              setWalk((w) => ({ ...w, dates: [...w.dates, walkDate].sort() }));
+              setWalkDate("");
+            }}
+          >
+            <Plus size={15} /> {t(lang, "wk_addDate")}
+          </button>
+        </div>
+        {walk.dates.length > 0 && (
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {walk.dates.map((d) => (
+              <li key={d} className="flex items-center gap-1 rounded-xl bg-white py-1 ps-3 pe-1 text-sm font-semibold ring-1 ring-slate-200">
+                {fmtDay(lang, d)} {d.slice(0, 4)}
+                <button type="button" className="rounded-lg p-1 text-rose-500 hover:bg-rose-50" aria-label={`${t(lang, "wk_remove")} ${d}`} onClick={() => setWalk((w) => ({ ...w, dates: w.dates.filter((x) => x !== d) }))}>
+                  <X size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {walk.weekdays.length === 0 && walk.dates.length === 0 && <p className="mt-2 text-xs text-slate-500">{t(lang, "wk_none")}</p>}
+        {view && view.walkInBooked > 0 && <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900 ring-1 ring-amber-200">{t(lang, "wk_existing", { n: view.walkInBooked })}</p>}
+      </div>
 
       <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
         {msg && (
