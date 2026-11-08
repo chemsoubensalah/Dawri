@@ -2,12 +2,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, CalendarCheck2, CalendarDays, CalendarX2, Clock3, KeyRound, Phone, ShieldCheck, User } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarCheck2, CalendarDays, CalendarX2, Clock3, DoorOpen, KeyRound, Phone, ShieldCheck, Ticket, User } from "lucide-react";
 import ClinicCard from "@/components/ClinicCard";
 import ReasonPicker from "@/components/ReasonPicker";
 import type { ReasonConfig } from "@/lib/domain/reasons";
 import { DayPills, TimeGrid } from "@/components/SlotPicker";
-import { fmtDay } from "@/lib/domain/appointments";
+import { fmtDay, weekdayOf } from "@/lib/domain/appointments";
 import type { Lang, ShopKind, ShopProfile } from "@/lib/domain/types";
 import { errorText, t } from "@/lib/i18n";
 import { api, ApiError, clearFlow, loadFlow, saveFlow, unlockAudio, usePoll } from "@/lib/client";
@@ -85,6 +85,11 @@ export default function BookClient({
   useEffect(() => {
     if (!av) return;
     const d = av.days.find((x) => x.day === day);
+    // يوم مفتوح: يبقى مختاراً (يقرأ المريض أنّه يأتي بلا موعد)، ولا وقت فيه
+    if (d?.state === "walkin") {
+      if (time) setTime(null);
+      return;
+    }
     if (!d || d.state !== "open") {
       const first = av.days.find((x) => x.state === "open")?.day ?? null;
       if (first !== day) {
@@ -195,7 +200,8 @@ export default function BookClient({
 
   const selected = av.days.find((d) => d.day === day) ?? null;
   const dayFull = (day && av.full?.[day]) || [];
-  const anyOpen = av.days.some((d) => d.state === "open");
+  const anyOpen = av.days.some((d) => d.state === "open" || d.state === "walkin");
+  const walkHours = selected?.state === "walkin" ? (av.clinicHours[String(weekdayOf(selected.day))] ?? []) : [];
 
   return (
     <>
@@ -230,7 +236,37 @@ export default function BookClient({
                 setTime(null);
               }}
             />
-            {selected && (
+            {selected?.state === "walkin" ? (
+              <div className="mt-3 rounded-2xl bg-sky-50 p-4 text-sky-950 ring-1 ring-sky-200" data-testid="walkin-day" role="status">
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white">
+                    <DoorOpen size={20} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-bold">{t(lang, "wk_pickedTitle")}</p>
+                    <p className="mt-0.5 text-xs text-sky-800">{fmtDay(lang, selected.day)}</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm leading-relaxed">{t(lang, "wk_pickedBody")}</p>
+                {walkHours.length > 0 && (
+                  <p className="mt-2 flex flex-wrap items-center gap-1.5 text-sm font-semibold">
+                    <Clock3 size={15} className="shrink-0" /> {t(lang, "wk_hours")}
+                    {walkHours.map(([a, b]) => (
+                      <span key={a} className="num rounded-lg bg-white px-2 py-0.5 ring-1 ring-sky-200" dir="ltr">
+                        {a}–{b}
+                      </span>
+                    ))}
+                  </p>
+                )}
+                {selected.day === av.today && (
+                  <Link href={`/s/${slug}`} className="btn-primary mt-4 w-full" data-testid="walkin-take">
+                    <Ticket size={18} /> {t(lang, "wk_takeNow")}
+                  </Link>
+                )}
+                {callClinic && <p className="mt-4 text-xs text-sky-800">{t(lang, "wk_callForAppt")}</p>}
+                {callClinic}
+              </div>
+            ) : selected && (
               <>
                 <div className="mt-3 mb-2 flex items-baseline justify-between gap-2">
                   <span className="text-sm font-semibold text-slate-600">{t(lang, "ap_pickTime")}</span>

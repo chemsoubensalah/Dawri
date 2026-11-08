@@ -45,9 +45,10 @@ export function DayPills({
     <div ref={ref} className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pt-1 pb-2 [scrollbar-width:none]" role="group" aria-label={t(lang, "ap_pickDay")}>
       {days.map((d, i) => {
         const on = d.day === value;
-        const disabled = d.state !== "open";
+        const walkin = d.state === "walkin";
+        const disabled = d.state !== "open" && !walkin;
         const date = new Date(`${d.day}T12:00:00Z`);
-        const reason = d.state === "closed" ? t(lang, "ap_dayClosed") : d.state === "off" ? t(lang, "ap_dayOff") : d.state === "full" ? t(lang, "ap_dayFull") : d.state === "over" ? t(lang, "ap_dayOver") : d.state === "walkin" ? t(lang, "ap_dayWalkin") : null;
+        const reason = d.state === "closed" ? t(lang, "ap_dayClosed") : d.state === "off" ? t(lang, "ap_dayOff") : d.state === "full" ? t(lang, "ap_dayFull") : d.state === "over" ? t(lang, "ap_dayOver") : walkin ? t(lang, "ap_dayWalkinShort") : null;
         return (
           <button
             type="button"
@@ -58,17 +59,21 @@ export function DayPills({
             data-testid={`day-${d.day}`}
             className={`flex shrink-0 snap-start flex-col items-center rounded-2xl ${size === "sm" ? "w-[60px] py-2" : "w-[68px] py-2.5"} transition ${
               on
-                ? "bg-brand-600 text-white shadow-(--shadow-brand)"
+                ? walkin
+                  ? "bg-sky-600 text-white shadow-md"
+                  : "bg-brand-600 text-white shadow-(--shadow-brand)"
                 : disabled
                   ? "bg-slate-50 text-slate-300 ring-1 ring-slate-100"
-                  : "bg-white text-ink ring-1 ring-slate-200 hover:ring-brand-300"
+                  : walkin
+                    ? "bg-sky-50 text-sky-900 ring-1 ring-sky-200 hover:ring-sky-400"
+                    : "bg-white text-ink ring-1 ring-slate-200 hover:ring-brand-300"
             }`}
           >
-            <span className={`max-w-full truncate px-1 text-[11px] leading-tight font-semibold ${on ? "text-brand-50" : disabled ? "" : "text-slate-500"}`}>
+            <span className={`max-w-full truncate px-1 text-[11px] leading-tight font-semibold ${on ? (walkin ? "text-sky-50" : "text-brand-50") : disabled ? "" : walkin ? "text-sky-700" : "text-slate-500"}`}>
               {dayName(lang, d.day, i)}
             </span>
             <span className={`num ${size === "sm" ? "text-lg" : "text-2xl"} leading-tight font-bold`}>{date.getUTCDate()}</span>
-            <span className={`text-[11px] leading-tight ${on ? "text-brand-100" : disabled ? "" : "text-slate-400"}`}>{reason ?? mo.format(date)}</span>
+            <span className={`max-w-full truncate px-1 text-[11px] leading-tight ${on ? (walkin ? "text-sky-100" : "text-brand-100") : disabled ? "" : walkin ? "font-semibold text-sky-700" : "text-slate-400"}`}>{reason ?? mo.format(date)}</span>
           </button>
         );
       })}

@@ -257,6 +257,8 @@ export async function publicAvailability(slug: string) {
     minLeadMin: settings.minLeadMin,
     verify,
     days: availability({ settings, shopHours: shop.hours, daysOff: shop.daysOff, now, counts, mode: "online", closedToday: qd.closed, walkIn: readWalkIn(shop.walkIn) }),
+    /** أوقات عمل العيادة (الطابور): في «اليوم المفتوح» يعرف المريض متى يأتي */
+    clinicHours: shop.hours,
     /** الحالات المكتملة لكلّ يوم (حدّ الطبيب اليوميّ) */
     full,
   };

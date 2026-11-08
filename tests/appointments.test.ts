@@ -1213,6 +1213,15 @@ describe("يوم مفتوح: بلا حجز إلكتروني، والسكرتير
     expect(isWalkInDay(w, "2026-10-17")).toBe(true); // سبت
     expect(isWalkInDay(w, "2026-10-14")).toBe(true); // تاريخ محدّد
     expect(isWalkInDay(w, "2026-10-15")).toBe(false);
+    // يوم مفتوح لا يُفتح يوماً تُغلق فيه العيادة؛ والسكرتيرة ترى الأوقات عادياً
+    const now = new Date("2026-10-15T07:00:00Z"); // خميس
+    const shopHours = { "5": [], "6": [["08:00", "10:00"]], "0": [["08:00", "10:00"]] } as Record<string, [string, string][]>;
+    const o = { settings: { ...DEFAULT_BOOKING, enabled: true, daysAhead: 3 }, shopHours, now, counts: [], walkIn: { weekdays: [5, 6], dates: [] } };
+    const online = availability({ ...o, mode: "online" });
+    expect(online.find((d) => d.day === "2026-10-16")?.state).toBe("closed"); // جمعة: العيادة مغلقة
+    expect(online.find((d) => d.day === "2026-10-17")).toMatchObject({ state: "walkin", slots: [] }); // سبت
+    expect(online.find((d) => d.day === "2026-10-18")?.state).toBe("open");
+    expect(availability({ ...o, mode: "desk" }).find((d) => d.day === "2026-10-17")?.state).toBe("open");
   });
 
   it("المريض لا يحجز في يوم مفتوح، والسكرتيرة تحجز، والطابور مفتوح، ومواعيد سابقة تبقى", async () => {
@@ -1232,6 +1241,7 @@ describe("يوم مفتوح: بلا حجز إلكتروني، والسكرتير
     expect(days.find((d) => d.day === "2026-10-13")).toMatchObject({ state: "walkin", slots: [] });
     expect(days.find((d) => d.day === "2026-10-18")?.state).toBe("walkin"); // أحد
     expect(days.find((d) => d.day === "2026-10-14")?.state).toBe("open");
+    expect((await ap.publicAvailability(shop.slug)).clinicHours).toEqual(shop.hours); // متى يأتي المريض
     // الحجز الإلكتروني مرفوض (رمزاً وحجزاً)
     expect((await fails(ap.bookOnline(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-13", time: "11:00" }))).code).toBe("ap_walkin");
     expect((await fails(ap.requestBookingCode(shop.slug, { name: "x x", phone: newPhone(), day: "2026-10-13", time: "11:00" }))).code).toBe("ap_walkin");

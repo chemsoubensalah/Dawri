@@ -206,8 +206,9 @@ export function availability(o: {
     const day = addDays(lt.day, i);
     if (o.onlyDay && day !== o.onlyDay) continue;
     const off = Boolean(o.daysOff?.some((x) => x.day === day));
-    const walk = !off && o.mode === "online" && isWalkInDay(o.walkIn, day);
-    const grid = off || walk ? [] : daySlots(hours, day, s.slotMin);
+    const base = off ? [] : daySlots(hours, day, s.slotMin);
+    const walk = base.length > 0 && o.mode === "online" && isWalkInDay(o.walkIn, day);
+    const grid = walk ? [] : base;
     const counts = byDay.get(day) ?? [];
     const perBucket = new Map<string, number>();
     let booked = 0;
