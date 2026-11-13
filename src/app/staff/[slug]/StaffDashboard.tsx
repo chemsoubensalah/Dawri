@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpDown, Ban, Bell, CalendarPlus, CheckCheck, Clock3, Copy, Hourglass, Keyboard, Link2, DoorOpen, Mail, Megaphone, Phone, Plus, Printer, ShieldAlert, Smartphone, Timer, Undo2, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Ban, Bell, CalendarPlus, CheckCheck, Clock3, Copy, GripVertical, Hourglass, Keyboard, Link2, DoorOpen, Mail, Megaphone, Phone, Plus, Printer, ShieldAlert, Smartphone, Timer, Undo2, UserCheck, UserPlus, UserRoundX, Users, WifiOff, X } from "lucide-react";
 import Dialog, { ConfirmDialog } from "@/components/Dialog";
 import ReasonPicker from "@/components/ReasonPicker";
 import SoundGate from "@/components/SoundGate";
@@ -13,6 +13,7 @@ import type { StaffState } from "@/lib/server/service";
 import TodayAppointments, { ApptBadge } from "./appointments/TodayAppointments";
 import DeskBookDialog from "./appointments/DeskBookDialog";
 import { ReasonChip } from "./appointments/parts";
+import { SortableQueue, SortableRow } from "./SortableQueue";
 
 type Row = StaffState["waiting"][number];
 type Confirm = { kind: "noshow"; id: string; number: number } | { kind: "cancel"; id: string; number: number } | null;
@@ -30,8 +31,17 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   const [addPhone, setAddPhone] = useState("");
   const [addPresent, setAddPresent] = useState(true);
   const [addReason, setAddReason] = useState<string | null>(null);
-  /** وضع «ترتيب الطابور»: سهما ↑ ↓ بدل أزرار السطر */
-  const [reorder, setReorder] = useState(false);
+  /** سحب مريض في الطابور جارٍ: لا نستبدل القائمة بتحديث دوري أثناءه */
+  const dragging = useRef(false);
+  /** آخر إجراء انتهى: تحديث دوري بدأ قبله قديم، لا يعيد الترتيب السابق إلى الشاشة */
+  const lastAct = useRef(0);
+  /** شرح «اسحب من ⠿» يظهر حتى أوّل سحب على هذا الجهاز */
+  const [dragHint, setDragHint] = useState(false);
+  useEffect(() => {
+    try {
+      setDragHint(localStorage.getItem("dawri:dragDone") !== "1");
+    } catch {}
+  }, []);
   /** «موعد تالٍ» لمريض خرج من عند الطبيب (الاسم والهاتف جاهزان) */
   const [nextAppt, setNextAppt] = useState<{ name: string; phone: string } | null>(null);
   /** طباعة التذكرة بعد الإضافة (إعداد هذا الجهاز: الطابعة موصولة به) */
@@ -44,10 +54,15 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   const [stopAsk, setStopAsk] = useState(false);
   const [notice, setNotice] = useState<{ text: string; stop: boolean } | null>(null);
   const Arrow = lang === "ar" ? ArrowLeft : ArrowRight;
+  /** للقارئ الصوتي أثناء السحب: رقم المريض ومكانه في الطابور */
+  const numOf = (id: string | number) => s.waiting.find((w) => w.id === id)?.number ?? "";
+  const posOf = (id: string | number) => s.waiting.findIndex((w) => w.id === id) + 1;
 
   usePoll(async () => {
     try {
-      setS(await api<StaffState>(`/api/staff/${slug}/state`));
+      const asked = Date.now();
+      const next = await api<StaffState>(`/api/staff/${slug}/state`);
+      if (!dragging.current && asked > lastAct.current) setS(next);
       setOnline(true);
     } catch (e) {
       const err = e as ApiError;
@@ -112,6 +127,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
         if (err.code === "conflict") api<StaffState>(`/api/staff/${slug}/state`).then(setS).catch(() => {});
         return false;
       } finally {
+        lastAct.current = Date.now();
         setBusy(false);
       }
     },
@@ -438,30 +454,66 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                 <span className="num rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{s.waiting.length}</span>
               </h2>
               <span className="flex gap-2">
-                {s.waiting.length > 1 && (
-                  <button
-                    className={`btn-sm ${reorder ? "btn-primary" : "btn-secondary"}`}
-                    onClick={() => setReorder(!reorder)}
-                    aria-pressed={reorder}
-                    data-testid="reorder-toggle"
-                  >
-                    <ArrowUpDown size={16} /> {t(lang, reorder ? "db_reorderDone" : "db_reorder")}
-                  </button>
-                )}
                 <button className="btn-secondary btn-sm" onClick={() => setAddOpen(true)}>
                   <UserPlus size={16} /> {t(lang, "addPerson")}
                 </button>
               </span>
             </div>
-            {reorder && s.waiting.length > 1 && <p className="-mt-1 px-5 pb-2 text-xs text-slate-500">{t(lang, "db_reorderHint")}</p>}
+            {dragHint && s.waiting.length > 1 && (
+              <p className="-mt-1 flex items-center gap-1 px-5 pb-2 text-xs text-slate-500" data-testid="drag-hint">
+                <GripVertical size={14} className="shrink-0" /> {t(lang, "db_dragHint")}
+              </p>
+            )}
             {s.waiting.length === 0 ? (
               <Empty icon={<Users size={40} />} title={t(lang, "emptyQueue")} sub={t(lang, "db_emptyHint")} />
             ) : (
+              <SortableQueue
+                ids={s.waiting.map((w) => w.id)}
+                onDragging={(on) => (dragging.current = on)}
+                onMove={(id, beforeId, order) => {
+                  // يتحرّك فوراً على الشاشة، ثمّ يُحفظ (الخادم يعيد الحالة الصحيحة، أو يعيد التحميل إن تغيّر الطابور)
+                  const byId = new Map(s.waiting.map((w) => [w.id, w]));
+                  setS({ ...s, waiting: order.map((x) => byId.get(x)!) });
+                  dragging.current = true; // حتى يُحفظ: لا تحديث دوري بالترتيب القديم
+                  act({ action: "place", ticketId: id, beforeId }).finally(() => (dragging.current = false));
+                  if (dragHint) {
+                    setDragHint(false);
+                    try {
+                      localStorage.setItem("dawri:dragDone", "1");
+                    } catch {}
+                  }
+                }}
+                instructions={t(lang, "db_dragSr")}
+                announcements={{
+                  onDragStart: ({ active }) => t(lang, "db_dragPicked", { n: numOf(active.id) }),
+                  onDragOver: ({ active, over }) => (over ? t(lang, "db_dragOver", { n: numOf(active.id), pos: posOf(over.id) }) : ""),
+                  onDragEnd: ({ active, over }) => (over ? t(lang, "db_dragOver", { n: numOf(active.id), pos: posOf(over.id) }) : ""),
+                  onDragCancel: ({ active }) => t(lang, "db_dragCancel", { n: numOf(active.id) }),
+                }}
+              >
               <ul className="divide-y divide-slate-100" data-testid="queue">
                 {s.waiting.map((r, i) => (
-                  <li key={r.id} className={`flex items-center gap-3 px-5 py-3 ${r.held ? "opacity-55" : ""} ${i === 0 && !r.held ? "bg-brand-50/50" : ""}`}>
+                  <SortableRow key={r.id} id={r.id} className={`flex items-center gap-3 px-5 py-3 ${r.held ? "opacity-55" : ""} ${i === 0 && !r.held ? "bg-brand-50/50" : ""}`}>
+                    {(h, isDrag) => (
+                    <>
+                    {s.waiting.length > 1 && (
+                      <button
+                        type="button"
+                        ref={h.ref}
+                        {...h.attributes}
+                        {...h.listeners}
+                        className={`-ms-3 -me-1 inline-flex h-11 w-7 shrink-0 touch-none items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 ${isDrag ? "cursor-grabbing text-brand-600" : "cursor-grab"}`}
+                        aria-label={`${t(lang, "db_dragHandle")} ${r.number}`}
+                        title={t(lang, "db_dragHint")}
+                        data-testid="drag-handle"
+                      >
+                        <GripVertical size={18} />
+                      </button>
+                    )}
                     <span className="num w-9 text-center text-xl font-bold text-ink">{r.number}</span>
-                    <Avatar name={r.name} size={36} tone={r.source === "desk" ? "slate" : "green"} />
+                    <span className={`${s.waiting.length > 1 ? "hidden sm:inline-flex" : "inline-flex"} shrink-0`}>
+                      <Avatar name={r.name} size={36} tone={r.source === "desk" ? "slate" : "green"} />
+                    </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-semibold">{r.name}</span>
                       <span className="flex flex-wrap items-center gap-1.5">
@@ -476,28 +528,6 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                     {r.eta !== null && (
                       <span className="num hidden text-xs whitespace-nowrap text-slate-500 sm:inline">≈ {t(lang, "sp_min", { n: r.eta })}</span>
                     )}
-                    {reorder ? (
-                      <span className="flex shrink-0 gap-2">
-                        {(["up", "down"] as const).map((dir) => {
-                          const j = dir === "up" ? i - 1 : i + 1;
-                          const other = s.waiting[j];
-                          const can = Boolean(other);
-                          return (
-                            <button
-                              key={dir}
-                              className="inline-flex size-10 items-center justify-center rounded-xl text-brand-700 ring-1 ring-brand-200 hover:bg-brand-50 disabled:opacity-30"
-                              onClick={() => act({ action: "move", ticketId: r.id, dir })}
-                              disabled={busy || !can}
-                              aria-label={`${t(lang, dir === "up" ? "db_moveUp" : "db_moveDown")} ${r.number}`}
-                              title={t(lang, dir === "up" ? "db_moveUp" : "db_moveDown")}
-                              data-testid={`move-${dir}`}
-                            >
-                              {dir === "up" ? <ArrowUp size={18} /> : <ArrowDown size={18} />}
-                            </button>
-                          );
-                        })}
-                      </span>
-                    ) : (
                     <span className="flex shrink-0 gap-2">
                       {/* «نادِ الآن»: قبل دوره (صاحب الدور لم يصل) — من تُخطّي يبقى أوّل الطابور */}
                       {r.id !== upNext?.id && (
@@ -544,10 +574,12 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
                         <X size={17} />
                       </button>
                     </span>
+                    </>
                     )}
-                  </li>
+                  </SortableRow>
                 ))}
               </ul>
+              </SortableQueue>
             )}
           </section>
         </div>

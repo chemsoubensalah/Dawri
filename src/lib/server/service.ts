@@ -29,6 +29,7 @@ import {
   planNext,
   planCallTicket,
   planMove,
+  planPlace,
   planRestore,
   planFinish,
   RESTORABLE,
@@ -891,7 +892,7 @@ export type StaffState = Awaited<ReturnType<typeof staffState>>;
 
 export async function staffAction(
   shop: Shop,
-  body: { action?: unknown; ticketId?: unknown; current?: unknown; name?: unknown; phone?: unknown; present?: unknown; reason?: unknown; force?: unknown; dir?: unknown },
+  body: { action?: unknown; ticketId?: unknown; current?: unknown; name?: unknown; phone?: unknown; present?: unknown; reason?: unknown; force?: unknown; dir?: unknown; beforeId?: unknown },
   by: repo.QueueDay["closedBy"] = null,
 ) {
   const action = body.action;
@@ -968,6 +969,16 @@ export async function staffAction(
       if (t.status !== "waiting") throw new DomainError("ticket_closed", 409);
       if (body.dir !== "up" && body.dir !== "down") throw new DomainError("invalid_action");
       return { actions: planMove(tickets, t.id, body.dir === "up" ? -1 : 1), result: null };
+    }
+    if (action === "place") {
+      const t = tickets.find((x) => x.id === body.ticketId);
+      if (!t) throw new DomainError("ticket_not_found", 404);
+      if (t.status !== "waiting") throw new DomainError("ticket_closed", 409);
+      if (body.beforeId !== null && typeof body.beforeId !== "string") throw new DomainError("invalid_action");
+      const actions = planPlace(tickets, t.id, body.beforeId);
+      // المكان المطلوب لم يعد في الطابور (نودي أو أُلغي في الأثناء) ← الواجهة تعيد التحميل
+      if (!actions) throw new DomainError("conflict", 409);
+      return { actions, result: null };
     }
     if (action === "recall") {
       if (!cur) throw new DomainError("ticket_closed", 409);

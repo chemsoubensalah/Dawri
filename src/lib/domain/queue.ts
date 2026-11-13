@@ -81,6 +81,25 @@ export function planMove(tickets: Ticket[], id: string, dir: -1 | 1): Action[] {
   return acts;
 }
 
+/**
+ * السحب والإفلات: السكرتيرة تضع منتظراً قبل منتظر آخر (beforeId)، أو آخر الطابور (null).
+ * يُكتب مكان كلّ منتظر (queuePos = ترتيبه) كي يثبت الترتيب. null ← مكان غير صالح (الطابور تغيّر).
+ */
+export function planPlace(tickets: Ticket[], id: string, beforeId: string | null): Action[] | null {
+  const line = lineup(tickets);
+  const moving = line.find((t) => t.id === id);
+  if (!moving || beforeId === id) return null;
+  const rest = line.filter((t) => t.id !== id);
+  const at = beforeId === null ? rest.length : rest.findIndex((t) => t.id === beforeId);
+  if (at < 0) return null;
+  rest.splice(at, 0, moving);
+  const acts: Action[] = [];
+  rest.forEach((t, k) => {
+    if (t.queuePos !== k) acts.push(update(t, ["waiting"], { queuePos: k }));
+  });
+  return acts;
+}
+
 /** الحالات التي يمكن إعادتها إلى الطابور (مرّ عليها المريض بالخطأ) */
 export const RESTORABLE: TicketStatus[] = ["called", "done", "no_show", "cancelled", "deferred"];
 

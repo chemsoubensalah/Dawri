@@ -374,6 +374,29 @@ describe("يوم عمل كامل", () => {
     await expect(act({ action: "move", ticketId: ids[0], dir: "left" as "up" })).rejects.toThrow("invalid_action");
   });
 
+  it("السحب والإفلات: يضع المريض قبل أيّ منتظر أو في الآخر، دفعة واحدة", async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) ids.push((await take(`زبون ${i + 1}`)).ticketId);
+    const order = async () => (await state()).waiting.map((w) => w.number);
+    await act({ action: "place", ticketId: ids[4], beforeId: ids[0] }); // 5 أوّلاً
+    expect(await order()).toEqual([5, 1, 2, 3, 4]);
+    await act({ action: "place", ticketId: ids[0], beforeId: null }); // 1 في الآخر
+    expect(await order()).toEqual([5, 2, 3, 4, 1]);
+    await act({ action: "place", ticketId: ids[3], beforeId: ids[1] }); // 4 قبل 2
+    expect(await order()).toEqual([5, 4, 2, 3, 1]);
+    await act({ action: "place", ticketId: ids[3], beforeId: ids[1] }); // مكانه نفسه: لا تغيير
+    expect(await order()).toEqual([5, 4, 2, 3, 1]);
+    expect((await svc.ticketView(ids[0])).ahead).toBe(4);
+    // «التالي» يتبع الترتيب، والمكان الذي خرج من الطابور ← conflict
+    await next();
+    expect((await state()).current?.number).toBe(5);
+    await expect(act({ action: "place", ticketId: ids[2], beforeId: ids[4] })).rejects.toThrow("conflict");
+    await expect(act({ action: "place", ticketId: ids[4], beforeId: null })).rejects.toThrow("ticket_closed");
+    await expect(act({ action: "place", ticketId: ids[2], beforeId: ids[2] })).rejects.toThrow("conflict");
+    await expect(act({ action: "place", ticketId: ids[2], beforeId: 7 as unknown as string })).rejects.toThrow("invalid_action");
+    expect(await order()).toEqual([4, 2, 3, 1]);
+  });
+
   it("إنهاء دون نداء التالي (غرفة فارغة)، وإعادة من مرّ بالخطأ إلى الطابور", async () => {
     const ids: string[] = [];
     for (let i = 0; i < 3; i++) ids.push((await take(`زبون ${i + 1}`, newPhone())).ticketId);
