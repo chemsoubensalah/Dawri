@@ -58,6 +58,8 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   const numOf = (id: string | number) => s.waiting.find((w) => w.id === id)?.number ?? "";
   const posOf = (id: string | number) => s.waiting.findIndex((w) => w.id === id) + 1;
 
+  // toutes les 4 s quand il y a des patients ; plus lentement quand la file est vide ou le cabinet fermé
+  const queueLive = Boolean(s.current) || s.waiting.length > 0 || s.pending.length > 0 || s.deferred.length > 0;
   usePoll(async () => {
     try {
       const asked = Date.now();
@@ -69,7 +71,7 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
       if (err.status === 401) location.reload();
       if (err.code === "network") setOnline(false);
     }
-  }, 4000);
+  }, queueLive ? 4000 : s.blocker ? 30000 : 10000);
 
   // زبون جديد أخذ رقماً من هاتفه ← صوت + رسالة. (من تضيفه السكرتيرة بنفسها لا يُصدر صوتاً)
   const known = useRef<Set<string> | null>(null);

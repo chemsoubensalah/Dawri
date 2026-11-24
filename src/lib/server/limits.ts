@@ -64,6 +64,7 @@ export async function fullReasons(q: Q, shop: Shop, from: string, to: string): P
        select day, reason from appointments where shop_id = $1 and day between $2 and $3 and reason is not null and status = 'booked'
      ) x group by 1, 2`,
     [shop.id, from, to],
+    { cache: true },
   );
   const out: Record<string, string[]> = {};
   for (const r of rows) {

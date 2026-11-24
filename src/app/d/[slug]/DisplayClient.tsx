@@ -49,7 +49,10 @@ export default function DisplayClient({
   const [callout, setCallout] = useState<number | null>(null);
   const last = useRef(initial.currentNumber);
 
-  usePoll(async () => setV(await api<PublicShopView>(`/api/s/${v.slug}`)), 4000);
+  // toutes les 4 s quand la file vit ; plus lentement quand elle est vide, et encore plus quand le cabinet est fermé
+  // (une télévision reste souvent allumée toute la journée, voire la nuit)
+  const busy = v.currentNumber !== null || v.waiting > 0;
+  usePoll(async () => setV(await api<PublicShopView>(`/api/s/${v.slug}`)), busy ? 4000 : v.blocker ? 30000 : 12000);
 
   // علب التلفاز (Android TV) تعلن شاشة صغيرة (960×540 بدل 1920×1080) فتظهر الشاشة مكبّرة ومقطوعة:
   // شاشة أفقية أضيق من 1280 ← نرسم بعرض 1280 ويصغّرها المتصفّح لتملأ التلفاز. الشاشات العمودية كما هي.

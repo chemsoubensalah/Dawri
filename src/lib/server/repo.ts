@@ -140,12 +140,12 @@ const PATCH_COLUMNS: Record<keyof TicketPatch, string> = {
 // ——— المحلّات ———
 
 export async function getShopBySlug(q: Q, slug: string): Promise<Shop | null> {
-  const rows = await q.query(`select ${SHOP_COLS} from ${SHOP_FROM} where s.slug = $1`, [slug]);
+  const rows = await q.query(`select ${SHOP_COLS} from ${SHOP_FROM} where s.slug = $1`, [slug], { cache: true });
   return rows[0] ? rowToShop(rows[0]) : null;
 }
 
 export async function getShopById(q: Q, id: string): Promise<Shop | null> {
-  const rows = await q.query(`select ${SHOP_COLS} from ${SHOP_FROM} where s.id = $1`, [id]);
+  const rows = await q.query(`select ${SHOP_COLS} from ${SHOP_FROM} where s.id = $1`, [id], { cache: true });
   return rows[0] ? rowToShop(rows[0]) : null;
 }
 
@@ -252,7 +252,7 @@ export async function lockDay(q: Q, shopId: string, day: string): Promise<QueueD
 }
 
 export async function getDay(q: Q, shopId: string, day: string): Promise<QueueDay> {
-  const rows = await q.query<DayRow>(`select ${DAY_COLS} from queue_days where shop_id = $1 and day = $2`, [shopId, day]);
+  const rows = await q.query<DayRow>(`select ${DAY_COLS} from queue_days where shop_id = $1 and day = $2`, [shopId, day], { cache: true });
   return rowToDay(rows[0]);
 }
 
@@ -277,7 +277,7 @@ export async function allocateNumber(q: Q, shopId: string, day: string): Promise
 // ——— التذاكر ———
 
 export async function listDayTickets(q: Q, shopId: string, day: string): Promise<Ticket[]> {
-  const rows = await q.query("select * from tickets where shop_id = $1 and day = $2 order by number", [shopId, day]);
+  const rows = await q.query("select * from tickets where shop_id = $1 and day = $2 order by number", [shopId, day], { cache: true });
   return rows.map(rowToTicket);
 }
 
@@ -287,13 +287,14 @@ export async function listStaleOpenTickets(q: Q, shopId: string | null, day: str
        and ($3::uuid is null or shop_id = $3::uuid)
      order by shop_id, day, number limit 2000`,
     [day, OPEN_STATUSES, shopId],
+    { cache: true },
   );
   return rows.map(rowToTicket);
 }
 
 export async function getTicket(q: Q, id: string): Promise<Ticket | null> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
-  const rows = await q.query("select * from tickets where id = $1", [id]);
+  const rows = await q.query("select * from tickets where id = $1", [id], { cache: true });
   return rows[0] ? rowToTicket(rows[0]) : null;
 }
 
@@ -486,6 +487,7 @@ export async function dailyStats(q: Q, shopId: string, fromDay: string): Promise
      from tickets where shop_id = $1 and day >= $2
      group by day order by day desc`,
     [shopId, fromDay],
+    { cache: true },
   );
   return rows.map((r) => ({
     day: r.day,

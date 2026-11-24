@@ -38,7 +38,7 @@ export default function TodayAppointments({ lang, slug, onQueueChange }: { lang:
     } catch (e) {
       if ((e as ApiError).status === 401) location.reload();
     }
-  }, 15000);
+  }, 30000);
 
   const act = useCallback(
     async (body: Record<string, unknown>, ok: (r: { number?: number | null }) => string) => {

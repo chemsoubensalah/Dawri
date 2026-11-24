@@ -10,7 +10,61 @@ import path from "node:path";
 export type Row = Record<string, unknown>;
 
 export interface Q {
-  query<T = Row>(sql: string, params?: unknown[]): Promise<T[]>;
+  /**
+   * opts.cache: lecture « chaude » (rafraîchie toutes les quelques secondes par les écrans) que l'on peut
+   * resservir pendant READ_CACHE_MS — hors transaction seulement. Toute écriture vide le cache (voir cachedReads).
+   */
+  query<T = Row>(sql: string, params?: unknown[], opts?: { cache?: boolean }): Promise<T[]>;
+}
+
+/**
+ * Cache de lectures, par instance de serveur : les écrans qui se rafraîchissent en même temps
+ * (secrétaire, télévision, téléphones des patients) partagent une seule lecture de la base.
+ * Une écriture dans cette instance vide tout le cache aussitôt ; entre deux instances, un écran voit
+ * un changement au plus READ_CACHE_MS plus tard (moins qu'un intervalle de rafraîchissement).
+ */
+export const READ_CACHE_MS = Number(process.env.DAWRI_READ_CACHE_MS ?? 4000);
+const readCache = new Map<string, { at: number; rows: Promise<unknown[]> }>();
+/** compteurs (tests et mesures) : allers-retours réels vers la base, et lectures servies par le cache */
+export const dbStats = { queries: 0, hits: 0, bytes: 0 };
+const measureBytes = Boolean(process.env.DAWRI_DB_STATS);
+function counted(run: (sql: string, params?: unknown[]) => Promise<unknown[]>) {
+  return async (sql: string, params?: unknown[]) => {
+    dbStats.queries++;
+    const rows = await run(sql, params);
+    if (measureBytes) dbStats.bytes += JSON.stringify(rows).length;
+    return rows;
+  };
+}
+export function clearReadCache() {
+  readCache.clear();
+}
+/** une requête qui n'est pas une simple lecture (insert, update, delete, begin, ddl…) vide le cache */
+function noteWrite(sql: string) {
+  if (readCache.size && !/^\s*select\b/i.test(sql)) readCache.clear();
+}
+function cachedReads(raw: (sql: string, params?: unknown[]) => Promise<unknown[]>) {
+  const run = counted(raw);
+  return async <T>(sql: string, params?: unknown[], opts?: { cache?: boolean }): Promise<T[]> => {
+    noteWrite(sql);
+    if (!opts?.cache || READ_CACHE_MS <= 0) return (await run(sql, params)) as T[];
+    const key = sql + "\u0000" + JSON.stringify(params ?? []);
+    const now = Date.now();
+    const hit = readCache.get(key);
+    if (hit && now - hit.at < READ_CACHE_MS) {
+      dbStats.hits++;
+      return (await hit.rows) as T[];
+    }
+    if (readCache.size > 500) readCache.clear();
+    const rows = run(sql, params);
+    readCache.set(key, { at: now, rows });
+    try {
+      return (await rows) as T[];
+    } catch (e) {
+      readCache.delete(key);
+      throw e;
+    }
+  };
 }
 
 export interface Db extends Q {
@@ -60,20 +114,19 @@ export async function createPgDb(url: string): Promise<Db> {
   });
   return {
     kind: "pg",
-    async query<T>(sql: string, params?: unknown[]) {
-      const r = await pool.query(sql, params as unknown[]);
-      return r.rows as T[];
-    },
+    query: cachedReads(async (sql, params) => (await pool.query(sql, params as unknown[])).rows),
     async tx<R>(fn: (q: Q) => Promise<R>) {
       const client = await pool.connect();
       try {
         await client.query("begin");
         const res = await fn({
           async query<T>(sql: string, params?: unknown[]) {
+            noteWrite(sql);
             return (await client.query(sql, params as unknown[])).rows as T[];
           },
         });
         await client.query("commit");
+        readCache.clear(); // ce que la transaction a écrit est visible maintenant
         return res;
       } catch (e) {
         await client.query("rollback").catch(() => {});
@@ -83,6 +136,7 @@ export async function createPgDb(url: string): Promise<Db> {
       }
     },
     async exec(sql: string) {
+      readCache.clear();
       await pool.query(sql);
     },
     async close() {
@@ -97,19 +151,21 @@ export async function createPgliteDb(dataDir?: string): Promise<Db> {
   await pg.waitReady;
   return {
     kind: "pglite",
-    async query<T>(sql: string, params?: unknown[]) {
-      return (await pg.query(sql, params)).rows as T[];
-    },
+    query: cachedReads(async (sql, params) => (await pg.query(sql, params)).rows as unknown[]),
     async tx<R>(fn: (q: Q) => Promise<R>) {
-      return pg.transaction(async (t) =>
+      const res = await pg.transaction(async (t) =>
         fn({
           async query<T>(sql: string, params?: unknown[]) {
+            noteWrite(sql);
             return (await t.query(sql, params)).rows as T[];
           },
         }),
       );
+      readCache.clear();
+      return res;
     },
     async exec(sql: string) {
+      readCache.clear();
       await pg.exec(sql);
     },
     async close() {

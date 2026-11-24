@@ -47,7 +47,7 @@ export const isUuid = (v: unknown): v is string => typeof v === "string" && UUID
 // ——— الإعدادات ———
 
 export async function getSettings(q: Q, shopId: string): Promise<BookingSettings> {
-  const rows = await q.query("select * from booking_settings where shop_id = $1", [shopId]);
+  const rows = await q.query("select * from booking_settings where shop_id = $1", [shopId], { cache: true });
   return rowToSettings(rows[0]);
 }
 
@@ -84,6 +84,7 @@ export async function activeCounts(q: Q, shopId: string, fromDay: string, toDay:
      where shop_id = $1 and day >= $2 and day <= $3 and status in ('booked', 'arrived')
      group by day, time`,
     [shopId, fromDay, toDay],
+    { cache: true },
   );
   return rows.map((r) => ({ day: String(r.day), time: String(r.time), n: Number(r.n) }));
 }
@@ -169,7 +170,7 @@ export async function lastBookedDay(q: Q, shopId: string, fromDay: string): Prom
   const rows = await q.query<{ d: string | null }>("select max(day) as d from appointments where shop_id = $1 and day >= $2 and status = 'booked'", [
     shopId,
     fromDay,
-  ]);
+  ], { cache: true });
   return rows[0]?.d ?? null;
 }
 
@@ -184,6 +185,7 @@ export async function listRange(q: Q, shopId: string, fromDay: string, toDay: st
      where a.shop_id = $1 and a.day >= $2 and a.day <= $3
      order by a.day, a.time, a.created_at limit 3000`,
     [shopId, fromDay, toDay],
+    { cache: true },
   );
   return rows.map((r) => ({ ...rowToAppointment(r), ticketNumber: r.ticket_number == null ? null : Number(r.ticket_number) }));
 }

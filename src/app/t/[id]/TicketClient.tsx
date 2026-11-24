@@ -108,7 +108,7 @@ export default function TicketClient({ lang, initial }: { lang: Lang; initial: T
         if ((e as ApiError).code === "network") setOnline(false);
       }
     },
-    fast ? 5000 : 10000,
+    fast ? 5000 : 15000,
   );
 
   async function act(action: "confirm" | "cancel") {
