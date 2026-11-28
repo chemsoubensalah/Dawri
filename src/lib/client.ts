@@ -13,6 +13,49 @@ export class ApiError extends Error {
 }
 
 /** طلب JSON صغير. يرمي ApiError برمز الخطأ القادم من الخادم. */
+// ——— nouvelle version en ligne ———
+const PAGE_BUILD = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
+let newBuild = false;
+function noteBuild(server: string | null) {
+  if (!server || newBuild || PAGE_BUILD === "dev" || server === "dev" || server === PAGE_BUILD) return;
+  newBuild = true;
+  window.dispatchEvent(new Event("dawri:new-build"));
+}
+
+/**
+ * Page ouverte longtemps (télévision, tableau de bord) : se recharge quand une nouvelle version du site est en ligne,
+ * dès que canReload() le permet (par ex. personne n'est en train de taper). Au plus une fois toutes les 10 minutes.
+ */
+export function useReloadOnNewBuild(canReload: () => boolean = () => true) {
+  const ref = useRef(canReload);
+  ref.current = canReload;
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const KEY = "dawri:build-reload";
+    const tryReload = () => {
+      if (!newBuild || !ref.current()) return;
+      try {
+        const last = Number(sessionStorage.getItem(KEY) || 0);
+        if (Date.now() - last < 10 * 60_000) return;
+        sessionStorage.setItem(KEY, String(Date.now()));
+      } catch {
+        return; // sans mémoire de session, on ne risque pas une boucle de rechargements
+      }
+      location.reload();
+    };
+    const start = () => {
+      tryReload();
+      timer ??= setInterval(tryReload, 15_000);
+    };
+    if (newBuild) start();
+    window.addEventListener("dawri:new-build", start);
+    return () => {
+      window.removeEventListener("dawri:new-build", start);
+      clearInterval(timer);
+    };
+  }, []);
+}
+
 export async function api<T = unknown>(url: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
@@ -25,6 +68,7 @@ export async function api<T = unknown>(url: string, body?: unknown): Promise<T> 
   } catch {
     throw new ApiError("network", 0);
   }
+  noteBuild(res.headers.get("x-dawri-build"));
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const d = data as { error?: string; vars?: Record<string, string | number> };

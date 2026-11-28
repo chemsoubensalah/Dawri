@@ -7,7 +7,7 @@ import SoundGate from "@/components/SoundGate";
 import { Avatar, Chip, Empty, LiveDot, Stat } from "@/components/ui";
 import type { Lang } from "@/lib/domain/types";
 import { errorText, reasonText, t, tn, type DictKey } from "@/lib/i18n";
-import { api, ApiError, playSound, usePoll } from "@/lib/client";
+import { api, ApiError, playSound, usePoll, useReloadOnNewBuild } from "@/lib/client";
 import { autoPrint, printReceipt, receiptUrl, setAutoPrint } from "@/lib/print";
 import type { StaffState } from "@/lib/server/service";
 import TodayAppointments, { ApptBadge } from "./appointments/TodayAppointments";
@@ -58,6 +58,12 @@ export default function StaffDashboard({ lang, slug, initial, canManage = true }
   const numOf = (id: string | number) => s.waiting.find((w) => w.id === id)?.number ?? "";
   const posOf = (id: string | number) => s.waiting.findIndex((w) => w.id === id) + 1;
 
+  // nouvelle version du site : rechargement quand la secrétaire ne fait rien (pas de fenêtre ouverte, pas de saisie, pas de glisser)
+  useReloadOnNewBuild(() => {
+    const el = document.activeElement;
+    const typing = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement;
+    return !typing && !dragging.current && !document.querySelector("dialog[open]");
+  });
   // toutes les 4 s quand il y a des patients ; plus lentement quand la file est vide ou le cabinet fermé
   const queueLive = Boolean(s.current) || s.waiting.length > 0 || s.pending.length > 0 || s.deferred.length > 0;
   usePoll(async () => {

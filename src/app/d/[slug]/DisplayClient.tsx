@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DisplayStyle, Lang, ShopLook } from "@/lib/domain/types";
 import { dirOf, drTitle, t } from "@/lib/i18n";
-import { api, playSound, unlockAudio, usePoll } from "@/lib/client";
+import { api, playSound, unlockAudio, usePoll, useReloadOnNewBuild } from "@/lib/client";
 import { themeVars } from "@/lib/theme";
 import type { PublicShopView } from "@/lib/server/service";
 import { LAYOUTS } from "./layouts";
@@ -53,6 +53,9 @@ export default function DisplayClient({
   // (une télévision reste souvent allumée toute la journée, voire la nuit)
   const busy = v.currentNumber !== null || v.waiting > 0;
   usePoll(async () => setV(await api<PublicShopView>(`/api/s/${v.slug}`)), busy ? 4000 : v.blocker ? 30000 : 12000);
+  // nouvelle version du site en ligne : la télévision se recharge d'elle-même (sinon, au prochain réveil du boîtier,
+  // elle redemanderait d'anciens fichiers de style qui n'existent plus)
+  useReloadOnNewBuild();
 
   // علب التلفاز (Android TV) تعلن شاشة صغيرة (960×540 بدل 1920×1080) فتظهر الشاشة مكبّرة ومقطوعة:
   // شاشة أفقية أضيق من 1280 ← نرسم بعرض 1280 ويصغّرها المتصفّح لتملأ التلفاز. الشاشات العمودية كما هي.

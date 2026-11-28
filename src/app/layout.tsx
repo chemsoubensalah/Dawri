@@ -4,6 +4,7 @@ import { getLang } from "@/lib/server/http";
 import { dirOf } from "@/lib/i18n";
 import SwRegister from "@/components/SwRegister";
 import VisitBeacon from "@/components/VisitBeacon";
+import StyleGuard from "@/components/StyleGuard";
 import "./globals.css";
 
 // خطّ عربي/لاتيني حديث، يُخدَم من موقعنا نفسه (لا طلبات إلى Google عند الزيارة)
@@ -35,6 +36,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {children}
         <SwRegister />
         <VisitBeacon />
+        <StyleGuard />
       </body>
     </html>
   );
